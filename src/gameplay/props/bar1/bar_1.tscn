@@ -1,0 +1,8 @@
+[gd_scene format=3 uid="uid://dxpipgyk60apl"]
+
+[ext_resource type="PackedScene" path="res://src/gameplay/props/bar1/Stool1.tscn" id="1_3dahn"]
+
+[node name="Bar1" type="Node3D" unique_id=1969355633]
+
+[node name="BarStool" parent="." unique_id=2071440801 instance=ExtResource("1_3dahn")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -2.9802322e-07)

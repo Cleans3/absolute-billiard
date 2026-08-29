@@ -1,0 +1,30 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/balls/ball.gd" id="1_ball"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_ball"]
+radius = 0.0286
+
+[sub_resource type="SphereMesh" id="SphereMesh_ball"]
+radius = 0.0286
+height = 0.0572
+radial_segments = 16
+rings = 8
+
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_ball"]
+friction = 0.2
+bounce = 0.05
+
+[node name="Ball" type="RigidBody3D"]
+mass = 0.17
+physics_material_override = SubResource("PhysicsMaterial_ball")
+continuous_cd = true
+contact_monitor = true
+max_contacts_reported = 8
+script = ExtResource("1_ball")
+
+[node name="Shape" type="CollisionShape3D" parent="."]
+shape = SubResource("SphereShape3D_ball")
+
+[node name="Mesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_ball")

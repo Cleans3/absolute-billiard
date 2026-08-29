@@ -1,0 +1,7 @@
+[gd_scene format=3 uid="uid://icxeciljb25h"]
+
+[node name="BarRail" type="Node3D" unique_id=445430964]
+
+[node name="StaticBody3D" type="CSGBox3D" parent="." unique_id=1248413598]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.15, -1.8626451e-08)
+size = Vector3(1, 0.3, 0.1)

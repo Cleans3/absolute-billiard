@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BallType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/balls/BallType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "blue_mid"
+display_name = "Blue"
+color = Color(0.1, 0.3, 0.9, 1)
+base_value = 250
+behaviour_tags = Array[StringName]([&"tier2", &"common"])
+counts_for_clear = true

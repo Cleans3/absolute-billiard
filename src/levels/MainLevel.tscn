@@ -1,0 +1,66 @@
+[gd_scene format=3 uid="uid://bx7v5jc1rlusv"]
+
+[ext_resource type="PackedScene" uid="uid://b0hj5gq8byc7i" path="res://src/gameplay/player/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://dxpipgyk60apl" path="res://src/gameplay/props/bar1/bar_1.tscn" id="1_v74sb"]
+[ext_resource type="PackedScene" path="res://src/gameplay/table/Table.tscn" id="2_table"]
+[ext_resource type="Script" path="res://src/gameplay/round/demo_rack.gd" id="3_rack"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
+
+[sub_resource type="Sky" id="Sky_main"]
+sky_material = SubResource("ProceduralSkyMaterial_main")
+
+[sub_resource type="Environment" id="Environment_main"]
+background_mode = 2
+sky = SubResource("Sky_main")
+ambient_light_source = 3
+tonemap_mode = 2
+
+[node name="MainLevel" type="Node3D" unique_id=1789307385]
+
+[node name="Objects" type="CSGCombiner3D" parent="." unique_id=396154197]
+use_collision = true
+
+[node name="level0" type="CSGCombiner3D" parent="Objects" unique_id=1286859431]
+
+[node name="Bar1" parent="Objects/level0" unique_id=1969355633 instance=ExtResource("1_v74sb")]
+
+[node name="mainFloor" type="CSGBox3D" parent="Objects/level0" unique_id=1344379437]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.45000002, 0)
+size = Vector3(25, 1, 25)
+
+[node name="mainWall1" type="CSGBox3D" parent="Objects/level0" unique_id=224891456]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.183982e-07, 1.5, -7.5)
+size = Vector3(16, 5, 1)
+
+[node name="wallDoorSub" type="CSGBox3D" parent="Objects/level0/mainWall1" unique_id=2035619437]
+transform = Transform3D(1.9000001, 0, 0, 0, 2.3000002, 0, 0, 0, 1.5200001, 0, -0.39999998, 0.19999981)
+operation = 2
+
+[node name="mainWall2" type="CSGBox3D" parent="Objects/level0" unique_id=492388438]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.2367964e-06, 1.5, 7.500001)
+size = Vector3(16, 5, 1)
+
+[node name="mainWall3" type="CSGBox3D" parent="Objects/level0" unique_id=723428104]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 7.4999995, 1.5, 1.937151e-07)
+size = Vector3(14, 5, 1)
+
+[node name="mainWall4" type="CSGBox3D" parent="Objects/level0" unique_id=160846566]
+transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, -7.5000005, 1.5, 1.937151e-07)
+size = Vector3(14, 5, 1)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=903175009]
+environment = SubResource("Environment_main")
+
+[node name="Sun" type="DirectionalLight3D" parent="." unique_id=903175010]
+transform = Transform3D(0.86602545, -0.24999999, 0.4330127, 0, 0.8660254, 0.49999997, -0.5, -0.4330127, 0.75, 4.2, 6.4, 7.3)
+shadow_enabled = true
+
+[node name="Player" parent="." unique_id=1104520311 instance=ExtResource("1_player")]
+
+[node name="Table" parent="." instance=ExtResource("2_table")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.5)
+
+[node name="DemoRack" type="Node3D" parent="." node_paths=PackedStringArray("table")]
+script = ExtResource("3_rack")
+table = NodePath("../Table")

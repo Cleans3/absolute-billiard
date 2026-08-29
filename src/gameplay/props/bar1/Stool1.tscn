@@ -1,0 +1,24 @@
+[gd_scene format=3]
+
+[node name="BarStool" type="CSGCombiner3D" unique_id=2071440801]
+use_collision = true
+
+[node name="Base" type="CSGCylinder3D" parent="." unique_id=2071440802]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.025, 0)
+radius = 0.25
+height = 0.05
+
+[node name="Column" type="CSGCylinder3D" parent="." unique_id=2071440803]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.375, 0)
+radius = 0.05
+height = 0.75
+
+[node name="FootRing" type="CSGTorus3D" parent="." unique_id=2071440804]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.25, 0)
+inner_radius = 0.16
+outer_radius = 0.19
+
+[node name="Seat" type="CSGCylinder3D" parent="." unique_id=2071440805]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.75, 0)
+radius = 0.22
+height = 0.08

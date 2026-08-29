@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="BallType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/balls/BallType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "cue"
+display_name = "Cue"
+color = Color(1, 1, 1, 1)
+base_value = 0
+behaviour_tags = Array[StringName]([&"cue"])
+counts_for_clear = false
