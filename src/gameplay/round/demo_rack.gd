@@ -52,3 +52,4 @@ func _spawn(type: BallType, pos: Vector3, index: int) -> void:
 	b.id = "%s_%d" % [type.id, index]
 	add_child(b)
 	b.global_position = pos
+	table.sim.register(b)

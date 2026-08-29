@@ -10,6 +10,8 @@ signal ball_dropped(ball: Ball, pocket_id: StringName)
 
 var pockets: Dictionary = {}  # StringName -> PocketSpec
 
+@onready var sim: PhysicsSim = $PhysicsSim
+
 
 func cloth_y() -> float:
 	return spec.bed_height_m
@@ -27,7 +29,7 @@ func _ready() -> void:
 	# corner mouth is measured on the diagonal; along an edge it spans c
 	var c := spec.corner_mouth_m / sqrt(2.0)
 	var s := spec.side_mouth_m * 0.5
-	var out := 0.03  # pocket centre sits just outside the playfield corner
+	var out := r  # pocket centre sits just outside the playfield corner
 
 	_build_bed(hl, hw, y)
 
@@ -66,20 +68,20 @@ func _build_bed(hl: float, hw: float, y: float) -> void:
 	bed.name = "Bed"
 	add_child(bed)
 	var box := CSGBox3D.new()
-	box.size = Vector3(hl * 2 + 0.3, 0.12, hw * 2 + 0.3)
+	box.size = Vector3(hl * 2 + 0.45, 0.12, hw * 2 + 0.45)
 	box.position = Vector3(0, y - 0.06, 0)
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = Color(0.05, 0.35, 0.15)
 	box.material = mat
 	bed.add_child(box)
 	# pocket throats: subtract a cylinder at each pocket
-	var out := 0.03
+	var out := spec.ball_radius_m
 	for pos in [Vector3(-hl - out, 0, -hw - out), Vector3(hl + out, 0, -hw - out),
 			Vector3(-hl - out, 0, hw + out), Vector3(hl + out, 0, hw + out),
 			Vector3(0, 0, -hw - out), Vector3(0, 0, hw + out)]:
 		var hole := CSGCylinder3D.new()
 		hole.operation = CSGShape3D.OPERATION_SUBTRACTION
-		hole.radius = 0.075
+		hole.radius = spec.corner_mouth_m * 0.66
 		hole.height = 0.2
 		hole.position = Vector3(pos.x, y - 0.06, pos.z)
 		bed.add_child(hole)
@@ -96,7 +98,9 @@ func _build_bed(hl: float, hw: float, y: float) -> void:
 	body.name = "BedBody"
 	var cloth_mat := PhysicsMaterial.new()
 	cloth_mat.friction = spec.cloth_friction
-	cloth_mat.bounce = 0.0
+	cloth_mat.rough = true  # friction combine is MIN; rough makes the cloth value win over the ball's 0.06
+	cloth_mat.bounce = spec.ball_restitution  # bounce combine is MAX; absorbent subtracts instead -> 0 on cloth
+	cloth_mat.absorbent = true
 	body.physics_material_override = cloth_mat
 	var shape := CollisionShape3D.new()
 	shape.shape = bed.bake_collision_shape()
@@ -109,15 +113,18 @@ func _build_rail(id: StringName, a: Vector3, b: Vector3, r: float) -> void:
 	body.name = String(id)
 	body.set_meta(&"rail_id", id)
 	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.cushion_restitution
+	pm.bounce = spec.ball_restitution - spec.cushion_restitution  # absorbent: effective e = cushion_restitution
+	pm.absorbent = true
 	pm.friction = spec.cushion_friction
+	pm.rough = true
 	body.physics_material_override = pm
 	var mid := (a + b) * 0.5
 	var along := b - a
-	var thick := 0.06
+	var thick := r * 2.0
 	var h := r * 1.4  # cushion nose meets the ball just above its equator
 	# push the rail outward so its inner face sits on the playfield edge
 	var normal := Vector3(0, 0, signf(mid.z)) if is_zero_approx(along.z) else Vector3(signf(mid.x), 0, 0)
+	body.set_meta(&"rail_normal", -normal)  # inward; Ball._rail_rebound reads it
 	body.position = mid + normal * thick * 0.5 + Vector3(0, h * 0.5, 0)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -141,8 +148,10 @@ func _build_jaw(at: Vector3, r: float) -> void:
 	var body := StaticBody3D.new()
 	body.set_meta(&"jaw", true)
 	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.jaw_restitution
+	pm.bounce = spec.ball_restitution - spec.jaw_restitution
+	pm.absorbent = true
 	pm.friction = 0.6
+	pm.rough = true
 	body.physics_material_override = pm
 	body.position = at + Vector3(0, r, 0)
 	var shape := CollisionShape3D.new()
@@ -168,7 +177,7 @@ func _build_drop_plane(ps: PocketSpec, r: float) -> void:
 	area.position = ps.position + Vector3(0, -2.0 * r, 0)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(0.16, 0.02, 0.16)
+	box.size = Vector3(spec.corner_mouth_m * 1.4, 0.02, spec.corner_mouth_m * 1.4)
 	shape.shape = box
 	area.add_child(shape)
 	add_child(area)

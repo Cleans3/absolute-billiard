@@ -21,14 +21,15 @@ Open questions listed in `05`/each doc §6 need the user's decision — do not r
 
 ## Engine & commands
 
-Godot **4.7.1** (`godot` on PATH), GDScript, Mobile renderer, Jolt physics. No package manager, no build step, no test runner yet (`tests/` is planned in 04 §4 — physics fixtures, codec round-trip, save migration).
+Godot **4.7.1** (`godot` on PATH), GDScript, Mobile renderer, Jolt physics. No package manager, no build step, no test runner (`tests/physics/probe.gd` is a plain SceneTree script; codec round-trip and save migration fixtures are still planned in 04 §4).
 
 ```bash
 godot --path . --editor                 # open editor
 godot --path .                          # run main scene
 godot --path . res://src/levels/MainLevel.tscn   # run a specific scene
 godot --path . --headless -s src/tools/rig_builder.gd   # one-shot SceneTree tool script
-godot --path . --headless --import      # reimport assets (after adding to assets/)
+godot --path . --headless --import      # reimport assets (after adding to assets/) — also needed after adding a class_name
+godot --path . --headless -s tests/physics/probe.gd   # physics feel probe (roll-out, cushion angle, draw/follow); prints PROBE OK
 ```
 
 Do not hand-edit `.godot/` (editor cache) or `*.uid` / `*.import` files.
@@ -47,4 +48,4 @@ Planned layout (04 §4): `src/core` net/save/shared motion · `src/gameplay` Tab
 
 ## Current state
 
-Near-empty: `src/gameplay/player/` (first-person `CharacterBody3D` walker + generated skeleton), `src/gameplay/props/bar1/` scenes, `src/levels/MainLevel.tscn`. **Player design is deferred** — treat Player as a black box; the existing walker is a placeholder. Everything else is doc-only; follow milestones 04 §7 (M0 mobile perf spike gates all netcode).
+v0.0.2-beta: Jolt table/balls/cue demo with cloth rolling resistance, cue-frame spin (follow/draw/side/elevation), speed-dependent cushion restitution, minimal `PhysicsSim` (sleep-based shot boundary, tick downclock). Table is regulation ×1.5 (01 §2 scale ruling). Also `src/gameplay/player/` (first-person `CharacterBody3D` walker + generated skeleton), `src/gameplay/props/bar1/` scenes, `src/levels/MainLevel.tscn`. **Player design is deferred** — treat Player as a black box; the existing walker is a placeholder. Everything else is doc-only; follow milestones 04 §7 (M0 mobile perf spike gates all netcode).

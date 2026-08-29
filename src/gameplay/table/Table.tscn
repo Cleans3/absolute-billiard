@@ -1,6 +1,10 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/table/table.gd" id="1_table"]
+[ext_resource type="Script" path="res://src/gameplay/table/PhysicsSim.gd" id="2_sim"]
 
 [node name="Table" type="Node3D"]
 script = ExtResource("1_table")
+
+[node name="PhysicsSim" type="Node" parent="."]
+script = ExtResource("2_sim")

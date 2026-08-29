@@ -16,22 +16,33 @@ Target is mobile first: every number here has to survive a 2022 mid-range Androi
 |---|---|---|
 | `physics/3d/physics_engine` | `Jolt` (explicit, not "Default") | contact friction is the whole model |
 | `physics/common/physics_ticks_per_second` | `240 [tune]`, **fallback `120`** | see tick budget below |
-| `Ball.continuous_cd` | `true` (always, both tick rates) | 10 m/s at 120 Hz = 83 mm/step vs a 57 mm ball — tunneling is certain without it |
-| `Ball.contact_monitor` / `max_contacts_reported` | `true` / `8` | the contact log is the only input to trick detection |
-| `Ball.mass` | `0.17 kg` | regulation ball; was never specified before |
-| `Ball.physics_material.friction` | `0.20 [tune]` ball–cloth, `0.06 [tune]` ball–ball | |
-| cue impulse range | `0 .. 1.7 N·s [tune]` | derived in §3, replaces the dimensionally broken `18 N·s` |
-| rolling resistance | custom torque in `_integrate_forces`, `0.020 [tune]` | Jolt has no rolling-resistance term |
+| `Ball.continuous_cd` | cue ball always; object balls only above `ccd_speed_mps = 3.0 [tune]` (07 §1.2) | 10 m/s at 120 Hz = 83 mm/step vs a 86 mm ball — tunneling is certain without it |
+| `Ball.contact_monitor` / `max_contacts_reported` | on only during a live `Shot` (`PhysicsSim`) / `8` cue, `6` object | the contact log is the only input to trick detection |
+| `Ball.mass` | `0.17 kg × (R / 0.0286)³` | regulation density; the table is scaled ×1.5 so the ball is `0.574 kg` |
+| friction | ball material `0.06 [tune]`; cloth `0.20 [tune]`, cushion `0.18`, jaw `0.6` all `rough = true` | combine rule is **MIN unless one side is `rough`**, so ball–ball gets the ball's value and ball–table gets the table's |
+| restitution | ball material `0.95 [tune]`; table materials `absorbent = true` with `bounce = 0.95 − e_wanted` | combine rule is **MAX unless one side is `absorbent`** (then subtract), so ball–ball is 0.95, cloth 0, cushion `e0`, jaw `0.55`. Ball–ball at 0.05 was the v0.0.1 stun bug: cue ball kept 47% of its speed |
+| `physics/jolt_physics_3d/simulation/bounce_velocity_threshold` | `0.2` | Jolt default `1.0` kills restitution on slow rail hits — a soft ball slid along the cushion |
+| `physics/jolt_physics_3d/limits/max_angular_velocity` | `600` | default `47 rad/s` is below pure rolling at 2 m/s on this ball |
+| `physics/jolt_physics_3d/simulation/sleep_*` | velocity `0.05`, time `0.3` | 07 §1.3; **but** Jolt never sleeps a body that has `_integrate_forces`, so `Ball` forces `sleeping = true` at rest and emits `rested` |
+| `physics/common/physics_interpolation`, `max_physics_steps_per_frame` | `true`, `8` | 07 §1.5–1.6 |
+| cue speed cap | `power × mass × CueSpec.power_cap_speed_mps` | derived in §3; a speed cap is scale-invariant, an impulse cap is not |
+| rolling resistance | custom force + torque in `_integrate_forces`, `0.035 [tune]` | Jolt has no rolling-resistance term |
 | pockets | two jaw cylinders + drop plane per pocket | rattle and reject-at-speed emerge; `pocket_capture_speed_mps` is deleted |
 | rail shapes | per-shape metadata `rail_id: StringName` | so the contact log can tell a rail from a ball from a jaw |
 
 **Tick budget (P1).** 240 Hz is a hypothesis, not a decision: it is validated by 04's M0 spike (12 balls, max-power break, 60 fps sustained, physics step ≤ 8 ms on the target phone). If the spike misses, drop to 120 Hz and keep CCD — the visible cost is slightly softer cushion rebounds, not tunneling. Ball count per `Round` is capped by that budget at **≤ 12 balls total including the cue ball `[tune]`**; 02's "10 object balls" fits with headroom.
 
 ### TableSpec (Resource)
-`length_m = 2.54 [tune]`, `width_m = 1.27 [tune]`, `ball_radius_m = 0.0286 [tune]`, `rail_height_m = 0.09 [tune]`, `cushion_restitution = 0.86 [tune]`, `cushion_friction = 0.18 [tune]`, `rolling_resistance = 0.020 [tune]`, `spin_decay = 0.55 [tune]`, `rest_speed_mps = 0.02 [tune]`, `rest_time_sec = 0.30 [tune]`, `clearance_margin_m = 0.002 [tune]`, `kitchen_line_x = -0.635 [tune]` (head-string quarter, used for foul respawn).
+**Scale ruling (v0.0.2):** the table is regulation × **1.5** so it reads big in first person, and its bed sits at **75 % of the 2.0 m player capsule**. Every geometric value below is the scaled one; mass follows radius³ (constant density) and the cue is a speed cap, so the physics formulas do not know about the scale.
+
+`length_m = 3.81 [tune]`, `width_m = 1.905 [tune]`, `ball_radius_m = 0.0429 [tune]`, `rail_height_m = 0.135 [tune]`, `bed_height_m = 1.5`, `kitchen_line_x = -0.9525 [tune]` (head-string quarter, used for foul respawn), `clearance_margin_m = 0.003 [tune]`, `jaw_radius_m = 0.018`, `corner_mouth_m = 0.171`, `side_mouth_m = 0.19`.
+
+Feel: `cushion_restitution = 0.86 [tune]` (e0), `cushion_restitution_min = 0.20 [tune]`, `cushion_soft_speed_mps = 3.0 [tune]`, `cushion_hard_speed_mps = 7.5 [tune]`, `cushion_friction = 0.18 [tune]`, `cloth_friction = 0.20 [tune]`, `ball_friction = 0.06 [tune]`, `ball_restitution = 0.95 [tune]`, `rolling_resistance = 0.035 [tune]`, `spin_decay = 0.55 [tune]`, `rest_speed_mps = 0.02 [tune]`, `rest_time_sec = 0.30 [tune]`, `ccd_speed_mps = 3.0 [tune]`.
+
+Derived geometry in `Table.gd` is expressed in these (pocket centre offset = `R`, throat radius = `0.66 × corner_mouth_m`, drop plane = `1.4 × corner_mouth_m`, rail thickness = `2R`, rail nose height = `1.4R`) — no metre literal survives a scale change.
 
 ### Pocket geometry
-Each pocket is a `PocketSpec { id: StringName, position: Vector3, mouth_normal: Vector2, mouth_width_m }` plus three bodies: **two vertical jaw cylinders** (`jaw_radius_m = 0.012 [tune]`, high friction, restitution `0.55 [tune]`) at the mouth corners, and a **drop plane** — an `Area3D` below cloth level inside the throat. Mouth widths: corner `0.114 [tune]`, side `0.127 [tune]` against a `0.0572 m` ball.
+Each pocket is a `PocketSpec { id: StringName, position: Vector3, mouth_normal: Vector2, mouth_width_m }` plus three bodies: **two vertical jaw cylinders** (`jaw_radius_m`, high friction, restitution `jaw_restitution = 0.55 [tune]`) at the mouth corners, and a **drop plane** — an `Area3D` below cloth level inside the throat. Mouth widths: corner `0.171 [tune]`, side `0.19 [tune]` against a `0.0858 m` ball (regulation `0.114 / 0.127 / 0.0572` × 1.5).
 
 A pot is the ball's centre crossing the drop plane, and nothing else. Rattle (ball bouncing between jaws and staying up), reject-at-speed (fast ball hitting the far jaw and coming back out) and the pocket-cut asymmetry all fall out of the jaw collisions for free. There is no speed test and no capture cone; `pocket_capture_speed_mps` is deleted.
 
@@ -62,7 +73,7 @@ The cue is a shop item too (P3), so its limits are data, not constants:
 
 | field | default | upgrade does |
 |---|---|---|
-| `power_cap_impulse` | `1.7 N·s [tune]` | raises the top of the power curve, up to `2.2 [tune]` |
+| `power_cap_speed_mps` | `10 m/s [tune]` | raises the top of the power curve, up to `13 [tune]` |
 | `spin_offset_radius` | `0.35 [tune]` (fraction of ball radius) | more english before a miscue, up to `0.50 [tune]` |
 | `jump_unlocked` | `false` | enables jump intent |
 | `masse_unlocked` | `false` | enables massé intent |
@@ -84,18 +95,45 @@ The Player module is still deferred and stays a black box. It produces exactly o
 A `Shot` opens on cue contact and closes when every ball satisfies `speed < rest_speed_mps` and `angular_speed < 0.15 rad/s [tune]` continuously for `rest_time_sec`. Hard ceiling `12 s [tune]`: past it, balls are frozen and the shot resolves anyway. A `Round` runs until its timer expires, its shot budget is spent, or `table_cleared` fires.
 
 ### Cue impulse, derived
-Impulse is momentum: `J = m · Δv`. With `m = 0.17 kg` and a top break speed of `10 m/s` (real breaks land 8–12 m/s), `J_max = 0.17 × 10 = 1.7 N·s`. The old `18 N·s` implied `Δv = 106 m/s` — 380 km/h, dimensionally broken. So `J = power × CueSpec.power_cap_impulse`, applied as a single `apply_impulse(J * aim_dir_3d, contact_offset)` where
+Impulse is momentum: `J = m · Δv`. A top break speed of `10 m/s` (real breaks land 8–12 m/s) is the cap, and it is stated as a **speed** so it survives the ×1.5 scale: `J = power × Ball.mass × CueSpec.power_cap_speed_mps` (`= 5.74 N·s` at full power on the 0.574 kg ball; the old `1.7 N·s` was the same 10 m/s on a 0.17 kg ball). Applied as a single `apply_impulse(J * aim, contact_offset)` in the **cue frame**:
 
-`contact_offset = (-aim_dir_3d * R) + (spin_offset * R * CueSpec.spin_offset_radius)`
+```
+right  = aim_flat × UP                       # before elevation
+aim    = aim_flat rotated about right by −elevation_deg
+up_c   = right × aim                          # "top of the ball" as the cue sees it
+contact_offset = −aim·R + (right·spin.x + up_c·spin.y) · R · CueSpec.spin_offset_radius
+```
 
-Because the impulse is applied off-centre, Jolt derives the angular velocity itself: follow, draw and english are one line of physics, not three special cases. `|spin_offset| > miscue_threshold` is a miscue — power scaled by `0.35 [tune]`, aim scattered by `4° [tune]`.
+`spin.y > 0` is follow, `< 0` draw, `spin.x` is side; stop/stun are centre-ball at the right distance. Because the impulse is applied off-centre, Jolt derives the angular velocity itself (`ω₀ = |spin| · spin_offset_radius · 2.5 · v/R`, so at `0.35R` full offset the ball starts with 0.88× its rolling spin), and cloth friction turns it into follow, draw and curve: one line of physics, not three special cases. `|spin_offset| > miscue_threshold` is a miscue — power scaled by `0.35 [tune]`, aim scattered by `4° [tune]`.
 
-**Jump** requires `jump_unlocked`, `power ≥ 0.70 [tune]` and `elevation_deg ≥ 30`; the elevated aim vector simply has a downward `Y` component, and the hop is Jolt's response to hitting a sphere above centre against the cloth. **Massé** requires `masse_unlocked`, `elevation_deg ≥ 45 [tune]` and `|spin_offset| ≥ 0.60`; the curve emerges from sidespin plus cloth friction. No scripted "curve bias" term exists in either case.
+**Jump** requires `jump_unlocked`, `power ≥ 0.70 [tune]` and `elevation_deg ≥ 30`; the elevated aim vector simply has a downward `Y` component, and the hop is Jolt's response to hitting a sphere above centre against the cloth. **Massé** requires `masse_unlocked`, `elevation_deg ≥ 45 [tune]` and `|spin_offset| ≥ 0.60`; the curve emerges from sidespin plus cloth friction. No scripted "curve bias" term exists in either case. A locked technique does not fail the shot: `Ball.strike` clamps elevation to `29°` without `jump_unlocked` and to `44°` for a ≥0.6 spin without `masse_unlocked`.
 
 ### Cloth, cushions, rails
-Sliding friction is Jolt's. Rolling resistance is ours: a force of magnitude `mass · g · rolling_resistance` opposing travel, plus the matching torque at the contact point so the ball keeps rolling rather than skidding (§4 code). At `0.020` that is `≈0.20 m/s²` — a ball struck at 2 m/s runs about 10 m, four table lengths. Spin about the table normal decays at `spin_decay × rolling_resistance`.
+Sliding friction is Jolt's (`cloth_friction`): a struck ball slides until its contact point stops, then rolls — that phase is where follow, draw and side do their work. Rolling resistance is ours, Coulomb-like (magnitude independent of speed):
 
-Cushions reflect normal velocity by `cushion_restitution` and shed tangential velocity by `cushion_friction`; both are `PhysicsSim`-modifiable so 03's `glass_cushions` is a value change, not a code path. Every rail shape carries `rail_id`, which is what makes a `RAIL` contact countable.
+```
+F = −v̂ · m · g · μ_r                              central, opposing travel
+τ = −(UP × v̂) · (2/5) · m · R · g · μ_r           opposing the rolling axis, so ω slows in step with v (I = 2/5 m R², α = a/R)
+τ_z = −ω_normal · m · R · μ_r · spin_decay        english about the table normal bleeds off faster than roll
+```
+
+At `μ_r = 0.035` that is `0.34 m/s²`: a ball rolling at 1.5 m/s stops in `≈2.6 m` and `3.7 s` (probe), a 2 m/s ball in one and a half table lengths. **Gotcha (v0.0.1 "ice"):** applying the resistance *force at the contact point* (`τ = r_contact × F`) spins the ball **up**, not down — Jolt's contact friction then pushes it forward and the ball never stops. The torque must oppose `UP × v̂`.
+
+Cushions shed tangential velocity by `cushion_friction` (Jolt), and reflect normal velocity by a restitution that **falls with impact speed** — a design ruling, not a measurement: soft hits mirror, hard hits deform the rubber and come off flat.
+
+```
+e(v_n) = lerp(e0, e_min, clamp((v_n − v_soft) / (v_hard − v_soft), 0, 1))
+         e0 = cushion_restitution 0.86, e_min = 0.20, v_soft = 3.0 m/s, v_hard = 7.5 m/s   [tune]
+tan(θ_out) = e(v_n) · tan(θ_in)        θ measured from the cushion face, tangential speed retained
+```
+
+| 45° into a long rail | v_n | e | θ_out |
+|---|---|---|---|
+| soft (< 50 % power) | ≤ 3 | 0.86 | ≈ 41° (probe: 46°, sliding phase adds a little) |
+| 75 % power (7.5 m/s) | 5.3 | 0.52 | ≈ 27° |
+| max (10 m/s) | 7.1 | 0.27 | ≈ 15° (probe at 9 m/s: 30°) |
+
+Mechanically: the rail material is `absorbent` with `bounce = ball_restitution − e0`, so Jolt bounces at `e0`; `Ball` catches `body_entered` from a body carrying `rail_normal` meta, stores the inward normal, and on the **next** `_integrate_forces` rescales the leaving normal component by `e(v_n)/e0` with `v_n = v_out/e0`. Next tick, because `body_entered` fires pre-solve for discrete contacts and post-solve for CCD ones. Both `e0` and `cushion_friction` are `PhysicsSim`-modifiable so 03's `glass_cushions` is a value change, not a code path. Every rail shape carries `rail_id` (countable `RAIL` contact) and `rail_normal`.
 
 ### Foul
 **A legal `Shot` must produce at least one `BALL` contact between the cue ball and any non-cue ball.** Without this rule the dominant strategy is tapping the nearest ball forever; with it, a whiff costs a shot. A foul is: no object-ball contact, *or* the cue ball entering a drop plane (the old scratch), *or* any ball leaving the table. Consequences: the `Shot` scores nothing, one shot is deducted from the `Round` budget, 02 applies its viewer drop, and the cue ball respawns in the kitchen — the quarter of the table behind `kitchen_line_x`, at the first Poisson-disk candidate that clears every other ball. No ball-in-hand, no spotting, no other standard pool rules.
@@ -139,26 +177,11 @@ Non-shooters can shove the table (P2). `PhysicsSim.nudge(direction: Vector2, str
 ### Physics modifiers
 `PhysicsSim.apply_modifier(field: StringName, delta: float, duration_sec: float)` — host-only, called only by 03's Effect system. Fields: `friction`, `restitution`, `ball_mass`, `pocket_mouth_width`, `table_tilt`, `cushion_friction`, `cushion_restitution`, `spin_transfer`, `shot_power_scale`, `rolling_resistance`. Plus `PhysicsSim.nudge(...)` as above. Modifiers are additive deltas over `TableSpec` values with independent timers; nothing writes the resource.
 
-### Rolling resistance
-```gdscript
-# Ball.gd — Jolt does contact friction; rolling resistance it does not.
-func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
-    var v := state.linear_velocity
-    if v.length() < sim.rest_speed and state.angular_velocity.length() < 0.15:
-        state.linear_velocity = Vector3.ZERO
-        state.angular_velocity = Vector3.ZERO
-        return
-    var up := sim.surface_normal                      # tilts with apply_modifier("table_tilt")
-    var g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
-    # Coulomb-like: magnitude independent of speed, direction opposing travel.
-    var f_roll := -v.normalized() * mass * g * sim.rolling_resistance
-    state.apply_central_force(f_roll)
-    # same force at the contact point, so the ball keeps rolling instead of skidding
-    state.apply_torque((-up * radius).cross(f_roll))
-    # english about the table normal bleeds off faster than roll
-    var spin := up * state.angular_velocity.dot(up)
-    state.apply_torque(-spin * mass * radius * sim.rolling_resistance * sim.spin_decay)
-```
+### Rolling resistance, rest, CCD gate, cushion rescale — one function
+`Ball._integrate_forces` (implemented, `src/gameplay/balls/ball.gd`) does exactly four things in order: apply a pending `rail_normal` rescale, snap to rest below `rest_speed_mps` / `0.15 rad/s` (then `sleeping = true` deferred and `rested` emitted — Jolt will not sleep a custom-integrator body itself, and forcing `sleeping` emits no `sleeping_state_changed`), gate `continuous_cd` on `ccd_speed_mps` for object balls, then the three rolling-resistance terms above. `up` becomes `sim.surface_normal` when `table_tilt` lands. Keep it ~30 lines (07 §5.2).
+
+### PhysicsSim (implemented, minimal)
+Child of `Table`; `register(ball)` wires `struck` / `sleeping_state_changed` / `rested`. On strike: `contact_monitor` on for every ball, tick `120 Hz`, `shot_started`. When the awake count hits zero: `contact_monitor` off, tick `60 Hz`, `all_resting` — the shot boundary of 07 §1.3 and the idle downclock of 07 §7.2. Exposes `Game/AwakeBalls` (removed in `_exit_tree`: a monitor callable left behind corrupts the heap at quit). The modifier stack (`apply_modifier`, `nudge`) is still to come.
 
 ### Signals (emitted by `RoundDirector`, connected directly)
 - `ball_potted(ball: Ball, shot_id: String, pocket_id: StringName)` — the pocket id is what lets 02 score which `Camera` had the shot; `Table.get_pocket(pocket_id) -> PocketSpec` gives it the world position for the distance + occlusion test (P2).
@@ -167,10 +190,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 - `table_cleared(round_id: String)`
 
 ### File paths under `src/`
-`gameplay/table/TableSpec.gd`, `gameplay/table/PocketSpec.gd`, `gameplay/table/PhysicsSim.gd`, `gameplay/balls/BallType.gd`, `gameplay/balls/BallTypeOverride.gd`, `gameplay/balls/Ball.gd`, `gameplay/cue/CueSpec.gd`, `gameplay/cue/CueAim.gd`, `gameplay/round/RoundDirector.gd`, `gameplay/round/ContactLog.gd`, `gameplay/round/ShotScoring.gd`, `gameplay/round/TrickShotDetector.gd`, `gameplay/round/PoissonDrop.gd`.
+`gameplay/table/TableSpec.gd`, `gameplay/table/PocketSpec.gd`, `gameplay/table/PhysicsSim.gd`, `gameplay/balls/BallType.gd`, `gameplay/balls/BallTypeOverride.gd`, `gameplay/balls/Ball.gd`, `gameplay/cue/CueSpec.gd`, `gameplay/cue/CueAim.gd`, `gameplay/round/RoundDirector.gd`, `gameplay/round/ContactLog.gd`, `gameplay/round/ShotScoring.gd`, `gameplay/round/TrickShotDetector.gd`, `gameplay/round/PoissonDrop.gd`. Demo-only until the Player module lands: `gameplay/cue/cue_controller.gd` (spin cursor I/J/K/L, elevation Q/E, reset C) and `gameplay/cue/spin_disc.gd` (HUD); `resources/cues/demo_cue.tres` has jump and massé unlocked.
 
 ### Physics test fixtures (`tests/physics/`, headless)
-The cheapest insurance in the plan — each is a scripted `ShotIntent` against a fixed rack, asserted on outcome:
+The cheapest insurance in the plan — each is a scripted `ShotIntent` against a fixed rack, asserted on outcome. `tests/physics/probe.gd` (`godot --path . --headless -s tests/physics/probe.gd`) is the first cut: roll-out distance and rest time, cushion angle soft vs hard, draw returns / follow passes. Gotcha for every fixture: a GDScript lambda captures locals **by value** — signal handlers must set a member, not a local.
 1. **Straight-in pot** — ball 0.5 m off a corner pocket, centre-ball strike: 100/100 runs pot.
 2. **Stun stop** — centre-ball at 2 m/s into a full ball: cue ball residual speed `< 0.05 m/s`.
 3. **30° cut** — object ball crosses the target line within `±15 mm [tune]` at 1.0 m.

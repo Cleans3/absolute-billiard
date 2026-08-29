@@ -1,6 +1,8 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/cue/cue_controller.gd" id="1_cue"]
+[ext_resource type="Script" path="res://src/gameplay/cue/spin_disc.gd" id="2_disc"]
+[ext_resource type="Resource" path="res://src/resources/cues/demo_cue.tres" id="3_spec"]
 
 [sub_resource type="CylinderMesh" id="CylinderMesh_cue"]
 top_radius = 0.008
@@ -13,6 +15,7 @@ albedo_color = Color(0.72, 0.5, 0.25, 1)
 
 [node name="CueController" type="Node3D"]
 script = ExtResource("1_cue")
+cue_spec = ExtResource("3_spec")
 
 [node name="CueMesh" type="MeshInstance3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.9848, 0.1736, 0, -0.1736, 0.9848, 0.28, -0.22, -0.55)
@@ -50,3 +53,17 @@ grow_vertical = 0
 max_value = 1.0
 step = 0.001
 show_percentage = false
+
+[node name="SpinDisc" type="Control" parent="HUD"]
+anchors_preset = 3
+anchor_left = 1.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = -120.0
+offset_top = -140.0
+offset_right = -20.0
+offset_bottom = -40.0
+grow_horizontal = 0
+grow_vertical = 0
+script = ExtResource("2_disc")

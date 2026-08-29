@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CueSpec" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/cue/CueSpec.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+power_cap_speed_mps = 10.0
+spin_offset_radius = 0.35
+jump_unlocked = true
+masse_unlocked = true
+wobble_reduction = 0.0
+miscue_threshold = 0.92

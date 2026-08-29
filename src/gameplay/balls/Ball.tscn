@@ -12,8 +12,8 @@ radial_segments = 16
 rings = 8
 
 [sub_resource type="PhysicsMaterial" id="PhysicsMaterial_ball"]
-friction = 0.2
-bounce = 0.05
+friction = 0.06
+bounce = 0.95
 
 [node name="Ball" type="RigidBody3D"]
 mass = 0.17

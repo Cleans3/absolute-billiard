@@ -31,6 +31,8 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 ## 1. Physics (Jolt)
 
+*Status v0.0.2:* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured. Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4).
+
 | metric | budget |
 |---|---|
 | Jolt step, 13 awake bodies | `≤ 1.0 ms [tune]` |
