@@ -35,8 +35,7 @@ func register(ball: Ball) -> void:
 	_balls.append(ball)
 	ball.contact_monitor = false
 	ball.struck.connect(_on_struck)
-	ball.sleeping_state_changed.connect(_recount)
-	ball.rested.connect(_recount.unbind(1))
+	ball.resting_changed.connect(_recount.unbind(2))
 	ball.tree_exiting.connect(func() -> void:
 		_balls.erase(ball)
 		_recount())
@@ -48,6 +47,10 @@ func _on_struck(ball: Ball, intent: ShotIntent) -> void:
 		b.contact_monitor = true
 	Engine.physics_ticks_per_second = LIVE_TICK
 	shot_started.emit(ball, intent)
+	# Struck ball's own is_resting already flipped false synchronously (Ball.strike, before this
+	# signal fires) — recount now instead of waiting on the deferred resting_changed so `awake`
+	# reflects the shot on the same frame it starts, not a lagging frame behind (gamma F3a).
+	_recount()
 
 
 func _recount() -> void:

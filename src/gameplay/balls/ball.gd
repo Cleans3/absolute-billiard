@@ -5,7 +5,7 @@ extends RigidBody3D
 ## cushion rebound are ours (01 §3–§4). Mass follows radius³ so bigger balls keep real density.
 
 signal struck(ball: Ball, intent: ShotIntent)
-signal rested(ball: Ball)
+signal resting_changed(ball: Ball, resting: bool)
 
 const REGULATION_MASS_KG := 0.17  # kg; regulation ball density, not a table dimension
 const MISCUE_POWER_SCALE := 0.35
@@ -76,7 +76,7 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	var up_c := right.cross(aim3).normalized()  # "top of the ball" as the cue sees it
 	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * cue.spin_offset_radius
 	sleeping = false
-	is_resting = false
+	_set_resting(false)
 	apply_impulse(aim3 * power * mass * cue.power_cap_speed_mps, offset)
 	struck.emit(self, intent)
 
@@ -93,9 +93,18 @@ func pocket(pocket_id: StringName) -> void:
 
 ## `sleeping` is Jolt's own call and, for a body still in resting contact, may never flip true
 ## (or take far longer than `rest_speed_mps` should tolerate) — PhysicsSim counts `is_resting`
-## instead, which this announces via `rested`, set the instant our own threshold is met.
-func _rest_now() -> void:
-	rested.emit(self)
+## instead, announced via `resting_changed` on every flip (both directions: a strike or a rail
+## rebound waking the ball back up matters just as much as it settling). Deferred so a flip that
+## happens mid physics-step never re-enters the physics callback from a connected listener.
+func _emit_resting_changed(v: bool) -> void:
+	resting_changed.emit(self, v)
+
+
+func _set_resting(v: bool) -> void:
+	if is_resting == v:
+		return
+	is_resting = v
+	_emit_resting_changed.call_deferred(v)
 
 
 func _on_body_entered(body: Node) -> void:
@@ -122,11 +131,9 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if speed < spec.rest_speed_mps and state.angular_velocity.length() < 0.15:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
-		if not is_resting:
-			is_resting = true
-			_rest_now.call_deferred()
+		_set_resting(true)
 		return
-	is_resting = false
+	_set_resting(false)
 	if not is_cue_ball:
 		continuous_cd = speed > spec.ccd_speed_mps
 	if speed < 0.001:
