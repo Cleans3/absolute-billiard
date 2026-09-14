@@ -3,6 +3,8 @@ extends Node3D
 ## Demo-only rack: triangle of 10 object balls on the foot spot, cue ball in the kitchen.
 ## ponytail: hand-placed; RoundDirector + PoissonDrop replace this in the Round milestone.
 
+signal spawned
+
 @export var table: Table
 @export var ball_scene: PackedScene = preload("res://src/gameplay/balls/Ball.tscn")
 
@@ -17,31 +19,51 @@ const RACK: Array[String] = ["red", "blue", "red", "red", "gold", "blue", "red",
 
 
 func _ready() -> void:
-	spawn()
+	spawn_layout(default_rack())
 
 
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("reset"):
-		spawn()
+		spawn_layout(default_rack())
 
 
 func spawn() -> void:
-	for c in get_children():
-		c.queue_free()
+	spawn_layout(default_rack())
+
+
+## Standard 10-ball triangle on the foot spot, cue ball on the head spot. Table-local metres.
+func default_rack() -> Array[Dictionary]:
 	var s := table.spec
-	var r := s.ball_radius_m
-	var y := table.global_position.y + s.bed_height_m + r + 0.002
-	var gap := r * 2.0 + 0.001
-	var foot := Vector3(table.global_position.x + s.length_m * 0.25, y, table.global_position.z)
+	var gap := s.ball_radius_m * 2.0 + s.clearance_margin_m
+	var entries: Array[Dictionary] = []
 	var i := 0
 	for row in range(4):
 		for k in range(row + 1):
 			if i >= RACK.size():
 				break
-			var pos := foot + Vector3(row * gap * 0.866, 0.0, (k - row * 0.5) * gap)
-			_spawn(TYPES[RACK[i]], pos, i + 1)
+			entries.append({
+				type = StringName(RACK[i]),
+				x = s.foot_spot_x + row * gap * 0.866,
+				z = (k - row * 0.5) * gap,
+				index = i + 1,
+			})
 			i += 1
-	_spawn(TYPES.cue, Vector3(table.global_position.x - s.length_m * 0.25, y, table.global_position.z), 0)
+	entries.append({type = &"cue", x = s.kitchen_line_x, z = 0.0, index = 0})
+	return entries
+
+
+## entry = {type: StringName (BallType id in TYPES), x: float, z: float}, table-local metres,
+## optional index: int.
+func spawn_layout(entries: Array[Dictionary]) -> void:
+	for c in get_children():
+		c.queue_free()
+	var s := table.spec
+	var y := table.global_position.y + s.bed_height_m + s.ball_radius_m + s.clearance_margin_m
+	for entry in entries:
+		var type: BallType = TYPES[String(entry.type)]
+		var pos := Vector3(table.global_position.x + entry.x, y, table.global_position.z + entry.z)
+		_spawn(type, pos, entry.get("index", 0))
+	spawned.emit()
 
 
 func _spawn(type: BallType, pos: Vector3, index: int) -> void:

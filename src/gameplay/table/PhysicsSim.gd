@@ -27,6 +27,10 @@ func _get_awake() -> int:
 	return awake
 
 
+func get_balls() -> Array[Ball]:
+	return _balls.duplicate()
+
+
 func register(ball: Ball) -> void:
 	_balls.append(ball)
 	ball.contact_monitor = false
@@ -49,7 +53,7 @@ func _on_struck(ball: Ball, intent: ShotIntent) -> void:
 func _recount() -> void:
 	var n := 0
 	for b in _balls:
-		if not b.sleeping and not b.freeze and b.is_inside_tree():
+		if not b.is_resting and not b.freeze and b.is_inside_tree():
 			n += 1
 	var was := awake
 	awake = n
