@@ -14,8 +14,8 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	_build_bed(parent, spec, y)
 	for rail in layout.rails:
 		_build_cushion(parent, spec, rail, y)
-		_build_facing(parent, spec, rail.a, rail.facing_a, y)
-		_build_facing(parent, spec, rail.b, rail.facing_b, y)
+		_build_facing(parent, spec, rail.a, rail.facing_a, rail.inward_normal, y)
+		_build_facing(parent, spec, rail.b, rail.facing_b, rail.inward_normal, y)
 	for pocket in layout.pockets:
 		_build_drop_zone(parent, spec, layout, pocket, y)
 	_build_safety_floor(parent, spec, y)
@@ -70,8 +70,13 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 
 
 ## Angled jaw stub at a rail end, oriented along the layout's facing direction — the part of the
-## cushion that turns a ball toward (or away from) the pocket instead of a bare peg.
-static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, y: float) -> void:
+## cushion that turns a ball toward (or away from) the pocket instead of a bare peg. `inward` is
+## the parent straight cushion's own inward_normal (constant along the whole rail, valid at either
+## end): the box's thickness is shifted entirely to the outward side of it so the inner face sits
+## flush with the nose line — never inside the playfield rectangle — instead of straddling it (F2:
+## a box centred on the facing line pokes thick/2 back into the rail's own lane and rejects a
+## moderate-speed ball before it ever reaches the pocket).
+static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, y: float) -> void:
 	if dir.is_zero_approx():
 		return
 	var body := StaticBody3D.new()
@@ -90,7 +95,10 @@ static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vec
 	var thick := maxf(spec.jaw_radius_m * 2.0, spec.ball_radius_m)
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
-	body.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
+	if x.dot(inward) > 0.0:
+		x = -x  # x now points outward, away from the playfield interior
+	var anchor := at + x * thick * 0.5
+	body.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(thick, h, length)
@@ -99,6 +107,16 @@ static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vec
 	parent.add_child(body)
 
 
+## A pot is a ball's centre actually leaving the bed (01 §2): the bed and straight cushions are
+## exactly the nose-to-nose rectangle (spec.length_m × spec.width_m), so a centre is off it —
+## genuinely unsupported, falling — the moment EITHER its x or its z (not necessarily both) passes
+## hl/hw. A corner pocket therefore gets two flush strips, one per axis, unioned in a single
+## Area3D: each strip sits entirely outside the rectangle on its own axis alone (so neither one
+## ever has any part inside it — 01 §2, "never past the nose line into the playfield"), and a ball
+## hugging a rail into the corner (only ever off on the ONE axis it left the rail on, its z or x
+## unchanged) still lands in the matching strip the instant it clears that edge — it doesn't need
+## to also have drifted across the other axis first (gamma F1 negatives A/B/D vs. F2 positive F).
+## A side pocket only sits outside on one axis to begin with, so one strip covers it.
 static func _build_drop_zone(parent: Node3D, spec: TableSpec, layout: TableLayout, pocket: PocketSpec, y: float) -> void:
 	var size := Vector2(pocket.mouth_width_m * 1.4, pocket.mouth_width_m * 1.4)
 	for dz in layout.drop_zones:
@@ -108,22 +126,44 @@ static func _build_drop_zone(parent: Node3D, spec: TableSpec, layout: TableLayou
 	var area := Area3D.new()
 	area.name = "Drop_" + String(pocket.id)
 	area.set_meta(&"pocket_id", pocket.id)
+
+	var hl := spec.length_m * 0.5
+	var hw := spec.width_m * 0.5
+	var sign_x := signf(pocket.position.x)
+	var sign_z := signf(pocket.position.z)
+	# Tall capture chute below, not a thin slab, so a fast fall can't tunnel past a one-frame-thin
+	# trigger between steps.
+	var chute := spec.ball_radius_m * DROP_CHUTE_RATIO
+	# Top reaches up to the ball's own resting centre height (01 §2 / T1.4 original design): there
+	# is no bed under a strip's footprint (it never overlaps the nose-to-nose rectangle — see
+	# above), so a ball centred there belongs to the pocket immediately. Tried pulling this down to
+	# cloth − R instead (catch only once a centre has actually fallen a radius) and it breaks fast
+	# shots outright: an 8 m/s ball crosses a strip's ~0.3 m footprint in ~0.04 s but takes ~0.15 s
+	# to fall one radius under gravity, so it flies straight over the strip while still above the
+	# lowered top and is never caught at all (reproduced live: tests/physics/probe.gd's jaw-hit
+	# case, unrelated to jaws, free-fell to y ≈ -468 m uncaught). The footprint fix above already
+	# excludes every gamma A/B/D negative on its own (they never enter a strip's x/z range, whole
+	# question of top height is moot for them); keeping top here is what makes a fast shot pot at
+	# all.
+	var top := y + spec.ball_radius_m
+	var mid_y := top - chute * 0.5
+
+	if sign_x != 0.0:
+		var cx := sign_x * (hl + size.x * 0.5)
+		_add_drop_strip(area, Vector3(size.x, chute, size.y), Vector3(cx, mid_y, pocket.position.z))
+	if sign_z != 0.0:
+		var cz := sign_z * (hw + size.y * 0.5)
+		_add_drop_strip(area, Vector3(size.x, chute, size.y), Vector3(pocket.position.x, mid_y, cz))
+	parent.add_child(area)
+
+
+static func _add_drop_strip(area: Area3D, size: Vector3, position: Vector3) -> void:
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	# Top reaches up to the ball's own resting centre height: a fast ball crosses the whole mouth
-	# horizontally in a couple of physics steps, well before it has fallen any real distance, so a
-	# trigger that only starts below the cloth catches nothing — by the time it would have fallen
-	# that far it has already flown out past the mouth's narrow footprint. There is no bed under a
-	# pocket anyway, so a ball centred over the mouth belongs to the pocket the instant it arrives.
-	# Then a tall capture chute below, not a thin slab, so a fast fall can't tunnel past a
-	# one-frame-thin trigger between steps.
-	var chute := spec.ball_radius_m * DROP_CHUTE_RATIO
-	var height := spec.ball_radius_m + chute
-	box.size = Vector3(size.x, height, size.y)
+	box.size = size
 	shape.shape = box
+	shape.position = position
 	area.add_child(shape)
-	area.position = Vector3(pocket.position.x, y + spec.ball_radius_m - height * 0.5, pocket.position.z)
-	parent.add_child(area)
 
 
 ## Every drop-zone chute above this depth has already caught a genuinely potted ball; anything

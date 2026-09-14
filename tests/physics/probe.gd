@@ -52,6 +52,8 @@ func _run() -> void:
 
 	await _straight_in_pot()
 	await _jaw_hit()
+	await _drop_zone_negatives()
+	await _corner_along_rail_pot()
 	await _rail_return()
 	await _reach_test()
 
@@ -176,6 +178,74 @@ func _jaw_hit() -> void:
 	assert(not below_cloth, "jaw hit ball fell below the cloth without being pocketed")
 	assert(not outside, "jaw hit ball left the table")
 	_kill(b)
+
+
+## Loop 1 (gamma A/B/D, plan.md T4.1): a ball resting or rolling on the bed, still on the
+## playfield side of a pocket's nose line, must never read as pocketed — only a centre that has
+## actually reached the throat does (01 §2). The old drop-zone footprint reached back into the
+## bed far enough to catch all three of these.
+func _drop_zone_negatives() -> void:
+	var hl := table.spec.length_m * 0.5
+	var hw := table.spec.width_m * 0.5
+	var r := table.spec.ball_radius_m
+
+	# A: resting ball near the NW corner mouth, centre well inside the cushion-end line.
+	var inner := -r + table.spec.corner_mouth_m * 0.5 + table.spec.corner_shelf_m
+	var d := inner + 0.5 * r
+	var a := _ball(RED_T, Vector3(-hl + d, y, -hw + d))
+	await physics_frame
+	for i in 90:
+		await physics_frame
+	print("probe: drop-zone A (corner-rest) pocketed=%s" % a.is_pocketed)
+	assert(not a.is_pocketed, "a ball resting well inside the cushion line must not pot")
+	_kill(a)
+
+	# B: resting ball at the north side pocket, centre 1.2 R inside the nose line.
+	var b := _ball(RED_T, Vector3(0, y, -hw + r * 1.2))
+	await physics_frame
+	for i in 90:
+		await physics_frame
+	print("probe: drop-zone B (side-rest) pocketed=%s" % b.is_pocketed)
+	assert(not b.is_pocketed, "a ball resting inside the side pocket's nose line must not pot")
+	_kill(b)
+	await _rest()
+
+	# D: ball rolling along the long rail past the north side pocket, hugging it at 1.05 R off the
+	# nose line the whole way — never actually crosses the nose line, so it must roll through.
+	var db := _ball(RED_T, Vector3(-hl * 0.5, y, -hw + r * 1.05))
+	await physics_frame
+	db.linear_velocity = Vector3(1.0, 0, 0)
+	db.angular_velocity = Vector3(0, 0, -1.0 / db.radius)
+	table.sim._on_struck(db, ShotIntent.new())
+	var timer := create_timer(4.0)
+	while not db.is_pocketed and timer.time_left > 0.0:
+		await physics_frame
+	print("probe: drop-zone D (rail-roll past side pocket) pocketed=%s pos=%s" % [db.is_pocketed, db.global_position])
+	assert(not db.is_pocketed, "a ball hugging the rail past a side pocket without crossing the nose line must not pot")
+	_kill(db)
+	await _rest()
+
+
+## Loop 1 (gamma F, plan.md T4.2): a ball hugging the rail into a corner at moderate speed must
+## still find the pocket — the jaw facing must not stick out past the nose line and reject it
+## before it ever reaches the mouth.
+func _corner_along_rail_pot() -> void:
+	var hl := table.spec.length_m * 0.5
+	var hw := table.spec.width_m * 0.5
+	var r := table.spec.ball_radius_m
+	var f := _ball(RED_T, Vector3(-hl + 14.0 * r, y, -hw + r * 1.05))
+	await physics_frame
+	print("probe: corner along-rail")
+	f.linear_velocity = Vector3(-1.5, 0, 0)
+	f.angular_velocity = Vector3(0, 0, 1.5 / f.radius)
+	table.sim._on_struck(f, ShotIntent.new())
+	var timer := create_timer(4.0)
+	while not f.is_pocketed and timer.time_left > 0.0:
+		await physics_frame
+	print("probe: corner along-rail 1.5 m/s pocketed=%s pos=%s" % [f.is_pocketed, f.global_position])
+	assert(f.is_pocketed, "a moderate-speed ball hugging the rail into a corner must pot, not reject off the jaw")
+	_kill(f)
+	await _rest()
 
 
 ## T1.7: full-power straight shot from the head spot must clear the table, rebound off the foot

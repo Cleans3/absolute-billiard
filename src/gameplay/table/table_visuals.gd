@@ -37,8 +37,8 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	for rail in layout.rails:
 		_build_cushion(parent, spec, rail, y)
 		_build_rail_block(parent, spec, rail, y)
-		_build_facing_visual(parent, spec, rail.a, rail.facing_a, y)
-		_build_facing_visual(parent, spec, rail.b, rail.facing_b, y)
+		_build_facing_visual(parent, spec, rail.a, rail.facing_a, rail.inward_normal, y)
+		_build_facing_visual(parent, spec, rail.b, rail.facing_b, rail.inward_normal, y)
 		match rail.id:
 			&"rail_n_w", &"rail_s_w":
 				_build_side_horn(parent, spec, rail.b, rail.facing_b, y)
@@ -125,19 +125,25 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	parent.add_child(mesh)
 
 
-static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, y: float) -> void:
+static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, y: float) -> void:
 	if dir.is_zero_approx():
 		return
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Facing"
 	var length := spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
+	var thick := spec.jaw_radius_m * 2.0
 	var box := BoxMesh.new()
-	box.size = Vector3(spec.jaw_radius_m * 2.0, spec.cushion_nose_h_m, length)
+	box.size = Vector3(thick, spec.cushion_nose_h_m, length)
 	mesh.mesh = box
 	mesh.material_override = _material(CUSHION_COLOR)
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
-	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y + spec.cushion_nose_h_m * 0.5, 0))
+	if x.dot(inward) > 0.0:
+		x = -x
+	# Same outward shift as the collider (table_builder.gd): inner face flush with the nose line,
+	# fused to the cushion end instead of straddling it with a visible gap or overlap.
+	var anchor := at + x * thick * 0.5
+	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + spec.cushion_nose_h_m * 0.5, 0))
 	parent.add_child(mesh)
 
 
@@ -174,13 +180,16 @@ static func _build_sight(parent: Node3D, spec: TableSpec, pos: Vector3, y: float
 
 ## The cup sits mostly below cloth level (a real liner is a leather pouch under the slate) but its
 ## rim rises a little above so it reads as a visible dark ring inside the mouth, not an empty hole.
+## Reaches down through the apron's own depth (not just the near-cloth rim) so the side-pocket
+## mouth — the one gap the apron never closes, since that's the opening itself — always shows a
+## dark liner interior behind it instead of the level background (gamma F2: "floor visible").
 static func _build_pocket_liner(parent: Node3D, spec: TableSpec, pocket: PocketSpec, y: float) -> void:
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Liner_" + String(pocket.id)
 	var cyl := CylinderMesh.new()
 	cyl.top_radius = pocket.mouth_width_m * 0.5
 	cyl.bottom_radius = cyl.top_radius * 0.8
-	cyl.height = spec.ball_radius_m * 1.2
+	cyl.height = spec.ball_radius_m * 1.2 + spec.apron_h_m
 	mesh.mesh = cyl
 	mesh.material_override = _material(LINER_COLOR)
 	var rim := spec.ball_radius_m * 0.15
@@ -193,10 +202,16 @@ static func _build_apron_and_legs(parent: Node3D, spec: TableSpec, layout: Table
 		var mesh := MeshInstance3D.new()
 		mesh.name = "Apron_" + String(rail.id)
 		var box := BoxMesh.new()
-		box.size = Vector3(spec.rail_width_m, spec.apron_h_m, rail.a.distance_to(rail.b))
+		# Same corner extension as the rail block (T3.2 `_wood_extent`): without it the apron stops
+		# at the cushion truncation like the old rail block did, leaving a gap at every corner turn
+		# that the background shows through (gamma F2, 05b).
+		var ext := _wood_extent(spec, rail)
+		var a: Vector3 = ext[0]
+		var b: Vector3 = ext[1]
+		box.size = Vector3(spec.rail_width_m, spec.apron_h_m, a.distance_to(b))
 		mesh.mesh = box
 		mesh.material_override = _material(APRON_COLOR)
-		var mid := (rail.a + rail.b) * 0.5
+		var mid := (a + b) * 0.5
 		var basis := TableGeometry.rail_basis(rail)
 		mesh.transform = Transform3D(basis, mid - rail.inward_normal * spec.rail_width_m * 0.5 + Vector3(0, y - spec.apron_h_m * 0.5, 0))
 		parent.add_child(mesh)
