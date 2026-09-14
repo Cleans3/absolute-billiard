@@ -9,6 +9,17 @@ extends RefCounted
 ##   [0, cushion depth)        cushion wedge  — rubber, nose tall, sloping back to the cloth
 ##   [cushion depth, rail_width_m)  rail block — solid wood, full rail_height_m
 ## so the two never overlap and there is no gap between them.
+##
+## Pocket wrap (plan.md T3.2, visual only — no collider changes, cushions/facings/drop zones
+## unchanged): each rail block's wood is length-extended past its cushion-truncated end at a
+## corner (table_geometry.gd's `c`), all the way out to the table's outer footprint. Two
+## adjacent rails' extended blocks overlap along the outer edge of the corner square but each
+## keeps its own cross-section width, so their union is an L that leaves the inner square
+## nearest the pocket open — a picture-frame closing the two rails at 90° without covering the
+## mouth. Side pockets need no length extension (the two rails already meet exactly at the
+## mouth boundary); `_build_side_horn` caps each of those four rail ends with a short wood nub
+## along the same facing direction as the rubber jaw stub, so the flat end-cap face doesn't
+## read as the plank "just stopping".
 
 const CLOTH_COLOR := Color(0.05, 0.35, 0.15)
 const CUSHION_COLOR := Color(0.03, 0.22, 0.10)
@@ -18,7 +29,6 @@ const LEG_COLOR := Color(0.18, 0.10, 0.04)
 const SIGHT_COLOR := Color(0.92, 0.88, 0.75)
 const LINER_COLOR := Color(0.12, 0.09, 0.07)
 
-const PLANK_THICKNESS_RATIO := 0.25  # rail-top visual thickness as a fraction of rail_height_m
 const SIGHT_SIZE_RATIO := 0.35       # sight marker size as a multiple of ball radius
 
 
@@ -29,6 +39,11 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 		_build_rail_block(parent, spec, rail, y)
 		_build_facing_visual(parent, spec, rail.a, rail.facing_a, y)
 		_build_facing_visual(parent, spec, rail.b, rail.facing_b, y)
+		match rail.id:
+			&"rail_n_w", &"rail_s_w":
+				_build_side_horn(parent, spec, rail.b, rail.facing_b, y)
+			&"rail_n_e", &"rail_s_e":
+				_build_side_horn(parent, spec, rail.a, rail.facing_a, y)
 	for pos in layout.sights:
 		_build_sight(parent, spec, pos, y)
 	for pocket in layout.pockets:
@@ -70,18 +85,40 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 	parent.add_child(mesh)
 
 
+## The wood block's own length axis is independent of the cushion's — it is extended past a
+## corner-adjacent end (table_geometry.gd's `c` truncation) out to the table's outer footprint,
+## per the pocket-wrap design in the file header. Side-adjacent ends are left at the rail's own
+## a/b (the mouth boundary) since there is no gap to close there.
+static func _wood_extent(spec: TableSpec, rail: TableLayout.RailSegment) -> Array:
+	var hl := spec.length_m * 0.5
+	var hw := spec.width_m * 0.5
+	var rw := spec.rail_width_m
+	match rail.id:
+		&"rail_w", &"rail_e":
+			return [Vector3(rail.a.x, 0.0, -hw - rw), Vector3(rail.a.x, 0.0, hw + rw)]
+		&"rail_n_w", &"rail_s_w":
+			return [Vector3(-hl - rw, 0.0, rail.a.z), rail.b]
+		&"rail_n_e", &"rail_s_e":
+			return [rail.a, Vector3(hl + rw, 0.0, rail.b.z)]
+		_:
+			return [rail.a, rail.b]
+
+
 static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout.RailSegment, y: float) -> void:
 	var depth0 := _cushion_depth(spec)
 	var width := spec.rail_width_m - depth0
 	if width <= 0.0:
 		return
+	var ext := _wood_extent(spec, rail)
+	var a: Vector3 = ext[0]
+	var b: Vector3 = ext[1]
 	var mesh := MeshInstance3D.new()
 	mesh.name = "RailBlock_" + String(rail.id)
 	var box := BoxMesh.new()
-	box.size = Vector3(width, spec.rail_height_m, rail.a.distance_to(rail.b))
+	box.size = Vector3(width, spec.rail_height_m, a.distance_to(b))
 	mesh.mesh = box
 	mesh.material_override = _material(RAIL_COLOR)
-	var mid := (rail.a + rail.b) * 0.5
+	var mid := (a + b) * 0.5
 	var basis := TableGeometry.rail_basis(rail)
 	# local +X centre sits at depth0 + width/2, local +Y centre at rail_height_m/2 (block rests on cloth)
 	mesh.transform = Transform3D(basis, mid - rail.inward_normal * (depth0 + width * 0.5) + Vector3(0, y + spec.rail_height_m * 0.5, 0))
@@ -101,6 +138,25 @@ static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, d
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
 	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y + spec.cushion_nose_h_m * 0.5, 0))
+	parent.add_child(mesh)
+
+
+## Wood cap for a side-pocket-adjacent rail end (see file header) — same footprint/direction
+## as the rubber jaw stub above it, just full rail_height_m tall and RAIL_COLOR, so the rail
+## block's flat end-cap face doesn't read as the plank abruptly stopping.
+static func _build_side_horn(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, y: float) -> void:
+	if dir.is_zero_approx():
+		return
+	var mesh := MeshInstance3D.new()
+	mesh.name = "SideHorn"
+	var length := spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
+	var box := BoxMesh.new()
+	box.size = Vector3(spec.rail_width_m - _cushion_depth(spec), spec.rail_height_m, length)
+	mesh.mesh = box
+	mesh.material_override = _material(RAIL_COLOR)
+	var z := dir.normalized()
+	var x := Vector3.UP.cross(z).normalized()
+	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y + spec.rail_height_m * 0.5, 0))
 	parent.add_child(mesh)
 
 
