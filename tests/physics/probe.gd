@@ -54,6 +54,7 @@ func _run() -> void:
 	await _jaw_hit()
 	await _drop_zone_negatives()
 	await _corner_along_rail_pot()
+	await _side_jaw_scale1()
 	await _rail_return()
 	await _reach_test()
 
@@ -246,6 +247,45 @@ func _corner_along_rail_pot() -> void:
 	assert(f.is_pocketed, "a moderate-speed ball hugging the rail into a corner must pot, not reject off the jaw")
 	_kill(f)
 	await _rest()
+
+
+## Loop 1 (gamma H, plan.md T4.8): a ball into a side jaw at 9 m/s (near the cue power cap) must
+## stay on the table at every scale — pocketed or rattled back, either is fine, but it must never
+## tunnel a facing/cushion or launch clean over the rail. Rebuilds the shared `table` at scale 1.0
+## (regulation-accurate ball size/spin is exactly what exposed it: same absolute cue speed, but a
+## smaller ball spins twice as fast for it) and back to 2.0 afterwards — a second Table/PhysicsSim
+## can't coexist with the shared one, both register the same "Game/AwakeBalls" global monitor.
+func _side_jaw_scale1() -> void:
+	table.spec.scale = 1.0
+	table.rebuild()
+	var s := table.spec
+	var hl := s.length_m * 0.5
+	var hw := s.width_m * 0.5
+	var r := s.ball_radius_m
+	var sm := s.side_mouth_m * 0.5
+	var yy := s.bed_height_m + r + s.clearance_margin_m
+	var h := _ball(RED_T, table.global_position + Vector3(-sm - 6.0 * r, yy, hw - 6.0 * r))
+	await physics_frame
+	print("probe: side jaw 9 m/s at scale 1.0")
+	var hdir := (Vector3(-sm, 0, hw) - Vector3(-sm - 6.0 * r, 0, hw - 6.0 * r)).normalized()
+	h.linear_velocity = hdir * 9.0
+	h.angular_velocity = Vector3(hdir.z, 0, -hdir.x) * (9.0 / h.radius)
+	table.sim._on_struck(h, ShotIntent.new())
+	var timer := create_timer(8.0)
+	while table.sim.awake > 0 and timer.time_left > 0.0 and not h.is_pocketed:
+		await physics_frame
+	var hp := h.global_position - table.global_position
+	var outside := absf(hp.x) > hl + s.rail_width_m or absf(hp.z) > hw + s.rail_width_m
+	var below := hp.y < s.bed_height_m
+	print("probe: side jaw 9 m/s pocketed=%s pos=%s outside=%s below=%s" % [h.is_pocketed, hp, outside, below])
+	assert(not outside, "a 9 m/s side-jaw hit must never leave the table")
+	assert(not below, "a 9 m/s side-jaw hit must never fall through the table uncaught")
+	_kill(h)
+	await physics_frame
+	table.spec.scale = 2.0
+	table.rebuild()
+	y = table.spec.bed_height_m + table.spec.ball_radius_m + 0.002
+	await physics_frame
 
 
 ## T1.7: full-power straight shot from the head spot must clear the table, rebound off the foot

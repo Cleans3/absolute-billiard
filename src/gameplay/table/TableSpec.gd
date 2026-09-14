@@ -43,6 +43,13 @@ const REG_CUE_REACH := 1.75
 @export var ccd_speed_mps := 3.0              # object balls get CCD only above this (07 §1.2)
 @export var clearance_margin_m := 0.003
 @export var jaw_restitution := 0.55
+## scale-invariant ceiling matching CueSpec.power_cap_speed_mps (01 §3 default 10.0) — thin static
+## colliders (jaw facings, cushions) are floored against this ÷ PhysicsSim.LIVE_TICK so a
+## full-power shot can never cross one in a single physics step, at any scale (loop-1 T4.8: CCD
+## alone does not stop a bad contact when the swept collider is smaller than the step — Jolt's own
+## ghost-collision mitigation only applies within one body, not at the seam between two separate
+## StaticBody3D, which is exactly where cushion meets facing).
+@export var max_ball_speed_mps := 10.0
 
 ## derived — names kept so existing callers do not change
 var length_m: float:

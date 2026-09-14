@@ -10,6 +10,19 @@ const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball rad
 const DROP_CHUTE_RATIO := 40.0    # drop-zone chute depth as a multiple of ball radius
 
 
+## A collider a fast ball could cross within one physics step is a tunnelling/ghost-collision
+## risk even with CCD on (Godot 4.7 docs: CCD "prevents... tunneling" but the documented fix for
+## a still-bad contact is "making static collision shapes thicker"; Jolt's own ghost-collision
+## mitigation only works within one body, never at the seam between two separate StaticBody3D —
+## exactly what a cushion meeting a facing is). `max_ball_speed_mps` is scale-invariant (matches
+## CueSpec.power_cap_speed_mps), so this floor does not shrink away at a small `scale` the way
+## `ball_radius_m`-derived thicknesses do (loop-1 T4.8, gamma H: 9 m/s into a side jaw at scale
+## 1.0 launched clean over the rail — a ghost contact at the cushion/facing seam, the facing's own
+## thickness only 28.6 mm against a 75 mm step).
+static func _min_step_safe_thickness(spec: TableSpec) -> float:
+	return spec.max_ball_speed_mps / PhysicsSim.LIVE_TICK
+
+
 static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
 	_build_bed(parent, spec, y)
 	for rail in layout.rails:
@@ -57,7 +70,7 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 	pm.rough = true
 	body.physics_material_override = pm
 	var mid := (rail.a + rail.b) * 0.5
-	var depth := spec.ball_radius_m * 2.0
+	var depth := maxf(spec.ball_radius_m * 2.0, _min_step_safe_thickness(spec))
 	var h := spec.cushion_nose_h_m
 	var basis := TableGeometry.rail_basis(rail)
 	body.transform = Transform3D(basis, mid - rail.inward_normal * depth * 0.5 + Vector3(0, y + h * 0.5, 0))
@@ -91,8 +104,10 @@ static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vec
 	var h := spec.cushion_nose_h_m
 	# thick enough that a full-power ball (a jaw rattle is exactly the fast, off-angle case this
 	# body exists for) cannot cross it within one physics step and tunnel through; jaw_radius_m
-	# alone is a few centimetres — fine for the old free-standing cylinder, too thin for a wall
-	var thick := maxf(spec.jaw_radius_m * 2.0, spec.ball_radius_m)
+	# alone is a few centimetres — fine for the old free-standing cylinder, too thin for a wall —
+	# and floored against a scale-invariant step-safe minimum (see _min_step_safe_thickness) since
+	# ball_radius_m/jaw_radius_m both shrink at a small `scale` while cue speed never does
+	var thick := maxf(maxf(spec.jaw_radius_m * 2.0, spec.ball_radius_m), _min_step_safe_thickness(spec))
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
 	if x.dot(inward) > 0.0:
