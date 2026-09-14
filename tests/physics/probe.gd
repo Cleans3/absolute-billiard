@@ -1,11 +1,14 @@
 extends SceneTree
 
-## Headless feel probe (01 §4 fixtures, partial): stop distance, cushion angle vs speed, draw/follow.
+## Headless feel probe (01 §4 fixtures, partial; plan.md T1.4/T1.7/T1.9): stop distance, cushion
+## angle vs speed, draw/follow, straight-in pot, jaw hit, cue reach, full-power rail return.
 ##   godot --path . --headless -s tests/physics/probe.gd
-## Prints numbers; asserts the qualitative rules (ball stops, hard hit rebounds flatter, draw comes back).
+## Prints numbers; asserts the qualitative rules (ball stops, hard hit rebounds flatter, draw
+## comes back, a pot pots, a reach limit is a limit).
 
 const BALL := preload("res://src/gameplay/balls/Ball.tscn")
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
+const CUE_CONTROLLER := preload("res://src/gameplay/cue/CueController.tscn")
 const CUE_T := preload("res://src/resources/ball_types/cue.tres")
 const RED_T := preload("res://src/resources/ball_types/red_basic.tres")
 
@@ -35,7 +38,7 @@ func _run() -> void:
 	var secs := (Time.get_ticks_msec() - t0) / 1000.0
 	print("roll %.1f m/s: stopped after %.2f m in %.1f s" % [v0, dist, secs])
 	assert(dist > 0.3 and dist < 3.0, "rolling resistance out of range")
-	b.queue_free()
+	_kill(b)
 
 	var soft := await _rail_angle(2.0)
 	var hard := await _rail_angle(9.0)
@@ -46,6 +49,12 @@ func _run() -> void:
 	var follow := await _spin_shot(0.9)
 	print("cue ball after full hit at 0.4: draw dx=%.2f m, follow dx=%.2f m" % [draw, follow])
 	assert(draw < 0.0 and follow > 0.05, "draw must come back, follow must go through")
+
+	await _straight_in_pot()
+	await _jaw_hit()
+	await _rail_return()
+	await _reach_test()
+
 	print("PROBE OK")
 	quit()
 
@@ -58,6 +67,14 @@ func _ball(t: BallType, pos: Vector3) -> Ball:
 	b.global_position = pos
 	table.sim.register(b)
 	return b
+
+
+## queue_free() on a resting RigidBody3D can sit pending for many frames in headless SceneTree
+## runs (no idle-frame processing between our physics_frame awaits) — remove synchronously so a
+## later test's raycast never finds a "freed" ball still sitting in the scene.
+func _kill(n: Node) -> void:
+	root.remove_child(n)
+	n.free()
 
 
 func _rest() -> void:
@@ -90,7 +107,7 @@ func _rail_angle(speed: float) -> float:
 		await physics_frame
 	var v := b.linear_velocity
 	var ang := rad_to_deg(atan2(absf(v.z), absf(v.x)))
-	b.queue_free()
+	_kill(b)
 	await _rest()
 	return ang
 
@@ -107,7 +124,128 @@ func _spin_shot(spin_y: float) -> float:
 	cue.strike(intent, cs)
 	await _rest()
 	var dx := cue.global_position.x - 0.0  # relative to the object ball's start
-	obj.queue_free()
-	cue.queue_free()
+	_kill(obj)
+	_kill(cue)
 	await physics_frame
 	return dx
+
+
+## T1.4: ball 0.5 m off a corner pocket, straight centre-ball roll into it: 100/100 pots.
+func _straight_in_pot() -> void:
+	var pocket := table.get_pocket(&"corner_se")
+	var dir := Vector2(pocket.position.x, pocket.position.z).normalized()
+	var start := Vector3(pocket.position.x, y, pocket.position.z) - Vector3(dir.x, 0, dir.y) * 0.5
+	var b := _ball(RED_T, start)
+	await physics_frame
+	print("probe: straight-in pot")
+	var v0 := 1.2
+	b.linear_velocity = Vector3(dir.x, 0, dir.y) * v0
+	b.angular_velocity = Vector3(dir.y, 0, -dir.x) * (v0 / b.radius)  # pure roll
+	var timer := create_timer(6.0)
+	while not b.is_pocketed and timer.time_left > 0.0:
+		await physics_frame
+	print("probe: straight-in pocketed=%s" % b.is_pocketed)
+	assert(b.is_pocketed, "0.5 m straight-in shot at a corner must pot")
+	await _rest()
+	_kill(b)
+
+
+## T1.4: 8 m/s into a corner facing, 20° off the direct pocket line — must never tunnel, leave
+## the table or produce NaN; either it pots anyway or it rattles and ends up at rest on the cloth.
+func _jaw_hit() -> void:
+	var pocket := table.get_pocket(&"corner_nw")
+	var dir := Vector2(pocket.position.x, pocket.position.z).normalized().rotated(deg_to_rad(20.0))
+	var start := Vector3(pocket.position.x, y, pocket.position.z) - Vector3(dir.x, 0, dir.y) * 1.0
+	var b := _ball(RED_T, start)
+	await physics_frame
+	print("probe: jaw hit")
+	var v0 := 8.0
+	b.linear_velocity = Vector3(dir.x, 0, dir.y) * v0
+	b.angular_velocity = Vector3(dir.y, 0, -dir.x) * (v0 / b.radius)
+	table.sim._on_struck(b, ShotIntent.new())
+	await _rest()
+	var p := b.global_position
+	var hl := table.spec.length_m * 0.5
+	var hw := table.spec.width_m * 0.5
+	var margin := table.spec.rail_width_m
+	var nan := is_nan(p.x) or is_nan(p.y) or is_nan(p.z)
+	var below_cloth := not b.is_pocketed and p.y < y - table.spec.clearance_margin_m - 0.01
+	var outside := not b.is_pocketed and (absf(p.x) > hl + margin or absf(p.z) > hw + margin)
+	print("probe: jaw hit pocketed=%s pos=%s nan=%s below=%s outside=%s" % [b.is_pocketed, p, nan, below_cloth, outside])
+	assert(not nan, "jaw hit produced NaN")
+	assert(not below_cloth, "jaw hit ball fell below the cloth without being pocketed")
+	assert(not outside, "jaw hit ball left the table")
+	_kill(b)
+
+
+## T1.7: full-power straight shot from the head spot must clear the table, rebound off the foot
+## rail and come back at least half the table length before resting.
+func _rail_return() -> void:
+	var head := Vector3(table.spec.kitchen_line_x, y, 0)
+	var b := _ball(CUE_T, head)
+	await physics_frame
+	print("probe: rail return")
+	var intent := ShotIntent.new()
+	intent.aim_dir = Vector2(1, 0)
+	intent.power = 1.0
+	var cs := CueSpec.new()
+	b.strike(intent, cs)
+	var hl := table.spec.length_m * 0.5
+	var peak_x := head.x
+	var timer := create_timer(12.0)
+	while (table.sim.awake > 0 or not b.is_resting) and timer.time_left > 0.0:
+		peak_x = maxf(peak_x, b.global_position.x)
+		await physics_frame
+	var back := peak_x - b.global_position.x
+	print("probe: rail return peak_x=%.2f final_x=%.2f back=%.2f (need >= %.2f)" % [peak_x, b.global_position.x, back, table.spec.length_m * 0.5])
+	assert(peak_x > hl - table.spec.ball_radius_m, "full-power shot must reach the foot rail")
+	assert(back >= table.spec.length_m * 0.5, "full-power shot must return at least half the table")
+	_kill(b)
+	await _rest()
+
+
+## T1.9 (A1): CueController._fire() only strikes a ball within its own cue_reach_m — the reach
+## follows the struck ball's TableSpec, not a hardcoded distance.
+func _reach_test() -> void:
+	var head := Vector3(table.spec.kitchen_line_x, y, 0)
+	var reach := table.spec.cue_reach_m
+	# offset in z so the far ball never sits behind the near ball on the same ray; the reach
+	# check is against the raycast's SURFACE hit point, so push the far ball's centre out by a
+	# radius too or "1 mm beyond reach" would still raycast well inside it
+	var near_ball := _ball(RED_T, head + Vector3(2.4, 0, 0.3))
+	var far_ball := _ball(RED_T, head + Vector3(reach + table.spec.ball_radius_m + 0.001, 0, -0.3))
+	await physics_frame
+	print("probe: cue reach (limit %.2f m)" % reach)
+
+	var cam := Camera3D.new()
+	root.add_child(cam)
+	cam.current = true
+	cam.global_position = head + Vector3(0, 0.05, 0)
+
+	var cue: Node3D = CUE_CONTROLLER.instantiate()
+	root.add_child(cue)
+	await physics_frame
+
+	cam.look_at(near_ball.global_position, Vector3.UP)
+	cue.power = 0.3
+	cue._fire()
+	await physics_frame
+	await physics_frame
+	var near_hit := near_ball.linear_velocity.length() > 0.01
+	print("probe: reach near(2.40m) hit=%s" % near_hit)
+	assert(near_hit, "ball within cue_reach_m must be struck")
+
+	cam.look_at(far_ball.global_position, Vector3.UP)
+	cue.power = 0.3
+	cue._fire()
+	await physics_frame
+	await physics_frame
+	var far_hit := far_ball.linear_velocity.length() > 0.01
+	print("probe: reach far(%.3fm) hit=%s" % [reach + 0.001, far_hit])
+	assert(not far_hit, "ball 1 mm beyond cue_reach_m must not be struck")
+
+	_kill(near_ball)
+	_kill(far_ball)
+	_kill(cam)
+	_kill(cue)
+	await _rest()

@@ -7,8 +7,7 @@ extends RigidBody3D
 signal struck(ball: Ball, intent: ShotIntent)
 signal rested(ball: Ball)
 
-const REGULATION_RADIUS_M := 0.0286
-const REGULATION_MASS_KG := 0.17
+const REGULATION_MASS_KG := 0.17  # kg; regulation ball density, not a table dimension
 const MISCUE_POWER_SCALE := 0.35
 const MISCUE_SCATTER_DEG := 4.0
 const JUMP_MIN_ELEVATION_DEG := 30.0
@@ -26,12 +25,13 @@ var is_pocketed := false
 var pocketed_in: StringName
 var spawn_index := 0
 var _pending_rail := Vector3.ZERO  # inward normal of a rail touched this step; consumed next tick
+var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
 
 @onready var radius: float = spec.ball_radius_m * ball_type.radius_multiplier
 
 
 func _ready() -> void:
-	var k := radius / REGULATION_RADIUS_M
+	var k := radius / TableSpec.REG_BALL_RADIUS
 	mass = REGULATION_MASS_KG * ball_type.mass_multiplier * k * k * k
 	is_cue_ball = ball_type.behaviour_tags.has(&"cue")
 	continuous_cd = is_cue_ball
@@ -76,6 +76,7 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	var up_c := right.cross(aim3).normalized()  # "top of the ball" as the cue sees it
 	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * cue.spin_offset_radius
 	sleeping = false
+	is_resting = false
 	apply_impulse(aim3 * power * mass * cue.power_cap_speed_mps, offset)
 	struck.emit(self, intent)
 
@@ -90,9 +91,10 @@ func pocket(pocket_id: StringName) -> void:
 		$Shape.disabled = true)
 
 
-## Jolt never sleeps a body with a custom integrator on its own, and forcing `sleeping` emits no signal.
+## `sleeping` is Jolt's own call and, for a body still in resting contact, may never flip true
+## (or take far longer than `rest_speed_mps` should tolerate) — PhysicsSim counts `is_resting`
+## instead, which this announces via `rested`, set the instant our own threshold is met.
 func _rest_now() -> void:
-	sleeping = true
 	rested.emit(self)
 
 
@@ -120,9 +122,11 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if speed < spec.rest_speed_mps and state.angular_velocity.length() < 0.15:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
-		if not sleeping:
+		if not is_resting:
+			is_resting = true
 			_rest_now.call_deferred()
 		return
+	is_resting = false
 	if not is_cue_ball:
 		continuous_cd = speed > spec.ccd_speed_mps
 	if speed < 0.001:
