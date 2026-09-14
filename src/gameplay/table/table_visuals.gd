@@ -41,9 +41,9 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 		_build_facing_visual(parent, spec, rail.b, rail.facing_b, rail.inward_normal, y)
 		match rail.id:
 			&"rail_n_w", &"rail_s_w":
-				_build_side_horn(parent, spec, rail.b, rail.facing_b, y)
+				_build_side_horn(parent, spec, rail.b, rail.facing_b, rail.inward_normal, y)
 			&"rail_n_e", &"rail_s_e":
-				_build_side_horn(parent, spec, rail.a, rail.facing_a, y)
+				_build_side_horn(parent, spec, rail.a, rail.facing_a, rail.inward_normal, y)
 	for pos in layout.sights:
 		_build_sight(parent, spec, pos, y)
 	for pocket in layout.pockets:
@@ -125,44 +125,56 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	parent.add_child(mesh)
 
 
+## Angled facing wedge, same cross-section as the cushion (T5.2: "the cushion profile continued
+## ... turned by the facing angle ... no separate box") — matches table_builder.gd's
+## `_add_facing_shape` exactly (same anchor/depth math, duplicated here the same way
+## `_cushion_depth`'s own doc comment already flags for the plain cushion: visuals and collider
+## are built in separate passes from the same layout, not from each other).
 static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, y: float) -> void:
 	if dir.is_zero_approx():
 		return
-	var mesh := MeshInstance3D.new()
-	mesh.name = "Facing"
+	var depth := _cushion_depth(spec)
+	var h := spec.cushion_nose_h_m
 	var length := spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
-	var thick := spec.jaw_radius_m * 2.0
-	var box := BoxMesh.new()
-	box.size = Vector3(thick, spec.cushion_nose_h_m, length)
-	mesh.mesh = box
-	mesh.material_override = _material(CUSHION_COLOR)
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
 	if x.dot(inward) > 0.0:
 		x = -x
+	var facing := MeshInstance3D.new()
+	facing.name = "Facing"
+	facing.mesh = _wedge_mesh(depth, h, length)
+	facing.material_override = _material(CUSHION_COLOR)
 	# Same outward shift as the collider (table_builder.gd): inner face flush with the nose line,
-	# fused to the cushion end instead of straddling it with a visible gap or overlap.
-	var anchor := at + x * thick * 0.5
-	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + spec.cushion_nose_h_m * 0.5, 0))
-	parent.add_child(mesh)
+	# fused to the cushion end instead of straddling it with a visible gap or overlap. The wedge's
+	# own nose face is at local X=0 (same convention `_build_cushion` uses), so this anchor lines
+	# up with the cushion's own X=0 face with no extra offset.
+	facing.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y, 0))
+	parent.add_child(facing)
 
 
 ## Wood cap for a side-pocket-adjacent rail end (see file header) — same footprint/direction
 ## as the rubber jaw stub above it, just full rail_height_m tall and RAIL_COLOR, so the rail
-## block's flat end-cap face doesn't read as the plank abruptly stopping.
-static func _build_side_horn(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, y: float) -> void:
+## block's flat end-cap face doesn't read as the plank abruptly stopping. Wood only, above the
+## rail top / outside the nose line: shifted entirely to the outward side of the nose, starting
+## right where the rubber facing's own depth ends, so nothing sits on the cloth (T5.2; gamma F2:
+## "wood V apex well onto the green below the rail edge").
+static func _build_side_horn(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, y: float) -> void:
 	if dir.is_zero_approx():
 		return
 	var mesh := MeshInstance3D.new()
 	mesh.name = "SideHorn"
 	var length := spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
+	var width := spec.rail_width_m - _cushion_depth(spec)
 	var box := BoxMesh.new()
-	box.size = Vector3(spec.rail_width_m - _cushion_depth(spec), spec.rail_height_m, length)
+	box.size = Vector3(width, spec.rail_height_m, length)
 	mesh.mesh = box
 	mesh.material_override = _material(RAIL_COLOR)
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
-	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y + spec.rail_height_m * 0.5, 0))
+	if x.dot(inward) > 0.0:
+		x = -x
+	var anchor := at + x * (_cushion_depth(spec) + width * 0.5)
+	mesh.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + spec.rail_height_m * 0.5, 0))
 	parent.add_child(mesh)
 
 
