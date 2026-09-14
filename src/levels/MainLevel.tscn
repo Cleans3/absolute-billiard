@@ -4,6 +4,7 @@
 [ext_resource type="PackedScene" uid="uid://dxpipgyk60apl" path="res://src/gameplay/props/bar1/bar_1.tscn" id="1_v74sb"]
 [ext_resource type="PackedScene" path="res://src/gameplay/table/Table.tscn" id="2_table"]
 [ext_resource type="Script" path="res://src/gameplay/round/demo_rack.gd" id="3_rack"]
+[ext_resource type="PackedScene" path="res://src/debug/DebugRoot.tscn" id="4_debug"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 
@@ -64,3 +65,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.5)
 [node name="DemoRack" type="Node3D" parent="." node_paths=PackedStringArray("table")]
 script = ExtResource("3_rack")
 table = NodePath("../Table")
+
+[node name="Debug" parent="." instance=ExtResource("4_debug") node_paths=PackedStringArray("table", "rack", "player")]
+table = NodePath("../Table")
+rack = NodePath("../DemoRack")
+player = NodePath("../Player")

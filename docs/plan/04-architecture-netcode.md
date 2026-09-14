@@ -127,7 +127,9 @@ src/
 ├── resources/       BallType/ · Drink/ · Effect/ · Event/ · ShopItem/ · net_config.tres
 ├── ui/              LobbyUI.tscn · StreamUI.tscn · ShopUI.tscn · HUD.tscn
 ├── shaders/         fog_plane.gdshader · neon.gdshader
-├── debug/           NetGraph.tscn · SimDiff.gd (M3 reconstruction check)
+├── debug/           dev-only overlay (DebugRoot.tscn, HUD/freecam/gizmos/spec panel/shot
+│                    console/timescale/rack presets, src/debug/README.md); NetGraph.tscn ·
+│                    SimDiff.gd (M3 reconstruction check) still to come
 └── tools/           bake_lightmaps.gd · pack_release.sh
 deploy/noray/        docker-compose.yml · .env.example
 tests/               physics fixtures (D1) · codec round-trip · migration
