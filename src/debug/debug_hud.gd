@@ -5,7 +5,6 @@ extends CanvasLayer
 ## per-ball speed. Toggled by debug_hud (F1).
 
 var table: Table
-var rack: Node3D
 
 var _label: Label
 
@@ -32,8 +31,7 @@ func _process(_delta: float) -> void:
 	lines.append("contact pairs: %d" % int(Performance.get_monitor(Performance.PHYSICS_3D_COLLISION_PAIRS)))
 	if table and table.sim:
 		lines.append("awake balls: %d" % table.sim.awake)
-	if rack:
-		for ball in rack.get_children():
-			if ball is Ball and not ball.is_pocketed:
+		for ball in table.sim.get_balls():
+			if not ball.is_pocketed:
 				lines.append("  %s: %.2f m/s" % [ball.id, ball.linear_velocity.length()])
 	_label.text = "\n".join(lines)

@@ -38,20 +38,7 @@ the panel is clickable; closing both restores `MOUSE_MODE_CAPTURED`.
 Every panel builds its own UI procedurally in `_ready()` (no per-panel `.tscn`) — deviates
 from the plan's "panels as child scenes" note; flagged to alpha, no functional difference.
 
-## Contract guards (adhoc-wip-table-ball, remove at P3 sync)
-
-Coded against the table-branch contract before it merged. Two guards remain until T3.1:
-
-- `debug_spec_panel.gd` `_apply()` — `table.has_method("rebuild")` / `rack.has_method("spawn_layout")`
-  fall back to `rack.spawn()` only on the pre-merge `Table`. Spec edits still change live
-  cloth/cushion feel either way (Ball/PhysicsSim read `TableSpec` every physics tick); only
-  the baked CSG geometry doesn't regenerate pre-merge.
-- `debug_root.gd` `debug_rack_next` — same `spawn_layout` / `spawn()` fallback.
-
-Everything else (HUD, gizmos, shot console) reads live `Ball` instances via
-`DemoRack.get_children()` instead of the contract's `PhysicsSim.get_balls()`, so those needed
-no guard and work identically before and after the merge.
-
-**Check at sync (T3.1):** the contract notes `PocketSpec.position` may become relative to bed
-height instead of absolute post-merge; if so, `debug_gizmos.gd`'s pocket/drop-zone gizmos
-will sit at the wrong height until `_geometry()` is updated to add `table.cloth_y()`.
+HUD, gizmos and shot console all enumerate live balls via `Table.sim.get_balls()` (contract
+§PhysicsSim), never by walking `DemoRack`'s child list directly. Pocket/drop-zone gizmos read
+`Table.pockets`, which is already world-space (`table.gd` adds `bed_height_m`) — no further
+offset needed.

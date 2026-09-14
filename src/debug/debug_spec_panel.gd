@@ -4,16 +4,14 @@ extends CanvasLayer
 ## Live TableSpec tweak panel (T2.5): a spinbox for every float/int @export on TableSpec,
 ## generated from get_property_list() so it tracks whichever TableSpec is live (today's
 ## explicit fields, or the contract's `scale` knob post-merge) with no hardcoded list.
-## Edits rebuild the table and re-spawn the rack. Toggled by debug_spec (F4).
-##
-## `Table.rebuild()` does not exist on today's main — guarded; until the table branch
-## lands, edits still change live cloth/cushion feel (Ball/PhysicsSim read spec fields
-## every tick) but not the baked CSG geometry. Guard removed at sync (plan.md Log).
+## Edits call Table.rebuild() and re-spawn the default rack via DemoRack.spawn_layout()/
+## default_rack() (contract §Table, §DemoRack). Toggled by debug_spec (F4).
 
 var table: Table
 var rack: Node3D
 
 var _box: VBoxContainer
+var _rows: Array[Control] = []
 
 
 func _ready() -> void:
@@ -33,8 +31,9 @@ func _ready() -> void:
 
 
 func refresh() -> void:
-	for c in _box.get_children():
+	for c in _rows:
 		c.queue_free()
+	_rows.clear()
 	if not table or not table.spec:
 		return
 	for prop in table.spec.get_property_list():
@@ -61,12 +60,9 @@ func _add_row(prop_name: String) -> void:
 		_apply())
 	row.add_child(spin)
 	_box.add_child(row)
+	_rows.append(row)
 
 
 func _apply() -> void:
-	if table.has_method("rebuild"):
-		table.rebuild()
-	if rack.has_method("spawn_layout") and rack.has_method("default_rack"):
-		rack.spawn_layout(rack.default_rack())
-	elif rack.has_method("spawn"):
-		rack.spawn()
+	table.rebuild()
+	rack.spawn_layout(rack.default_rack())

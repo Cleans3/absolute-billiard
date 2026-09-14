@@ -10,7 +10,6 @@ extends CanvasLayer
 const CUE_SPEC := preload("res://src/resources/cues/demo_cue.tres")
 
 var table: Table
-var rack: Node3D
 
 var _x: SpinBox
 var _z: SpinBox
@@ -71,10 +70,10 @@ func _row(parent: Control, label_text: String, lo: float, hi: float) -> SpinBox:
 
 
 func _cue_ball() -> Ball:
-	if not rack:
+	if not table or not table.sim:
 		return null
-	for ball in rack.get_children():
-		if ball is Ball and ball.is_cue_ball:
+	for ball in table.sim.get_balls():
+		if ball.is_cue_ball:
 			return ball
 	return null
 

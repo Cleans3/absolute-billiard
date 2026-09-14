@@ -33,7 +33,6 @@ func _ready() -> void:
 
 	_hud = DebugHud.new()
 	_hud.table = table
-	_hud.rack = rack
 	_hud.visible = false
 	add_child(_hud)
 
@@ -43,7 +42,6 @@ func _ready() -> void:
 
 	_gizmos = DebugGizmos.new()
 	_gizmos.table = table
-	_gizmos.rack = rack
 	_gizmos.visible = false
 	add_child(_gizmos)
 
@@ -55,7 +53,6 @@ func _ready() -> void:
 
 	_shot_console = DebugShotConsole.new()
 	_shot_console.table = table
-	_shot_console.rack = rack
 	_shot_console.visible = false
 	add_child(_shot_console)
 
@@ -80,11 +77,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		_timescale_index = (_timescale_index + 1) % TIMESCALE_STEPS.size()
 		Engine.time_scale = TIMESCALE_STEPS[_timescale_index]
 	elif event.is_action_pressed("debug_rack_next"):
-		var entries := _rack_presets.next(table.spec)
-		if rack.has_method("spawn_layout"):
-			rack.spawn_layout(entries)
-		elif rack.has_method("spawn"):
-			rack.spawn()
+		rack.spawn_layout(_rack_presets.next(table.spec))
 
 
 ## Any interactive panel wins mouse focus over the player's own capture-on-click (player.gd);

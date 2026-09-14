@@ -5,15 +5,11 @@ extends Node3D
 ## kitchen line, head/foot/centre spots, plus ball velocity vectors + trails while a shot
 ## is live. Toggled by debug_gizmos (F3).
 ##
-## Reads geometry from TableSpec exports/getters and Table.pockets (both kept, contract
-## §Table), never from TableLayout — no guard needed, works before and after the table
-## branch merges. Rail/jaw/kitchen/spot positions are recomputed with the same formula
-## table.gd uses today; if the table branch changes PocketSpec.position to be relative to
-## bed height instead of absolute (contract note), pocket/drop gizmos will sit at the wrong
-## height until that is checked at sync (plan.md Log).
+## Reads geometry from TableSpec exports/getters and Table.pockets (world-space, contract
+## §Table — table.gd adds bed_height_m), never from TableLayout. Ball enumeration goes
+## through PhysicsSim.get_balls() (contract §PhysicsSim), not DemoRack.
 
 var table: Table
-var rack: Node3D
 
 const COLOR_POCKET := Color(1, 1, 0)
 const COLOR_DROP := Color(1, 0.4, 0)
@@ -51,9 +47,9 @@ func _process(_delta: float) -> void:
 
 func _live_balls() -> Array:
 	var out := []
-	if rack:
-		for ball in rack.get_children():
-			if ball is Ball and not ball.is_pocketed:
+	if table and table.sim:
+		for ball in table.sim.get_balls():
+			if not ball.is_pocketed:
 				out.append(ball)
 	return out
 
