@@ -31,12 +31,21 @@ func _process(_delta: float) -> void:
 	# PHYSICS_3D_COLLISION_PAIRS reads 0 under Jolt (verified live, gamma_probe.log case J; no
 	# Jolt-specific replacement monitor documented for 4.7 — src/debug/README.md). Sum each ball's
 	# own get_colliding_bodies() instead, valid while contact_monitor is on (only during a shot).
-	var pairs := 0
+	# Loop-2 T5.4 (gamma F3b): a ball-ball contact is reported from BOTH balls' own lists, so a raw
+	# sum double-counts every pair; a ball-vs-Bed contact isn't a "cushion" hit either. Halve the
+	# ball-ball tally and keep cushion/jaw hits in their own count, bed contacts in neither.
+	var ball_ball := 0
+	var ball_cushion := 0
 	if table and table.sim:
 		for ball in table.sim.get_balls():
-			if ball.contact_monitor:
-				pairs += ball.get_colliding_bodies().size()
-	lines.append("contact pairs: %d" % pairs)
+			if not ball.contact_monitor:
+				continue
+			for o in ball.get_colliding_bodies():
+				if o is Ball:
+					ball_ball += 1
+				elif o.has_meta(&"rail_normal") or o.has_meta(&"jaw"):
+					ball_cushion += 1
+	lines.append("contact pairs: %d (ball-cushion: %d)" % [ball_ball / 2, ball_cushion])
 	if table and table.sim:
 		lines.append("awake balls: %d" % table.sim.awake)
 		for ball in table.sim.get_balls():
