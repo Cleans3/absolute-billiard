@@ -7,7 +7,6 @@ extends RefCounted
 ## Visuals are table_visuals.gd's job — this file never adds a MeshInstance3D.
 
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
-const DROP_CHUTE_RATIO := 40.0    # drop-zone chute depth as a multiple of ball radius
 
 
 ## A collider a fast ball could cross within one physics step is a tunnelling/ghost-collision
@@ -27,8 +26,6 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	_build_bed(parent, spec, y)
 	for rail in layout.rails:
 		_build_cushion(parent, spec, rail, y)
-		_build_facing(parent, spec, rail.a, rail.facing_a, rail.inward_normal, y)
-		_build_facing(parent, spec, rail.b, rail.facing_b, rail.inward_normal, y)
 	for pocket in layout.pockets:
 		_build_drop_zone(parent, spec, layout, pocket, y)
 	_build_safety_floor(parent, spec, y)
@@ -56,8 +53,24 @@ static func _build_bed(parent: Node3D, spec: TableSpec, y: float) -> void:
 	parent.add_child(body)
 
 
-## Box at nose height, inner face on the playfield edge (rail.a/b), extending outward by 2R —
-## the ball's own diameter is the natural depth for the contact face.
+## Box at nose height, inner face on the playfield edge (rail.a/b), extending outward by 2R — the
+## ball's own diameter is the natural depth for the contact face. Both angled jaw facings are extra
+## CollisionShape3D children of this SAME StaticBody3D (T5.1), not their own bodies: Jolt's own
+## internal-edge removal (physics/jolt_physics_3d/simulation/use_enhanced_internal_edge_removal, on
+## by default) only ever applies within a single body, never across two separate StaticBody3D
+## (confirmed via context7, Jolt's Architecture.md "Ghost Collisions" + Godot's
+## using_jolt_physics.rst) — and a separate facing body was exactly the loop-1 verdict F1 bug: a
+## ball hugging the rail at a fraction of a ball-radius clearance sits continuously in Jolt's
+## speculative-contact range of the nose the whole way, so it reaches the cushion/facing boundary
+## already "in contact" rather than freely rolling up to it; empirically (loop-2 T5.1) even a
+## *coplanar*, perfectly flush split of the cushion into "main span" + "corner stub" bodies still
+## reproduced the exact same deflection, because the ball's nearest point on the short stub lands
+## on the stub's own end-cap edge rather than a flat nose face — an ill-defined edge normal fought
+## with the main cushion's clean one. One body, whole rail, was the only arrangement that didn't
+## reproduce it in every offset/speed/scale combination tried. The cost: the facing stubs share the
+## cushion's material instead of `jaw_restitution`'s duller one (PhysicsMaterial is body-level, not
+## per-shape, in Godot) — logged as a deliberate trade-off, not an oversight; `jaw_restitution`
+## stays in TableSpec as a now-inert tunable rather than a churny removal this late in the plan.
 static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.RailSegment, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = String(rail.id)
@@ -70,15 +83,25 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 	pm.rough = true
 	body.physics_material_override = pm
 	var mid := (rail.a + rail.b) * 0.5
+	# thick enough that a full-power ball cannot cross it within one physics step and tunnel
+	# through, floored against a scale-invariant step-safe minimum (see _min_step_safe_thickness)
+	# since ball_radius_m shrinks at a small `scale` while cue speed never does. Both facings below
+	# share this same depth — "the cushion profile continued" (T5.2) means the same cross-section,
+	# not a thinner one.
 	var depth := maxf(spec.ball_radius_m * 2.0, _min_step_safe_thickness(spec))
 	var h := spec.cushion_nose_h_m
 	var basis := TableGeometry.rail_basis(rail)
-	body.transform = Transform3D(basis, mid - rail.inward_normal * depth * 0.5 + Vector3(0, y + h * 0.5, 0))
+	# Body stays at identity — the cushion box AND both facings are CollisionShape3D children,
+	# each carrying its own full local (== world, since the body itself never rotates) transform.
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(depth, h, rail.a.distance_to(rail.b))
 	shape.shape = box
+	shape.transform = Transform3D(basis, mid - rail.inward_normal * depth * 0.5 + Vector3(0, y + h * 0.5, 0))
 	body.add_child(shape)
+
+	for pair in [[rail.a, rail.facing_a], [rail.b, rail.facing_b]]:
+		_add_facing_shape(body, spec, pair[0], pair[1], rail.inward_normal, depth, h, y)
 	parent.add_child(body)
 
 
@@ -88,87 +111,42 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 ## end): the box's thickness is shifted entirely to the outward side of it so the inner face sits
 ## flush with the nose line — never inside the playfield rectangle — instead of straddling it (F2:
 ## a box centred on the facing line pokes thick/2 back into the rail's own lane and rejects a
-## moderate-speed ball before it ever reaches the pocket).
-static func _build_facing(parent: Node3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, y: float) -> void:
+## moderate-speed ball before it ever reaches the pocket). A plain CollisionShape3D child of the
+## cushion's own body (see `_build_cushion`'s comment), positioned in that body's local space —
+## the body transform carries no rotation, so this world-space transform is used directly.
+static func _add_facing_shape(body: StaticBody3D, spec: TableSpec, at: Vector3, dir: Vector3, inward: Vector3, depth: float, h: float, y: float) -> void:
 	if dir.is_zero_approx():
 		return
-	var body := StaticBody3D.new()
-	body.set_meta(&"jaw", true)
-	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.ball_restitution - spec.jaw_restitution
-	pm.absorbent = true
-	pm.friction = 0.6
-	pm.rough = true
-	body.physics_material_override = pm
 	var length := spec.ball_radius_m * FACING_LENGTH_RATIO
-	var h := spec.cushion_nose_h_m
-	# thick enough that a full-power ball (a jaw rattle is exactly the fast, off-angle case this
-	# body exists for) cannot cross it within one physics step and tunnel through; jaw_radius_m
-	# alone is a few centimetres — fine for the old free-standing cylinder, too thin for a wall —
-	# and floored against a scale-invariant step-safe minimum (see _min_step_safe_thickness) since
-	# ball_radius_m/jaw_radius_m both shrink at a small `scale` while cue speed never does
-	var thick := maxf(maxf(spec.jaw_radius_m * 2.0, spec.ball_radius_m), _min_step_safe_thickness(spec))
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
 	if x.dot(inward) > 0.0:
 		x = -x  # x now points outward, away from the playfield interior
-	var anchor := at + x * thick * 0.5
-	body.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
+	var anchor := at + x * depth * 0.5
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(thick, h, length)
+	box.size = Vector3(depth, h, length)
 	shape.shape = box
+	shape.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
 	body.add_child(shape)
-	parent.add_child(body)
 
 
 ## A pot is a ball's centre actually leaving the bed (01 §2): the bed and straight cushions are
 ## exactly the nose-to-nose rectangle (spec.length_m × spec.width_m), so a centre is off it —
 ## genuinely unsupported, falling — the moment EITHER its x or its z (not necessarily both) passes
-## hl/hw. A corner pocket therefore gets two flush strips, one per axis, unioned in a single
-## Area3D: each strip sits entirely outside the rectangle on its own axis alone (so neither one
-## ever has any part inside it — 01 §2, "never past the nose line into the playfield"), and a ball
-## hugging a rail into the corner (only ever off on the ONE axis it left the rail on, its z or x
-## unchanged) still lands in the matching strip the instant it clears that edge — it doesn't need
-## to also have drifted across the other axis first (gamma F1 negatives A/B/D vs. F2 positive F).
-## A side pocket only sits outside on one axis to begin with, so one strip covers it.
+## hl/hw. TableGeometry.layout() is the single source of truth for the strip list (T5.3): this
+## just builds exactly what it describes, no re-derivation, so the gizmo (which also reads
+## layout.drop_zones directly) can never drift from what actually gets built.
 static func _build_drop_zone(parent: Node3D, spec: TableSpec, layout: TableLayout, pocket: PocketSpec, y: float) -> void:
-	var size := Vector2(pocket.mouth_width_m * 1.4, pocket.mouth_width_m * 1.4)
-	for dz in layout.drop_zones:
-		if dz.pocket_id == pocket.id:
-			size = dz.size
-			break
 	var area := Area3D.new()
 	area.name = "Drop_" + String(pocket.id)
 	area.set_meta(&"pocket_id", pocket.id)
-
-	var hl := spec.length_m * 0.5
-	var hw := spec.width_m * 0.5
-	var sign_x := signf(pocket.position.x)
-	var sign_z := signf(pocket.position.z)
-	# Tall capture chute below, not a thin slab, so a fast fall can't tunnel past a one-frame-thin
-	# trigger between steps.
-	var chute := spec.ball_radius_m * DROP_CHUTE_RATIO
-	# Top reaches up to the ball's own resting centre height (01 §2 / T1.4 original design): there
-	# is no bed under a strip's footprint (it never overlaps the nose-to-nose rectangle — see
-	# above), so a ball centred there belongs to the pocket immediately. Tried pulling this down to
-	# cloth − R instead (catch only once a centre has actually fallen a radius) and it breaks fast
-	# shots outright: an 8 m/s ball crosses a strip's ~0.3 m footprint in ~0.04 s but takes ~0.15 s
-	# to fall one radius under gravity, so it flies straight over the strip while still above the
-	# lowered top and is never caught at all (reproduced live: tests/physics/probe.gd's jaw-hit
-	# case, unrelated to jaws, free-fell to y ≈ -468 m uncaught). The footprint fix above already
-	# excludes every gamma A/B/D negative on its own (they never enter a strip's x/z range, whole
-	# question of top height is moot for them); keeping top here is what makes a fast shot pot at
-	# all.
-	var top := y + spec.ball_radius_m
-	var mid_y := top - chute * 0.5
-
-	if sign_x != 0.0:
-		var cx := sign_x * (hl + size.x * 0.5)
-		_add_drop_strip(area, Vector3(size.x, chute, size.y), Vector3(cx, mid_y, pocket.position.z))
-	if sign_z != 0.0:
-		var cz := sign_z * (hw + size.y * 0.5)
-		_add_drop_strip(area, Vector3(size.x, chute, size.y), Vector3(pocket.position.x, mid_y, cz))
+	for dz in layout.drop_zones:
+		if dz.pocket_id != pocket.id:
+			continue
+		var pos: Vector3 = dz.position
+		var size: Vector3 = dz.size
+		_add_drop_strip(area, size, pos + Vector3(0, y, 0))
 	parent.add_child(area)
 
 
@@ -189,10 +167,10 @@ static func _build_safety_floor(parent: Node3D, spec: TableSpec, y: float) -> vo
 	body.name = "SafetyFloor"
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	var chute_depth := spec.ball_radius_m * DROP_CHUTE_RATIO  # drop zone bottom, see _build_drop_zone
+	var chute_depth := spec.ball_radius_m * TableGeometry.DROP_CHUTE_RATIO  # drop zone bottom, see _build_drop_zone
 	# thick, not a thin slab: even CCD can miss a one-step-thin static shape at very high speed,
 	# and a ball that reaches this point has already been falling uncaught for a while
-	var thickness := spec.ball_radius_m * DROP_CHUTE_RATIO
+	var thickness := spec.ball_radius_m * TableGeometry.DROP_CHUTE_RATIO
 	box.size = Vector3((spec.length_m + spec.rail_width_m * 4.0), thickness, (spec.width_m + spec.rail_width_m * 4.0))
 	shape.shape = box
 	shape.position = Vector3(0, y - chute_depth - box.size.y * 0.5, 0)

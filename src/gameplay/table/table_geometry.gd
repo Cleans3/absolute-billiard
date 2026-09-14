@@ -4,6 +4,8 @@ extends RefCounted
 ## Pure derivation from a TableSpec to a TableLayout (01 §2, plan.md contract): no scene nodes,
 ## no physics, deterministic and headless-callable (tests/physics/geometry_probe.gd).
 
+const DROP_CHUTE_RATIO := 40.0  # drop-zone chute depth as a multiple of ball radius
+
 
 static func layout(spec: TableSpec) -> TableLayout:
 	var out := TableLayout.new()
@@ -45,11 +47,22 @@ static func layout(spec: TableSpec) -> TableLayout:
 		out.pockets.append(ps)
 		pockets_by_id[id] = ps
 		var shelf: float = spec.corner_shelf_m if String(id).begins_with("corner") else spec.side_shelf_m
-		out.drop_zones.append({
-			pocket_id = id,
-			position = pos,
-			size = Vector2(ps.mouth_width_m + shelf * 2.0, ps.mouth_width_m + shelf * 2.0),
-		})
+		var foot := Vector2(ps.mouth_width_m + shelf * 2.0, ps.mouth_width_m + shelf * 2.0)
+		# strips actually built (T5.3, plan.md): a corner pocket sits outside the nose-to-nose
+		# rectangle on BOTH axes, so it gets two flush strips (one per axis); a side pocket only
+		# on one axis, so one strip. This is the single source of truth table_builder.gd builds
+		# from verbatim and debug_gizmos.gd draws verbatim — no re-derivation downstream.
+		var chute := spec.ball_radius_m * DROP_CHUTE_RATIO
+		var top := spec.ball_radius_m  # cloth-relative (y=0 here); Table adds bed height on build
+		var mid_y := top - chute * 0.5
+		var sign_x := signf(pos.x)
+		var sign_z := signf(pos.z)
+		if sign_x != 0.0:
+			var cx := sign_x * (hl + foot.x * 0.5)
+			out.drop_zones.append({pocket_id = id, position = Vector3(cx, mid_y, pos.z), size = Vector3(foot.x, chute, foot.y)})
+		if sign_z != 0.0:
+			var cz := sign_z * (hw + foot.y * 0.5)
+			out.drop_zones.append({pocket_id = id, position = Vector3(pos.x, mid_y, cz), size = Vector3(foot.x, chute, foot.y)})
 
 	# rail segments: [id, a, b, inward_normal, pocket at a, pocket at b]
 	var rail_defs := [

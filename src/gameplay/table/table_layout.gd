@@ -19,4 +19,7 @@ var rails: Array[RailSegment] = []
 var spots: Dictionary = {}  # {head, foot, centre}: Vector3
 var kitchen_line_x: float = 0.0
 var sights: Array[Vector3] = []
-var drop_zones: Array[Dictionary] = []  # {pocket_id, position, size: Vector2}
+## One entry per strip actually built (T5.3): a corner pocket gets two (flush on x, flush on z),
+## a side pocket one. {pocket_id, position: Vector3 (table-local, y=0 cloth), size: Vector3 (box
+## dimensions — x width, y chute height, z depth)}. table_builder.gd builds exactly this, verbatim.
+var drop_zones: Array[Dictionary] = []

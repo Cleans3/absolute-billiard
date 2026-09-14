@@ -105,8 +105,8 @@ func _geometry() -> Dictionary:
 		pockets.append({position = table.to_global(ps.position + y), radius = ps.mouth_width_m * 0.5})
 	for dz in lay.drop_zones:
 		var pos: Vector3 = dz.position
-		var size: Vector2 = dz.size
-		drops.append({position = table.to_global(pos + y), size = size})
+		var size: Vector3 = dz.size
+		drops.append({position = table.to_global(pos + y), size = Vector2(size.x, size.z)})
 
 	var rails := []
 	var jaws := []

@@ -54,6 +54,7 @@ func _run() -> void:
 	await _jaw_hit()
 	await _drop_zone_negatives()
 	await _corner_along_rail_pot()
+	await _seam_pots()
 	await _side_jaw_scale1()
 	await _rail_return()
 	await _reach_test()
@@ -247,6 +248,66 @@ func _corner_along_rail_pot() -> void:
 	assert(f.is_pocketed, "a moderate-speed ball hugging the rail into a corner must pot, not reject off the jaw")
 	_kill(f)
 	await _rest()
+
+
+func _seam_shoot(pos: Vector3, v: Vector3) -> Ball:
+	var b := _ball(RED_T, pos)
+	await physics_frame
+	b.linear_velocity = v
+	var dir := v.normalized()
+	b.angular_velocity = Vector3(dir.z, 0, -dir.x) * (v.length() / b.radius)
+	table.sim._on_struck(b, ShotIntent.new())
+	var timer := create_timer(5.0)
+	while not b.is_pocketed and timer.time_left > 0.0:
+		await physics_frame
+	return b
+
+
+## Loop 2 (gamma F1, plan.md T5.1): a ball hugging either rail into a corner at moderate speed, or
+## cutting into one off-angle, must still pot at both scales — the cushion/facing seam (loop-1
+## verdict F1: a ghost contact where two separate StaticBody3D met, not a geometry gap) must never
+## deflect it. Rebuilds the shared `table` at scale 1.0 and back, same precedent as
+## `_side_jaw_scale1` below.
+func _seam_pots() -> void:
+	for scale in [1.0, 2.0]:
+		table.spec.scale = scale
+		table.rebuild()
+		y = table.spec.bed_height_m + table.spec.ball_radius_m + 0.002
+		await physics_frame
+		var s := table.spec
+		var hl := s.length_m * 0.5
+		var hw := s.width_m * 0.5
+		var r := s.ball_radius_m
+		var speeds: Array = [0.8, 1.5] if scale == 1.0 else [3.0]
+		for sp in speeds:
+			for off in [1.02, 1.05, 1.3]:
+				var b := await _seam_shoot(Vector3(-hl + 14.0 * r, y, -hw + r * off), Vector3(-sp, 0, 0))
+				print("probe: seam long-rail scale=%.1f %.1f m/s off=%.2fR pocketed=%s pos=%s" % [scale, sp, off, b.is_pocketed, b.global_position])
+				assert(b.is_pocketed, "seam: long-rail shot must pot (scale %.1f, %.1f m/s, off %.2fR)" % [scale, sp, off])
+				_kill(b)
+				await _rest()
+		if scale == 1.0:
+			for off in [1.02, 1.05, 1.3]:
+				var b := await _seam_shoot(Vector3(-hl + r * off, y, -hw + 14.0 * r), Vector3(0, 0, -1.5))
+				print("probe: seam short-rail scale=1.0 1.5 m/s off=%.2fR pocketed=%s pos=%s" % [off, b.is_pocketed, b.global_position])
+				assert(b.is_pocketed, "seam: short-rail shot must pot (off %.2fR)" % off)
+				_kill(b)
+				await _rest()
+			var pocket := table.get_pocket(&"corner_se")
+			var target := Vector3(pocket.position.x, 0, pocket.position.z)
+			var diag := Vector3(1, 0, 1).normalized()
+			for ang in [0.0, 15.0, 25.0]:
+				var d := diag.rotated(Vector3.UP, deg_to_rad(ang))
+				var start := target - d * 12.0 * r
+				var b := await _seam_shoot(start + Vector3(0, y, 0), d * 1.2)
+				print("probe: seam cut-in scale=1.0 1.2 m/s ang=%.0f pocketed=%s pos=%s" % [ang, b.is_pocketed, b.global_position])
+				assert(b.is_pocketed, "seam: cut-in shot must pot (angle %.0f deg)" % ang)
+				_kill(b)
+				await _rest()
+	table.spec.scale = 2.0
+	table.rebuild()
+	y = table.spec.bed_height_m + table.spec.ball_radius_m + 0.002
+	await physics_frame
 
 
 ## Loop 1 (gamma H, plan.md T4.8): a ball into a side jaw at 9 m/s (near the cue power cap) must
