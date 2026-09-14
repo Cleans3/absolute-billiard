@@ -5,8 +5,9 @@ extends Node3D
 ## kitchen line, head/foot/centre spots, plus ball velocity vectors + trails while a shot
 ## is live. Toggled by debug_gizmos (F3).
 ##
-## Reads geometry from TableSpec exports/getters and Table.pockets (world-space, contract
-## §Table — table.gd adds bed_height_m), never from TableLayout. Ball enumeration goes
+## Reads geometry from Table.layout (loop 1, T4.5) — the same TableGeometry.layout() output
+## table_builder.gd/table_visuals.gd build from — converted to world space via table.to_global();
+## no geometry formula (mouth/shelf/facing maths) is duplicated here. Ball enumeration goes
 ## through PhysicsSim.get_balls() (contract §PhysicsSim), not DemoRack.
 
 var table: Table
@@ -78,8 +79,8 @@ func _draw() -> void:
 		_seg(rail.a, rail.b, COLOR_RAIL)
 		var mid: Vector3 = (rail.a + rail.b) * 0.5
 		_seg(mid, mid + rail.normal * 0.3, COLOR_RAIL)
-	for jaw in d.jaws:
-		_circle(jaw, d.jaw_radius, COLOR_JAW)
+	for f in d.facings:
+		_seg(f[0], f[1], COLOR_JAW)
 	_seg(d.kitchen_a, d.kitchen_b, COLOR_KITCHEN)
 	for spot in d.spots:
 		_cross(spot, 0.05, COLOR_SPOT)
@@ -95,49 +96,38 @@ func _draw() -> void:
 
 func _geometry() -> Dictionary:
 	var s := table.spec
-	var hl := s.length_m * 0.5
-	var hw := s.width_m * 0.5
-	var y := s.bed_height_m
-	var c := s.corner_mouth_m / sqrt(2.0)
-	var side := s.side_mouth_m * 0.5
-	var r := s.ball_radius_m
+	var lay := table.layout
+	var y := Vector3(0, s.bed_height_m, 0)
 
 	var pockets := []
 	var drops := []
-	for ps in table.pockets.values():
-		pockets.append({position = table.to_global(ps.position), radius = ps.mouth_width_m * 0.5})
-		var drop_pos: Vector3 = ps.position + Vector3(0, -2.0 * r, 0)
-		drops.append({
-			position = table.to_global(drop_pos),
-			size = Vector2(s.corner_mouth_m * 1.4, s.corner_mouth_m * 1.4),
-		})
+	for ps in lay.pockets:
+		pockets.append({position = table.to_global(ps.position + y), radius = ps.mouth_width_m * 0.5})
+	for dz in lay.drop_zones:
+		var pos: Vector3 = dz.position
+		var size: Vector2 = dz.size
+		drops.append({position = table.to_global(pos + y), size = size})
 
-	var rail_segments := [
-		[Vector3(-hl + c, y, -hw), Vector3(-side, y, -hw)],
-		[Vector3(side, y, -hw), Vector3(hl - c, y, -hw)],
-		[Vector3(-hl + c, y, hw), Vector3(-side, y, hw)],
-		[Vector3(side, y, hw), Vector3(hl - c, y, hw)],
-		[Vector3(-hl, y, -hw + c), Vector3(-hl, y, hw - c)],
-		[Vector3(hl, y, -hw + c), Vector3(hl, y, hw - c)],
-	]
 	var rails := []
 	var jaws := []
-	for seg in rail_segments:
-		var a: Vector3 = seg[0]
-		var b: Vector3 = seg[1]
-		var mid := (a + b) * 0.5
-		var out_normal := Vector3(0, 0, signf(mid.z)) if is_zero_approx((b - a).z) else Vector3(signf(mid.x), 0, 0)
+	var facings := []
+	var facing_len := s.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
+	for rail in lay.rails:
 		rails.append({
-			a = table.to_global(a),
-			b = table.to_global(b),
-			normal = table.global_transform.basis * (-out_normal),
+			a = table.to_global(rail.a + y),
+			b = table.to_global(rail.b + y),
+			normal = table.global_transform.basis * (-rail.inward_normal),
 		})
-		jaws.append(table.to_global(a))
-		jaws.append(table.to_global(b))
+		jaws.append(table.to_global(rail.a + y))
+		jaws.append(table.to_global(rail.b + y))
+		if not rail.facing_a.is_zero_approx():
+			facings.append([table.to_global(rail.a + y), table.to_global(rail.a + rail.facing_a * facing_len + y)])
+		if not rail.facing_b.is_zero_approx():
+			facings.append([table.to_global(rail.b + y), table.to_global(rail.b + rail.facing_b * facing_len + y)])
 
-	var foot_x = s.get("foot_spot_x")
-	if foot_x == null:
-		foot_x = s.length_m * 0.25
+	var head: Vector3 = lay.spots.head
+	var foot: Vector3 = lay.spots.foot
+	var centre: Vector3 = lay.spots.centre
 
 	return {
 		pockets = pockets,
@@ -145,13 +135,10 @@ func _geometry() -> Dictionary:
 		rails = rails,
 		jaws = jaws,
 		jaw_radius = s.jaw_radius_m,
-		kitchen_a = table.to_global(Vector3(s.kitchen_line_x, y, -hw)),
-		kitchen_b = table.to_global(Vector3(s.kitchen_line_x, y, hw)),
-		spots = [
-			table.to_global(Vector3(s.kitchen_line_x, y, 0)),
-			table.to_global(Vector3(foot_x, y, 0)),
-			table.to_global(Vector3(0, y, 0)),
-		],
+		facings = facings,
+		kitchen_a = table.to_global(Vector3(s.kitchen_line_x, 0.0, -s.width_m * 0.5) + y),
+		kitchen_b = table.to_global(Vector3(s.kitchen_line_x, 0.0, s.width_m * 0.5) + y),
+		spots = [table.to_global(head + y), table.to_global(foot + y), table.to_global(centre + y)],
 	}
 
 

@@ -39,6 +39,14 @@ Every panel builds its own UI procedurally in `_ready()` (no per-panel `.tscn`) 
 from the plan's "panels as child scenes" note; flagged to alpha, no functional difference.
 
 HUD, gizmos and shot console all enumerate live balls via `Table.sim.get_balls()` (contract
-§PhysicsSim), never by walking `DemoRack`'s child list directly. Pocket/drop-zone gizmos read
-`Table.pockets`, which is already world-space (`table.gd` adds `bed_height_m`) — no further
-offset needed.
+§PhysicsSim), never by walking `DemoRack`'s child list directly. Gizmos (loop 1, T4.5) read
+every shape straight from `Table.layout` — the same `TableGeometry.layout()` output
+`table_builder.gd`/`table_visuals.gd` build from — converted to world space with
+`table.to_global(pos + Vector3(0, bed_height_m, 0))`; no pocket/drop-zone/facing formula is
+computed a second time here (`tests/physics/gizmo_probe.gd` asserts the two never drift).
+
+`PHYSICS_3D_COLLISION_PAIRS` reads 0 the entire time under Jolt, verified live during a real
+break (`~/work/.herdr/adhoc-wip-table-ball/gamma/gamma_probe.log`, case J: "max
+PHYSICS_3D_COLLISION_PAIRS=0.0"); the 4.7 docs list no Jolt-specific replacement monitor. The
+HUD's "contact pairs" instead sums `get_colliding_bodies().size()` over every ball while its
+own `contact_monitor` is on (true only during a live shot — `PhysicsSim._on_struck`/`_recount`).
