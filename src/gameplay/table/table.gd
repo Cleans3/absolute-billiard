@@ -1,14 +1,18 @@
 class_name Table
 extends Node3D
 
-## Builds bed, rails, jaw cylinders and drop planes from a TableSpec at _ready.
-## A pot is a ball entering a drop plane; jaws make rattle/reject emerge (01 §2).
+## Orchestrates bed/cushion/jaw/drop-plane construction from a TableSpec (01 §2, plan.md
+## contract): table_builder.gd owns bodies, table_visuals.gd owns meshes, this file only wires
+## them to a TableGeometry.layout() and republishes the result. A pot is a ball entering a drop
+## plane; jaws make rattle/reject emerge.
 
 signal ball_dropped(ball: Ball, pocket_id: StringName)
+signal rebuilt
 
 @export var spec: TableSpec = TableSpec.new()
 
-var pockets: Dictionary = {}  # StringName -> PocketSpec
+var pockets: Dictionary = {}  # StringName -> PocketSpec, world-space (doc 01 §5)
+var layout: TableLayout  # raw TableGeometry.layout() output, table-local at cloth height (y = 0)
 
 @onready var sim: PhysicsSim = $PhysicsSim
 
@@ -22,166 +26,40 @@ func get_pocket(id: StringName) -> PocketSpec:
 
 
 func _ready() -> void:
-	var hl := spec.length_m * 0.5
-	var hw := spec.width_m * 0.5
-	var r := spec.ball_radius_m
+	rebuild()
+
+
+## Frees every generated child (bodies + visuals; not `sim`), recomputes `layout` from `spec`,
+## and rebuilds. Balls are NOT re-spawned here — DemoRack (or a future RoundDirector) owns that.
+func rebuild() -> void:
+	for c in get_children():
+		if c == sim:
+			continue
+		remove_child(c)
+		c.free()
+
+	layout = TableGeometry.layout(spec)
 	var y := spec.bed_height_m
-	# corner mouth is measured on the diagonal; along an edge it spans c
-	var c := spec.corner_mouth_m / sqrt(2.0)
-	var s := spec.side_mouth_m * 0.5
-	var out := r  # pocket centre sits just outside the playfield corner
+	pockets.clear()
+	for ps in layout.pockets:
+		var world_ps := PocketSpec.new()
+		world_ps.id = ps.id
+		world_ps.position = ps.position + Vector3(0, y, 0)
+		world_ps.mouth_normal = ps.mouth_normal
+		world_ps.mouth_width_m = ps.mouth_width_m
+		pockets[world_ps.id] = world_ps
 
-	_build_bed(hl, hw, y)
+	TableBuilder.build(self, spec, layout, y)
+	TableVisuals.build(self, spec, layout, y)
 
-	var specs := [
-		[&"corner_nw", Vector3(-hl - out, y, -hw - out), Vector2(1, 1), spec.corner_mouth_m],
-		[&"corner_ne", Vector3(hl + out, y, -hw - out), Vector2(-1, 1), spec.corner_mouth_m],
-		[&"corner_sw", Vector3(-hl - out, y, hw + out), Vector2(1, -1), spec.corner_mouth_m],
-		[&"corner_se", Vector3(hl + out, y, hw + out), Vector2(-1, -1), spec.corner_mouth_m],
-		[&"side_n", Vector3(0, y, -hw - out), Vector2(0, 1), spec.side_mouth_m],
-		[&"side_s", Vector3(0, y, hw + out), Vector2(0, -1), spec.side_mouth_m],
-	]
-	for p in specs:
-		var ps := PocketSpec.new()
-		ps.id = p[0]
-		ps.position = p[1]
-		ps.mouth_normal = p[2]
-		ps.mouth_width_m = p[3]
-		pockets[ps.id] = ps
-		_build_drop_plane(ps, r)
+	for area in get_children():
+		if area is Area3D and area.has_meta(&"pocket_id"):
+			area.body_entered.connect(_on_drop_zone_entered.bind(area.get_meta(&"pocket_id")))
 
-	# rail segments: [id, from, to] along the playfield edge, jaws at both ends
-	var rails := [
-		[&"rail_n_w", Vector3(-hl + c, y, -hw), Vector3(-s, y, -hw)],
-		[&"rail_n_e", Vector3(s, y, -hw), Vector3(hl - c, y, -hw)],
-		[&"rail_s_w", Vector3(-hl + c, y, hw), Vector3(-s, y, hw)],
-		[&"rail_s_e", Vector3(s, y, hw), Vector3(hl - c, y, hw)],
-		[&"rail_w", Vector3(-hl, y, -hw + c), Vector3(-hl, y, hw - c)],
-		[&"rail_e", Vector3(hl, y, -hw + c), Vector3(hl, y, hw - c)],
-	]
-	for rl in rails:
-		_build_rail(rl[0], rl[1], rl[2], r)
+	rebuilt.emit()
 
 
-func _build_bed(hl: float, hw: float, y: float) -> void:
-	var bed := CSGCombiner3D.new()
-	bed.name = "Bed"
-	add_child(bed)
-	var box := CSGBox3D.new()
-	box.size = Vector3(hl * 2 + 0.45, 0.12, hw * 2 + 0.45)
-	box.position = Vector3(0, y - 0.06, 0)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.05, 0.35, 0.15)
-	box.material = mat
-	bed.add_child(box)
-	# pocket throats: subtract a cylinder at each pocket
-	var out := spec.ball_radius_m
-	for pos in [Vector3(-hl - out, 0, -hw - out), Vector3(hl + out, 0, -hw - out),
-			Vector3(-hl - out, 0, hw + out), Vector3(hl + out, 0, hw + out),
-			Vector3(0, 0, -hw - out), Vector3(0, 0, hw + out)]:
-		var hole := CSGCylinder3D.new()
-		hole.operation = CSGShape3D.OPERATION_SUBTRACTION
-		hole.radius = spec.corner_mouth_m * 0.66
-		hole.height = 0.2
-		hole.position = Vector3(pos.x, y - 0.06, pos.z)
-		bed.add_child(hole)
-	# legs
-	for lx in [-hl + 0.1, hl - 0.1]:
-		for lz in [-hw + 0.1, hw - 0.1]:
-			var leg := CSGBox3D.new()
-			leg.size = Vector3(0.12, y - 0.12, 0.12)
-			leg.position = Vector3(lx, (y - 0.12) * 0.5, lz)
-			leg.material = mat
-			bed.add_child(leg)
-	# CSG has no physics material, so bake its mesh into a StaticBody3D that does
-	var body := StaticBody3D.new()
-	body.name = "BedBody"
-	var cloth_mat := PhysicsMaterial.new()
-	cloth_mat.friction = spec.cloth_friction
-	cloth_mat.rough = true  # friction combine is MIN; rough makes the cloth value win over the ball's 0.06
-	cloth_mat.bounce = spec.ball_restitution  # bounce combine is MAX; absorbent subtracts instead -> 0 on cloth
-	cloth_mat.absorbent = true
-	body.physics_material_override = cloth_mat
-	var shape := CollisionShape3D.new()
-	shape.shape = bed.bake_collision_shape()
-	body.add_child(shape)
-	add_child(body)
-
-
-func _build_rail(id: StringName, a: Vector3, b: Vector3, r: float) -> void:
-	var body := StaticBody3D.new()
-	body.name = String(id)
-	body.set_meta(&"rail_id", id)
-	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.ball_restitution - spec.cushion_restitution  # absorbent: effective e = cushion_restitution
-	pm.absorbent = true
-	pm.friction = spec.cushion_friction
-	pm.rough = true
-	body.physics_material_override = pm
-	var mid := (a + b) * 0.5
-	var along := b - a
-	var thick := r * 2.0
-	var h := r * 1.4  # cushion nose meets the ball just above its equator
-	# push the rail outward so its inner face sits on the playfield edge
-	var normal := Vector3(0, 0, signf(mid.z)) if is_zero_approx(along.z) else Vector3(signf(mid.x), 0, 0)
-	body.set_meta(&"rail_normal", -normal)  # inward; Ball._rail_rebound reads it
-	body.position = mid + normal * thick * 0.5 + Vector3(0, h * 0.5, 0)
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(along.length(), h, thick) if is_zero_approx(along.z) else Vector3(thick, h, along.length())
-	shape.shape = box
-	body.add_child(shape)
-	var mesh := MeshInstance3D.new()
-	var bm := BoxMesh.new()
-	bm.size = box.size
-	mesh.mesh = bm
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = Color(0.35, 0.2, 0.08)
-	mesh.material_override = mat
-	body.add_child(mesh)
-	add_child(body)
-	_build_jaw(a, r)
-	_build_jaw(b, r)
-
-
-func _build_jaw(at: Vector3, r: float) -> void:
-	var body := StaticBody3D.new()
-	body.set_meta(&"jaw", true)
-	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.ball_restitution - spec.jaw_restitution
-	pm.absorbent = true
-	pm.friction = 0.6
-	pm.rough = true
-	body.physics_material_override = pm
-	body.position = at + Vector3(0, r, 0)
-	var shape := CollisionShape3D.new()
-	var cyl := CylinderShape3D.new()
-	cyl.radius = spec.jaw_radius_m
-	cyl.height = r * 2.0
-	shape.shape = cyl
-	body.add_child(shape)
-	var mesh := MeshInstance3D.new()
-	var cm := CylinderMesh.new()
-	cm.top_radius = cyl.radius
-	cm.bottom_radius = cyl.radius
-	cm.height = cyl.height
-	mesh.mesh = cm
-	body.add_child(mesh)
-	add_child(body)
-
-
-func _build_drop_plane(ps: PocketSpec, r: float) -> void:
-	var area := Area3D.new()
-	area.name = "Drop_" + String(ps.id)
-	# overlap begins once the ball centre has fallen past cloth level
-	area.position = ps.position + Vector3(0, -2.0 * r, 0)
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(spec.corner_mouth_m * 1.4, 0.02, spec.corner_mouth_m * 1.4)
-	shape.shape = box
-	area.add_child(shape)
-	add_child(area)
-	area.body_entered.connect(func(body: Node3D) -> void:
-		if body is Ball and not body.is_pocketed:
-			body.pocket(ps.id)
-			ball_dropped.emit(body, ps.id))
+func _on_drop_zone_entered(body: Node3D, pocket_id: StringName) -> void:
+	if body is Ball and not body.is_pocketed:
+		body.pocket(pocket_id)
+		ball_dropped.emit(body, pocket_id)
