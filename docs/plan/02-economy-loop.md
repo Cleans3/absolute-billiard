@@ -208,6 +208,7 @@ src/
 - `GameLoop.advance_intermission() -> void` — host only; the untimed gate.
 - **From 03:** `EventScheduler.offer_tier(tier) -> Array[Event]` for the crew's pre-Round pick; `EffectManager.get_reward_multiplier() -> float`.
 - **From 01:** `shot_ended(shot_id, raw_points, trick_ids, foul)`, and `BallType.base_value` reads gated on `NightConfig.unlocked_ball_types`.
+- **Amended (M1):** `round_ended` `reason` ∈ `timer | cleared | shots` — `shots` when the Round's shot budget hits 0 (every `shot_ended`, foul included, costs one); `stuck` is retired, "only penalty balls left" *is* `table_cleared` (01 §3).
 
 ## 6. Open questions
 1. Fouls cost the shot and 50 viewers. Should they also cost Cash directly, or is the lost shot out of a ~10-shot budget already the whole penalty?
