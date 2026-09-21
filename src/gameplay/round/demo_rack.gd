@@ -6,6 +6,7 @@ extends Node3D
 signal spawned
 
 @export var table: Table
+@export var enabled := true  # off in MainLevel: RoundDirector owns the balls; debug presets still call spawn_layout()
 @export var ball_scene: PackedScene = preload("res://src/gameplay/balls/Ball.tscn")
 
 const TYPES := {
@@ -19,11 +20,12 @@ const RACK: Array[String] = ["red", "blue", "red", "red", "gold", "blue", "red",
 
 
 func _ready() -> void:
-	spawn_layout(default_rack())
+	if enabled:
+		spawn_layout(default_rack())
 
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("reset"):
+	if enabled and event.is_action_pressed("reset"):
 		spawn_layout(default_rack())
 
 

@@ -135,7 +135,7 @@ deploy/noray/        docker-compose.yml · .env.example
 tests/               physics fixtures (D1) · codec round-trip · migration
 ```
 
-Boot scene changes from `MainLevel.tscn` to **`Lobby.tscn`**. Singleplayer is not a separate mode: it is **a host with zero peers** — `Lobby.tscn`'s "Solo" button calls the same `host()` path, `NetManager` installs an `OfflineMultiplayerPeer`, and every RPC below still fires locally through `call_local`. No branch anywhere else in the codebase says `if singleplayer`.
+Boot scene is **`Lobby.tscn`** (M1, done). Singleplayer is not a separate mode: it is **a host with zero peers** — `Lobby.tscn`'s "Solo" button calls the same `host()` path, `NetManager` installs an `OfflineMultiplayerPeer`, and every RPC below still fires locally through `call_local`. No branch anywhere else in the codebase says `if singleplayer`.
 
 ### Autoloads
 **One.** `NetManager` (`src/core/NetManager.gd`) — owns the `MultiplayerPeer`, the transport enum, the lobby code, the peer roster, and checkpoint broadcast. It is the only thing that must outlive a scene change. `SaveManager` is a static class. 01's `Signals.gd` global bus is deleted; session nodes emit their own signals and are found by direct path.

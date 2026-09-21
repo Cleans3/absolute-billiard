@@ -5,6 +5,12 @@
 [ext_resource type="PackedScene" path="res://src/gameplay/table/Table.tscn" id="2_table"]
 [ext_resource type="Script" path="res://src/gameplay/round/demo_rack.gd" id="3_rack"]
 [ext_resource type="PackedScene" path="res://src/debug/DebugRoot.tscn" id="4_debug"]
+[ext_resource type="Script" path="res://src/levels/main_level.gd" id="5_main"]
+[ext_resource type="Script" path="res://src/gameplay/round/round_director.gd" id="6_round"]
+[ext_resource type="Script" path="res://src/gameplay/game_loop.gd" id="7_loop"]
+[ext_resource type="Script" path="res://src/gameplay/economy_manager.gd" id="8_econ"]
+[ext_resource type="Script" path="res://src/gameplay/stream_manager.gd" id="9_stream"]
+[ext_resource type="PackedScene" path="res://src/ui/HUD.tscn" id="10_hud"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 
@@ -18,6 +24,7 @@ ambient_light_source = 3
 tonemap_mode = 2
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
+script = ExtResource("5_main")
 
 [node name="Objects" type="CSGCombiner3D" parent="." unique_id=396154197]
 use_collision = true
@@ -65,6 +72,33 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -3.5)
 [node name="DemoRack" type="Node3D" parent="." node_paths=PackedStringArray("table")]
 script = ExtResource("3_rack")
 table = NodePath("../Table")
+enabled = false
+
+[node name="RoundDirector" type="Node" parent="." node_paths=PackedStringArray("table", "cue")]
+script = ExtResource("6_round")
+table = NodePath("../Table")
+cue = NodePath("../Player/Head/CueController")
+
+[node name="GameLoop" type="Node" parent="." node_paths=PackedStringArray("round_director", "economy", "stream", "hud")]
+script = ExtResource("7_loop")
+round_director = NodePath("../RoundDirector")
+economy = NodePath("../EconomyManager")
+stream = NodePath("../StreamManager")
+hud = NodePath("../UILayer/HUD")
+
+[node name="EconomyManager" type="Node" parent="." node_paths=PackedStringArray("stream")]
+script = ExtResource("8_econ")
+stream = NodePath("../StreamManager")
+
+[node name="StreamManager" type="Node" parent="."]
+script = ExtResource("9_stream")
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy", "stream") instance=ExtResource("10_hud")]
+game_loop = NodePath("../../GameLoop")
+economy = NodePath("../../EconomyManager")
+stream = NodePath("../../StreamManager")
 
 [node name="Debug" parent="." instance=ExtResource("4_debug") node_paths=PackedStringArray("table", "rack", "player")]
 table = NodePath("../Table")
