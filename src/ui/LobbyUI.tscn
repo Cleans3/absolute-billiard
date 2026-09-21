@@ -1,0 +1,44 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/ui/lobby_ui.gd" id="1_lobby"]
+
+[node name="LobbyUI" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("1_lobby")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Menu" type="VBoxContainer" parent="Center"]
+custom_minimum_size = Vector2(360, 0)
+layout_mode = 2
+theme_override_constants/separation = 24
+
+[node name="Title" type="Label" parent="Center/Menu"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 48
+text = "ABSOLUTE BILLIARD"
+horizontal_alignment = 1
+
+[node name="Solo" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Solo"
+
+[node name="Hint" type="Label" parent="Center/Menu"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 16
+text = "Host / Join by code arrive with M2"
+horizontal_alignment = 1
