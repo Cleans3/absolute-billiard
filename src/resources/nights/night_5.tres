@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="NightConfig" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/economy/night_config.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night_number = 5
+quota = 3000
+rounds_count = 3
+round_time_limit_sec = 120.0
+shots_per_round = 10
+object_ball_count = 10
+base_viewers = 1000
+hazard_tiers = Array[int]([0, 1, 2])
+unlocked_ball_types = Array[StringName]([&"red_basic", &"blue_mid", &"gold_prize", &"black_penalty"])
