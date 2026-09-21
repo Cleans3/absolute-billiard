@@ -14,6 +14,10 @@ config/name="Absolute Billiard"
 run/main_scene="res://src/levels/MainLevel.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
 
+[autoload]
+
+NetManager="*res://src/core/net_manager.gd"
+
 [file_customization]
 
 folder_colors={
