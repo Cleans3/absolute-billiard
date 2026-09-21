@@ -146,7 +146,11 @@ func _on_shot_ended(shot_id: String, _shooter_id: int, raw_points: int, trick_id
 	round_points += points
 	shots_left -= 1
 	shot_settled.emit(shot_id, cash, ids[0] if not ids.is_empty() else &"", foul)
-	if shots_left <= 0:
+	# table_cleared is emitted after shot_ended, so ask now: a clearing shot ends as `cleared`
+	# even when it was also the last of the budget or landed after the timer.
+	if _table_cleared():
+		_end_round(&"cleared")
+	elif shots_left <= 0:
 		_end_round(&"shots")
 	elif _timer_expired:
 		_end_round(&"timer")
@@ -163,6 +167,10 @@ func _on_tip_received(amount: int) -> void:
 
 func _is_final_night() -> bool:
 	return night_index == nights.size() - 1
+
+
+func _table_cleared() -> bool:
+	return round_director.has_method(&"is_table_cleared") and bool(round_director.call(&"is_table_cleared"))
 
 
 func _shot_live() -> bool:

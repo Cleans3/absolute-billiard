@@ -72,7 +72,7 @@ stateDiagram-v2
         ScoringShot --> AwaitingShot: next shooter
     }
 
-    RoundActive --> RoundEnd: timer expired / table cleared / stuck
+    RoundActive --> RoundEnd: timer expired / table cleared / shots exhausted
     RoundEnd --> Intermission: rounds remaining
     RoundEnd --> Reckoning: round 3 done
 
@@ -204,8 +204,8 @@ src/
 **Called by others**
 - `EconomyManager.award_shot_reward(raw_points: int, trick_ids: Array[StringName], pocket_id: StringName) -> int` — 01 calls it on `shot_ended`; 02 resolves the best trick multiplier, asks `camera_scorer` for the winning rig on `pocket_id`, asks 03 for `Drink_Mult × Event_Mult`, asks `StreamManager` for `Viewer_Scalar`.
 - `EconomyManager.try_purchase(item_id: StringName, buyer_peer_id: int) -> bool` — host-authoritative; the only path Cash leaves the account.
-- `StreamManager.record_shot_result(potted: int, is_trick: bool, foul: bool) -> void`
-- `GameLoop.advance_intermission() -> void` — host only; the untimed gate.
+- `StreamManager.on_ball_potted(ball, shot_id, pocket_id)` buffers pots during the `Shot`; `StreamManager.on_shot_ended(raw_points, trick_ids, foul)` applies them after `EconomyManager` has read `Viewer_Scalar`. A foul discards the buffer — the Shot scores nothing, viewers included (01 §3).
+- `GameLoop.advance() -> void` — host only; the untimed Intermission gate, and Reckoning → next Night.
 - **From 03:** `EventScheduler.offer_tier(tier) -> Array[Event]` for the crew's pre-Round pick; `EffectManager.get_reward_multiplier() -> float`.
 - **From 01:** `shot_ended(shot_id, raw_points, trick_ids, foul)`, and `BallType.base_value` reads gated on `NightConfig.unlocked_ball_types`.
 - **Amended (M1):** `round_ended` `reason` ∈ `timer | cleared | shots` — `shots` when the Round's shot budget hits 0 (every `shot_ended`, foul included, costs one); `stuck` is retired, "only penalty balls left" *is* `table_cleared` (01 §3).

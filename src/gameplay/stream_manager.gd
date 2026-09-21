@@ -53,13 +53,10 @@ func on_ball_potted(ball: Ball, _shot_id: String, _pocket_id: StringName) -> voi
 
 
 func on_shot_ended(_raw_points: int, trick_ids: Array[StringName], foul: bool) -> void:
-	var d_viewers := POT_VIEWERS * _pots_this_shot
-	var d_hype := POT_HYPE * _pots_this_shot
-	if _pots_this_shot > 0 and not trick_ids.is_empty():
-		d_viewers += TRICK_POT_VIEWERS
-	if foul:
-		d_viewers += FOUL_VIEWERS
-		d_hype += FOUL_HYPE
+	var d_viewers := FOUL_VIEWERS if foul else POT_VIEWERS * _pots_this_shot
+	var d_hype := FOUL_HYPE if foul else POT_HYPE * _pots_this_shot
+	if not foul and _pots_this_shot > 0 and not trick_ids.is_empty():
+		d_viewers += TRICK_POT_VIEWERS  # a foul Shot scores nothing (01 §3): its pots pay no viewers either
 	_pots_this_shot = 0
 	viewers = maxi(viewers + d_viewers, 0)
 	hype = clampf(hype + d_hype, 0.0, 1.0)

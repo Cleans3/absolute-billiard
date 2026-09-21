@@ -227,10 +227,7 @@ func _on_all_resting() -> void:
 			trick_ids.append(t.id)
 			trick_detected.emit(t, _shot_id)
 
-	var cleared := true
-	for b in _balls:
-		if b.ball_type.counts_for_clear and b.ball_type.base_value > 0 and not b.is_pocketed:
-			cleared = false
+	var cleared := is_table_cleared()
 	var round_id := _round_id
 	var shot_id := _shot_id
 	var shooter_id := _shooter_id
@@ -239,6 +236,14 @@ func _on_all_resting() -> void:
 	shot_ended.emit(shot_id, shooter_id, raw_points, trick_ids, foul)
 	if cleared:
 		table_cleared.emit(round_id)
+
+
+## No ball that counts for clear and is worth points is still on the table (01 §3).
+func is_table_cleared() -> bool:
+	for b in _balls:
+		if b.ball_type.counts_for_clear and b.ball_type.base_value > 0 and not b.is_pocketed:
+			return false
+	return true
 
 
 ## Table-local positions of every ball still on the cloth except `skip`.
