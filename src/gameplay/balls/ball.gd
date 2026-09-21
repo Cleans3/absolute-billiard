@@ -6,6 +6,9 @@ extends RigidBody3D
 
 signal struck(ball: Ball, intent: ShotIntent)
 signal resting_changed(ball: Ball, resting: bool)
+## `kind` is &"RAIL" (cushion or jaw, `other` = the rail body) or &"BALL" (`other` = the ball).
+## Only fires while PhysicsSim has contact monitoring on, i.e. during a Shot.
+signal contacted(ball: Ball, other: Node, kind: StringName)
 
 const REGULATION_MASS_KG := 0.17  # kg; regulation ball density, not a table dimension
 const MISCUE_POWER_SCALE := 0.35
@@ -86,11 +89,31 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 func pocket(pocket_id: StringName) -> void:
 	is_pocketed = true
 	pocketed_in = pocket_id
-	# ponytail: pocketed balls just vanish; RoundDirector owns respawn/scoring later
-	get_tree().create_timer(0.4).timeout.connect(func() -> void:
-		freeze = true
-		visible = false
-		$Shape.disabled = true)
+	get_tree().create_timer(0.4).timeout.connect(retire)  # let it fall into the chute first
+
+
+## Takes the ball out of play: frozen, hidden, non-colliding, and counted as resting so
+## PhysicsSim.all_resting can fire once every pot has finished (A1).
+func retire() -> void:
+	freeze = true
+	visible = false
+	$Shape.disabled = true
+	_set_resting(true)
+
+
+## Puts a retired (or stray) ball back in play at world `pos`, stationary; it settles under gravity.
+func restore(pos: Vector3) -> void:
+	is_pocketed = false
+	pocketed_in = &""
+	freeze = true  # teleporting a frozen body is the reliable way to set its transform
+	global_position = pos
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	$Shape.disabled = false
+	visible = true
+	freeze = false
+	sleeping = false
+	_set_resting(false)
 
 
 ## `sleeping` is Jolt's own call and, for a body still in resting contact, may never flip true
@@ -112,6 +135,9 @@ func _set_resting(v: bool) -> void:
 func _on_body_entered(body: Node) -> void:
 	if body.has_meta(&"rail_normal"):
 		_pending_rail = body.get_meta(&"rail_normal")  # signal may fire pre-solve; apply next tick
+		contacted.emit(self, body, &"RAIL")
+	elif body is Ball:
+		contacted.emit(self, body, &"BALL")
 
 
 ## True if this step's own solved contacts (not last tick's deferred `body_entered`) include a
