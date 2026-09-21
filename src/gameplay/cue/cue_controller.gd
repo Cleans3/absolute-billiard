@@ -22,6 +22,8 @@ var rising := true
 var spin := Vector2.ZERO        # unit disc: x = side (right +), y = follow (+) / draw (−)
 var elevation_deg := 0.0
 var _aim_radius := 0.0          # last-aimed ball's radius, drives the pullback visual
+## Optional veto `(ball: Ball) -> bool`; RoundDirector installs it. Invalid = every strike allowed.
+var gate: Callable
 
 @onready var cue_mesh: Node3D = $CueMesh
 @onready var bar: ProgressBar = $HUD/PowerBar
@@ -95,7 +97,7 @@ func _find_ball() -> Ball:
 
 func _fire() -> void:
 	var ball := _find_ball()
-	if ball == null:
+	if ball == null or (gate.is_valid() and not gate.call(ball)):
 		return
 	var cam := get_viewport().get_camera_3d()
 	var fwd := -cam.global_basis.z
