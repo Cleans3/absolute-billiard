@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="BallType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/balls/BallType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "joker_ball"
+display_name = "Joker"
+color = Color(0.65, 0.25, 0.85, 1)
+base_value = 250
+behaviour_tags = Array[StringName]([&"gimmick", &"wild"])
+mass_multiplier = 1.0
+counts_for_clear = true

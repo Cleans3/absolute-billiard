@@ -26,3 +26,5 @@ static func endless(last: NightConfig, night_number: int) -> NightConfig:
 	c.base_viewers = last.base_viewers + ENDLESS_VIEWERS_STEP * steps
 	c.hazard_tiers = [1, 2, 3]
 	return c
+## Hand-authored racks by Round (index = round - 1); a missing entry falls back to the seeded drop.
+@export var authored_racks: Array[RackLayout] = []

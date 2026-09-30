@@ -10,6 +10,8 @@ const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket mouth + ball radi
 const CANDIDATES := 30           # Bridson k
 const SHRINK := 0.95             # spacing multiplier when a sample comes up short
 const MAX_PRIZES := 2            # 01 §2: "one or two per Round"
+const MAX_OBJECT_BALLS := 12     # 07 §1 phone budget; obstacles (stone_ball) count toward it (06 P8)
+const STONES_PER_RACK := 1       # [tune] when `stone_ball` is in the pool
 
 
 static func ball_type(id: StringName) -> BallType:
@@ -18,11 +20,13 @@ static func ball_type(id: StringName) -> BallType:
 
 ## Object-ball placements for a Round: [{type: BallType, pos: Vector2}], `count` of them, none
 ## on the head spot (the cue ball's) or in a pocket mouth. Same config + seed → same rack.
-static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int) -> Array[Dictionary]:
+static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int, round_index := 0) -> Array[Dictionary]:
+	if round_index >= 1 and round_index <= config.authored_racks.size() and config.authored_racks[round_index - 1] != null:
+		return authored(spec, config.authored_racks[round_index - 1])
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed
 	var head := Vector2(layout.spots.head.x, layout.spots.head.z)
-	var n := config.object_ball_count
+	var n := rack_size(config)
 	var r := SPACING_RADII * spec.ball_radius_m
 	var floor_r := 2.0 * spec.ball_radius_m + spec.clearance_margin_m
 	var points := poisson(interior(spec), r, rng, [head], keepouts(spec, layout))
@@ -46,32 +50,77 @@ static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed
 	return out
 
 
-## `n` ball types, highest value first: 1-2 prize (`high_value`), one penalty, the rest the
-## positive commons weighted by 1 / value (cheap balls are common). Missing tiers are skipped.
+## Object balls in a Round: the Night's count plus any obstacles in the pool, capped at 12 (06 P8).
+static func rack_size(config: NightConfig) -> int:
+	return mini(config.object_ball_count + _obstacle_slots(config), MAX_OBJECT_BALLS)
+
+
+static func _obstacle_slots(config: NightConfig) -> int:
+	for id in config.unlocked_ball_types:
+		var t := ball_type(id)
+		if t != null and t.behaviour_tags.has(&"obstacle"):
+			return STONES_PER_RACK
+	return 0
+
+
+## Types a shuffle may re-roll a ball into: prizes, penalties and positive commons of the pool
+## (never obstacles or gimmicks, which are placed once by design).
+static func reroll_pool(config: NightConfig) -> Array[BallType]:
+	var out: Array[BallType] = []
+	for id in config.unlocked_ball_types:
+		var t := ball_type(id)
+		if t != null and not t.behaviour_tags.has(&"obstacle") and not t.behaviour_tags.has(&"gimmick"):
+			out.append(t)
+	return out
+
+
+## A hand-authored rack as placements; `positions` are fractions of the interior half-extents.
+static func authored(spec: TableSpec, rack: RackLayout) -> Array[Dictionary]:
+	var half := interior(spec).size * 0.5
+	var out: Array[Dictionary] = []
+	for i in rack.type_ids.size():
+		out.append({type = ball_type(rack.type_ids[i]), pos = Vector2(rack.positions[i].x * half.x, rack.positions[i].y * half.y)})
+	return out
+
+
+## `n` ball types, highest value first: obstacles (`obstacle`, worth 0), 1-2 prize (`high_value`),
+## one penalty, each unlocked gimmick once, the rest the positive commons weighted by 1 / value
+## (cheap balls are common). Missing tiers are skipped.
 static func compose(config: NightConfig, n: int, rng: RandomNumberGenerator) -> Array[BallType]:
 	var prizes: Array[BallType] = []
 	var penalties: Array[BallType] = []
+	var gimmicks: Array[BallType] = []
+	var obstacles: Array[BallType] = []
 	var commons: Array[BallType] = []
 	for id in config.unlocked_ball_types:
 		var t := ball_type(id)
 		if t == null:
 			push_error("RackDropper: no BallType '%s' under %s" % [id, TYPE_DIR])
+		elif t.behaviour_tags.has(&"obstacle"):
+			obstacles.append(t)
 		elif t.behaviour_tags.has(&"high_value"):
 			prizes.append(t)
 		elif t.behaviour_tags.has(&"penalty"):
 			penalties.append(t)
+		elif t.behaviour_tags.has(&"gimmick"):
+			gimmicks.append(t)
 		elif t.base_value > 0:
 			commons.append(t)
 	var out: Array[BallType] = []
+	var stones := mini(_obstacle_slots(config), n)
+	var slots := n - stones
 	if not prizes.is_empty():
-		for i in mini(rng.randi_range(1, MAX_PRIZES), n):
+		for i in mini(rng.randi_range(1, MAX_PRIZES), slots):
 			out.append(prizes[rng.randi() % prizes.size()])
-	if not penalties.is_empty() and out.size() < n:
+	if not penalties.is_empty() and out.size() < slots:
 		out.append(penalties[rng.randi() % penalties.size()])
+	for g in gimmicks:
+		if out.size() < slots:
+			out.append(g)
 	var total := 0.0
 	for t in commons:
 		total += 1.0 / t.base_value
-	while out.size() < n and not commons.is_empty():
+	while out.size() < slots and not commons.is_empty():
 		var roll := rng.randf() * total
 		var pick := commons[commons.size() - 1]
 		for t in commons:
@@ -81,6 +130,8 @@ static func compose(config: NightConfig, n: int, rng: RandomNumberGenerator) -> 
 				break
 		out.append(pick)
 	out.sort_custom(func(a: BallType, b: BallType) -> bool: return a.base_value > b.base_value)
+	for i in stones:
+		out.append(obstacles[0])
 	return out
 
 

@@ -1,0 +1,8 @@
+[gd_resource type="Resource" script_class="RackLayout" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/racks/rack_layout.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+type_ids = Array[StringName]([&"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"black_penalty"])
+positions = PackedVector2Array(0.4200, 0.0000, 0.3217, 0.3857, 0.0729, 0.5909, -0.2100, 0.5196, -0.3947, 0.2052, -0.3947, -0.2052, -0.2100, -0.5196, 0.0729, -0.5909, 0.3217, -0.3857, 0.0000, 0.0000)
