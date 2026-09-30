@@ -87,6 +87,8 @@ rings = 2
 size = Vector3(0.09, 0.06, 0.24)
 
 [node name="Player" type="CharacterBody3D" unique_id=1104520311]
+collision_layer = 8
+collision_mask = 10
 script = ExtResource("1_player")
 
 [node name="Body" type="CollisionShape3D" parent="." unique_id=1104520312]
