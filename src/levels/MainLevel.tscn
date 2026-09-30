@@ -19,6 +19,7 @@
 [ext_resource type="PackedScene" path="res://src/ui/ViewOverlay.tscn" id="16_view"]
 [ext_resource type="Script" path="res://src/gameplay/camera/cameras.gd" id="17_cameras"]
 [ext_resource type="PackedScene" path="res://src/ui/ShopMenu.tscn" id="18_shop"]
+[ext_resource type="PackedScene" path="res://src/ui/TouchControls.tscn" id="19_touch"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 
@@ -145,6 +146,8 @@ spawner = NodePath("../PlayerSpawner")
 game_loop = NodePath("../../GameLoop")
 economy = NodePath("../../EconomyManager")
 stream = NodePath("../../StreamManager")
+
+[node name="TouchControls" parent="UILayer" instance=ExtResource("19_touch")]
 
 [node name="EventVote" parent="UILayer" node_paths=PackedStringArray("scheduler", "game_loop") instance=ExtResource("15_vote")]
 scheduler = NodePath("../../EventScheduler")

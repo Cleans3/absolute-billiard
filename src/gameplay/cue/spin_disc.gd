@@ -1,3 +1,4 @@
+class_name SpinDisc
 extends Control
 
 ## Cue-ball face: dot = tip contact point, red ring = miscue threshold, label = elevation.
