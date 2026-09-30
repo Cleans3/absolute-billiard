@@ -173,7 +173,7 @@ func _payout_and_clear() -> void:
 	_reset_records()
 	await _shoot(46.0, 0.5)
 	_check(not _ended[0].foul, "a clean pot is not a foul")
-	_check(_potted == [objs[0]] and _ended[0].raw == objs[0].ball_type.base_value, "raw_points = base_value of the potted ball")
+	_check(_potted == [objs[0]] and _ended[0].raw == director.raw_points_for(_potted), "raw_points = value of the potted ball (01 §2 scoring)")
 	_check(_events == ["started", "potted", "ended", "cleared"], "order: %s" % [_events])
 	director.start_round(config, 1, SEED)  # the rest of this table is marked pocketed — start over
 	_refresh()
@@ -282,10 +282,7 @@ func _expect(want: Array, pots: int) -> void:
 	for i in range(1, ids.size()):
 		_check(TrickShot.multiplier_for(ids[i - 1]) > TrickShot.multiplier_for(ids[i]), "trick_ids sorted by multiplier desc: %s" % [ids])
 	_check(ids == _tricks, "trick_detected emitted once per id, in order: %s vs %s" % [ids, _tricks])
-	var raw := 0
-	for b in _potted:
-		raw += b.ball_type.base_value
-	_check(_ended[0].raw == raw, "raw_points = sum of potted base values")
+	_check(_ended[0].raw == director.raw_points_for(_potted), "raw_points = scored value of the potted balls")
 
 
 ## TrickDetector on hand-built logs: the cases physics cannot pin down (3+ pots, jaw rattle).

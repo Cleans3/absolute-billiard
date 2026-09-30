@@ -104,9 +104,9 @@ func _upgrades() -> void:
 	var pool := eco.unlocked_ball_types(base)
 	_check(pool.has(&"blue_mid") and not pool.has(&"gold_prize"), "tier2_rack adds blue_mid only")
 	eco.try_purchase(&"tier3_rack", 1)
-	eco.owned[&"bomb_ball"] = 1  # bought on a later Night; RULES has not shipped the BallType yet
+	eco.owned[&"bomb_ball"] = 1  # bought on a later Night; the BallType shipped with REQ#rules-1
 	pool = eco.unlocked_ball_types(base)
-	_check(pool.has(&"gold_prize") and not pool.has(&"bomb_ball"), "tier3_rack adds gold; a type with no resource is skipped")
+	_check(pool.has(&"gold_prize") and pool.has(&"bomb_ball"), "tier3_rack adds gold; a bought gimmick with a BallType resource joins the pool")
 	eco.owned.erase(&"bomb_ball")
 	var ov := eco.ball_overrides()
 	_check(ov.size() == 1 and ov[0].id == &"red_basic" and ov[0].base_value == 130, "polish_the_set: red_basic 100 → 130")
