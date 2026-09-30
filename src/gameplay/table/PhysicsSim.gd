@@ -48,6 +48,7 @@ var _balls: Array[Ball] = []
 var _by_id: Array[Ball] = []
 var shot_id := 0
 var _shot_live := false
+var _last_end_off := 0  # tick offset at which the last Shot's stream ended
 var _base_tick := 0
 var _pred: Array[BallMotion.State] = []  # host: state the clients will have reconstructed
 var _dirty := PackedByteArray()
@@ -58,6 +59,12 @@ var _hb_state := BallMotion.State.new()
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
 var _hb_every := LIVE_TICK / HEARTBEAT_HZ
 var _emitted_events := 0
+# NetGraph counters: frames sent (host) or received (client)
+var net_events := 0
+var net_bytes := 0
+var net_events_shot := 0
+var net_bytes_shot := 0
+var _last_event_tick := 0
 # client
 var _replica := BallReplica.new()
 var _t0_usec := 0
@@ -80,16 +87,45 @@ func set_stat(stat_name: StringName, value: float) -> void:
 					b.apply_mass_mult(value)
 		&"cloth_friction_mult":
 			cloth_friction_mult = value
-			for b in _balls:
-				b.motion.friction_mult = value
+			_sync_motion_params()
 			_scale_bed_friction(value)
 		&"cushion_restitution_mult": cushion_restitution_mult = value
-		&"table_tilt_deg": table_tilt_deg = value
+		&"table_tilt_deg":
+			table_tilt_deg = value
+			_sync_motion_params()
 		_: push_error("PhysicsSim.set_stat: unknown stat %s" % stat_name)
 
 
 func set_tilt_direction(dir: Vector2) -> void:
 	tilt_direction = dir.normalized()
+	_sync_motion_params()
+
+
+## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and — while a
+## Shot is live — to clients at this tick, so both sides predict from the same model (04 §2.4).
+func _sync_motion_params() -> void:
+	var tilt := tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
+	for b in _balls:
+		b.motion.friction_mult = cloth_friction_mult
+		b.motion.tilt = tilt
+	if _shot_live and _is_host() and not multiplayer.get_peers().is_empty():
+		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
+
+
+func _motion_stats() -> PackedFloat32Array:
+	return PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
+
+
+@rpc("authority", "call_remote", "reliable", 1)
+func _motion_stats_rpc(tick: int, stats: PackedFloat32Array) -> void:
+	at_playback(tick, _apply_motion_stats.bind(stats))
+
+
+func _apply_motion_stats(stats: PackedFloat32Array) -> void:
+	cloth_friction_mult = stats[0]
+	table_tilt_deg = stats[1]
+	tilt_direction = Vector2(stats[2], stats[3])
+	_sync_motion_params()
 
 
 func set_rail_restitution_mult(rail_id: StringName, mult: float) -> void:
@@ -149,6 +185,7 @@ func register(ball: Ball) -> void:
 	assert(ball.net_id < BallEventCodec.MAX_BALLS, "Ball.net_id must be < 64")
 	ball.motion = BallMotion.make_params(ball.spec, ball.radius)
 	ball.motion.friction_mult = cloth_friction_mult
+	ball.motion.tilt = tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
 	while _by_id.size() <= ball.net_id:
 		_by_id.append(null)
 		_pred.append(BallMotion.State.new())
@@ -281,17 +318,20 @@ func _begin_shot_stream(shooter_id: int) -> void:
 	_base_tick = Engine.get_physics_frames()
 	_shot_live = true
 	_emitted_events = 0
+	net_events_shot = 0
+	net_bytes_shot = 0
 	for b in _balls:
 		_seed_pred(b)
 	_dirty.fill(0)
 	BallEventCodec.begin(_frame, shot_id, _base_tick)
 	set_physics_process(_peers_listening())
-	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick)
+	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats())
 
 
 @rpc("authority", "call_local", "reliable", 1)
-func _shot_started_rpc(id: int, shooter_id: int, base_tick: int) -> void:
+func _shot_started_rpc(id: int, shooter_id: int, base_tick: int, stats: PackedFloat32Array) -> void:
 	if not _is_host():
+		_apply_motion_stats(stats)
 		_rebase_client(base_tick)
 	shot_started_net.emit(id, shooter_id, base_tick)
 
@@ -351,6 +391,7 @@ func _flush() -> void:
 		return
 	if not multiplayer.get_peers().is_empty():
 		_push_events_rpc.rpc(shot_id, BallEventCodec.base_tick(_frame), _frame)
+	_count_frame(_frame)
 	frame_flushed.emit(_frame)
 	BallEventCodec.begin(_frame, shot_id, BallEventCodec.base_tick(_frame))
 
@@ -380,6 +421,7 @@ func _end_shot_stream() -> void:
 		if pred.pos.distance_squared_to(b.global_position) > DIVERGE_M * DIVERGE_M or not BallMotion.is_at_rest(pred):
 			_emit_event(b, BallEventCodec.Flag.NONE, off)
 	_flush()
+	_last_end_off = off
 	_shot_live = false
 	set_physics_process(false)
 
@@ -400,8 +442,10 @@ func _on_net_flag(ball: Ball, flag: int) -> void:
 	if _shot_live:
 		_emit_event(ball, flag, Engine.get_physics_frames() - _base_tick)
 		return
-	BallEventCodec.begin(_frame, shot_id, Engine.get_physics_frames())
-	_emit_event(ball, flag, BallReplica.NOW)
+	# Right after a shot (kitchen respawn, off-table restore): stamped just past the shot's last tick so
+	# the client orders it after the pot/retire flags it may still have queued at playback.
+	BallEventCodec.begin(_frame, shot_id, _base_tick)
+	_emit_event(ball, flag, _last_end_off + 1)
 	_flush()
 
 
@@ -450,11 +494,28 @@ func at_playback(tick: int, fn: Callable) -> void:
 	_waiting.insert(i, [tick, fn])
 
 
+func _count_frame(frame: PackedByteArray) -> void:
+	net_events += BallEventCodec.count(frame)
+	net_bytes += frame.size()
+	net_events_shot += BallEventCodec.count(frame)
+	net_bytes_shot += frame.size()
+
+
+## Client: how far past the playback clock the newest received event lies.
+func event_lead_ms() -> float:
+	return (_last_event_tick - playback_tick_f()) * 1000.0 / LIVE_TICK
+
+
 func apply_frame(frame: PackedByteArray) -> void:
+	_count_frame(frame)
+	if BallEventCodec.count(frame) > 0:
+		_last_event_tick = maxi(_last_event_tick, BallEventCodec.base_tick(frame) + BallEventCodec.tick_offset(frame, BallEventCodec.count(frame) - 1))
 	_replica.apply_frame(frame, origin(), playback_tick(), _on_replica_flag)
 
 
 func _rebase_client(base_tick: int) -> void:
+	net_events_shot = 0
+	net_bytes_shot = 0
 	var now := playback_tick_f()
 	for b in _balls:  # freeze every ball where it is on screen; the shot's events anchor from there
 		if _replica.sample(b.net_id, now, b.motion, _scratch):

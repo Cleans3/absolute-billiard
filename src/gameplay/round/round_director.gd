@@ -259,7 +259,7 @@ func _on_net_flag_applied(ball: Ball, flag: int) -> void:
 	var best := &""
 	var best_d := INF
 	for id in table.pockets:
-		var d := ball.global_position.distance_squared_to(table.pockets[id].position)
+		var d := ball.global_position.distance_squared_to(table.to_global(table.pockets[id].position))
 		if d < best_d:
 			best_d = d
 			best = id
@@ -272,6 +272,12 @@ func _shot_resolved_rpc(shot_id: String, shooter_id: int, end_tick: int, raw_poi
 	for t in trick_ids:
 		ids.append(StringName(t))
 	table.sim.at_playback(end_tick, func() -> void:
+		for id in ids:  # rebuilt from the id: `tags` are host-side detail and stay empty here
+			var trick := TrickShot.new()
+			trick.id = id
+			trick.multiplier = TrickShot.multiplier_for(id)
+			trick.shot_id = shot_id
+			trick_detected.emit(trick, shot_id)
 		shot_in_progress = false
 		shot_ended.emit(shot_id, shooter_id, raw_points, ids, foul))
 
