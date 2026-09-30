@@ -182,3 +182,5 @@ lights_and_shadows/positional_shadow/atlas_quadrant_1_subdiv=0
 lights_and_shadows/positional_shadow/atlas_quadrant_2_subdiv=0
 lights_and_shadows/positional_shadow/atlas_quadrant_3_subdiv=0
 occlusion_culling/use_occlusion_culling=false
+reflections/reflection_atlas/reflection_size=128
+reflections/reflection_atlas/reflection_count=4
