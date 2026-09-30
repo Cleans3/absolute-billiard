@@ -5,6 +5,9 @@ extends SceneTree
 var role := ""
 var port := 0
 var nm: Node
+var noray := false
+var relay := ""
+var relay_only := false
 
 
 func _init() -> void:
@@ -13,6 +16,12 @@ func _init() -> void:
 			role = a.substr(7)
 		elif a.begins_with("--port="):
 			port = int(a.substr(7))
+		elif a == "--noray":
+			noray = true
+		elif a.begins_with("--relay="):  # relay_host override, e.g. 127.0.0.1 for a local noray
+			relay = a.substr(8)
+		elif a == "--relay-only":  # skip the direct attempt so the relay path is what gets tested
+			relay_only = true
 	call_deferred("_run")
 
 
@@ -33,14 +42,30 @@ func _until(cond: Callable, what: String, sec := 15.0) -> void:
 func _run() -> void:
 	nm = root.get_node("NetManager")
 	nm.config.direct_port = port
+	if relay != "":
+		nm.config.relay_host = relay
+	if relay_only:
+		nm.config.direct_try_sec = 0.0
+	var code_file := OS.get_environment("PAIR_DIR") + "/code"
 	if role == "host":
-		nm.host(nm.Transport.ENET_DIRECT)
+		nm.host(nm.Transport.ENET_NORAY if noray else nm.Transport.ENET_DIRECT)
+		if noray:
+			await _until(func() -> bool: return nm.lobby_code != "", "lobby code")
+			var f := FileAccess.open(code_file, FileAccess.WRITE)
+			f.store_string(nm.lobby_code)
+			f.close()
+			print("code %s" % nm.lobby_code)
 		print("LISTENING")
 		await _until(func() -> bool: return nm.get_roster().size() == 2, "roster == 2")
 		assert(nm.seat_order() == PackedInt32Array([1, nm.get_roster()[1].peer_id]), "seat order")
 		nm.start_game()
 	else:
-		nm.join_direct("127.0.0.1", port)
+		if noray:
+			await _until(func() -> bool: return FileAccess.file_exists(code_file), "code file")
+			await create_timer(0.2).timeout
+			nm.join_code(FileAccess.get_file_as_string(code_file).to_lower())  # codes are case-insensitive
+		else:
+			nm.join_direct("127.0.0.1", port)
 		await _until(func() -> bool: return nm.get_roster().size() == 2, "roster == 2")
 	await _until(func() -> bool: return current_scene != null and current_scene.name == "MainLevel", "MainLevel")
 	var slots := current_scene.get_node("PlayerSlots")

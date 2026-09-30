@@ -6,7 +6,7 @@ set -u
 probe="${1:?usage: pair.sh <probe.gd> [extra probe args]}"; shift
 cd "$(dirname "$0")/../.."
 port=$((20000 + RANDOM % 20000))
-log="$(mktemp -d)"
+log="$(mktemp -d)"; export PAIR_DIR="$log"  # probes trade small files here (e.g. the lobby code)
 run() { timeout "${PAIR_TIMEOUT:-60}" godot --path . --headless -s "$probe" -- --role="$1" --port="$port" "${@:2}" >"$log/$1.log" 2>&1; echo $? >"$log/$1.rc"; }
 run host "$@" & hp=$!
 for _ in $(seq 100); do grep -q LISTENING "$log/host.log" 2>/dev/null && break; sleep 0.2; done

@@ -18,6 +18,10 @@ config/features=PackedStringArray("4.7", "Mobile")
 
 NetManager="*res://src/core/net_manager.gd"
 
+[editor_plugins]
+
+enabled=PackedStringArray("res://addons/deeplink/plugin.cfg")
+
 [file_customization]
 
 folder_colors={

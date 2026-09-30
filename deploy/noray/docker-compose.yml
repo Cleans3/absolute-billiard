@@ -1,0 +1,13 @@
+# Whole relay stack: `cp .env.example .env && docker compose up -d`. Ports to open: see README.md.
+services:
+  noray:
+    image: ghcr.io/foxssake/noray:main
+    restart: unless-stopped
+    env_file: .env
+    network_mode: host  # the relay pool is a UDP port range; host networking avoids proxying each one
+  join:
+    image: python:3-alpine
+    restart: unless-stopped
+    command: python /app/join_page.py 8892
+    volumes: ["./join_page.py:/app/join_page.py:ro"]
+    network_mode: host

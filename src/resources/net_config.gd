@@ -11,3 +11,5 @@ extends Resource
 @export var share_base_url := "http://160.191.243.188:8891"
 @export var timeout_sec := 10.0
 @export var channel_count := 8
+## How long a joiner tries the punched direct path before falling back to the relay.
+@export var direct_try_sec := 3.0

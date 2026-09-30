@@ -20,15 +20,76 @@ grow_horizontal = 2
 grow_vertical = 2
 
 [node name="Menu" type="VBoxContainer" parent="Center"]
-custom_minimum_size = Vector2(360, 0)
+custom_minimum_size = Vector2(420, 0)
 layout_mode = 2
-theme_override_constants/separation = 24
+theme_override_constants/separation = 16
 
 [node name="Title" type="Label" parent="Center/Menu"]
 layout_mode = 2
 theme_override_font_sizes/font_size = 48
 text = "ABSOLUTE BILLIARD"
 horizontal_alignment = 1
+
+[node name="Host" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Host"
+
+[node name="JoinRow" type="HBoxContainer" parent="Center/Menu"]
+layout_mode = 2
+
+[node name="Code" type="LineEdit" parent="Center/Menu/JoinRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 28
+placeholder_text = "CODE"
+max_length = 6
+alignment = 1
+
+[node name="Join" type="Button" parent="Center/Menu/JoinRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Join"
+
+[node name="AdvancedToggle" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+toggle_mode = true
+text = "Advanced: join by IP"
+flat = true
+
+[node name="AdvancedRow" type="HBoxContainer" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+
+[node name="Address" type="LineEdit" parent="Center/Menu/AdvancedRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 28
+placeholder_text = "192.168.1.20:7777"
+
+[node name="JoinIP" type="Button" parent="Center/Menu/AdvancedRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Join IP"
+
+[node name="HostLan" type="Button" parent="Center/Menu/AdvancedRow"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(140, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Host LAN"
 
 [node name="Solo" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
@@ -37,8 +98,46 @@ layout_mode = 2
 theme_override_font_sizes/font_size = 28
 text = "Solo"
 
-[node name="Hint" type="Label" parent="Center/Menu"]
+[node name="RoomCode" type="Label" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 16
-text = "Host / Join by code arrive with M2"
+theme_override_font_sizes/font_size = 40
 horizontal_alignment = 1
+
+[node name="Share" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Copy invite link"
+
+[node name="Roster" type="Label" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+
+[node name="Start" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Start"
+
+[node name="Leave" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 72)
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Leave"
+
+[node name="Status" type="Label" parent="Center/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1
+autowrap_mode = 3
