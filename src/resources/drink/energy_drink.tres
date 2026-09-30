@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="Drink" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_n46cd"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mbhb7"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_j5kg3"]
+
+[sub_resource type="Resource" id="Resource_kdo8g"]
+script = ExtResource("2_mbhb7")
+stat = &"round_time_add_sec"
+value = 20.0
+
+[sub_resource type="Resource" id="Resource_cgiag"]
+script = ExtResource("1_n46cd")
+id = &"energy_time"
+stat_modifiers = Array[ExtResource("2_mbhb7")]([SubResource("Resource_kdo8g")])
+duration_sec = -1.0
+
+[sub_resource type="Resource" id="Resource_548qf"]
+script = ExtResource("2_mbhb7")
+stat = &"shot_clock_sec"
+value = 8.0
+
+[sub_resource type="Resource" id="Resource_ssk25"]
+script = ExtResource("1_n46cd")
+id = &"energy_clock"
+target = 1
+stat_modifiers = Array[ExtResource("2_mbhb7")]([SubResource("Resource_548qf")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_j5kg3")
+id = &"energy_drink"
+effects = Array[ExtResource("1_n46cd")]([SubResource("Resource_cgiag"), SubResource("Resource_ssk25")])
+roll_weights = PackedFloat32Array()
+cost_cash = 120

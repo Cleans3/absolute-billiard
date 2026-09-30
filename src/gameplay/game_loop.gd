@@ -17,6 +17,7 @@ signal cue_respawned(reason: StringName)  # relayed from RoundDirector for the H
 @export var round_director: Node  # RoundDirector; retype once its class lands in this tree
 @export var economy: EconomyManager
 @export var stream: StreamManager
+@export var events: Node  # EventScheduler; typed Node like round_director
 @export var hud: Control  # kept for the frozen contract; the HUD pulls from this node, not the reverse
 @export var nights: Array[NightConfig]
 
@@ -102,6 +103,8 @@ func _start_round() -> void:
 	round_points = 0
 	shots_left = config.shots_per_round
 	time_left = config.round_time_limit_sec
+	if events != null:  # applies the chosen Event; returns the Round length delta before the timer arms
+		time_left += float(events.call(&"begin_round", round_index))
 	_timer_expired = false
 	_set_phase(Phase.ROUND_SETUP)
 	round_director.call(&"start_round", config, round_index, round_seed)

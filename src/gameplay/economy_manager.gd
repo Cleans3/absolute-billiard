@@ -17,13 +17,22 @@ var cash := 0
 ## Caller passes 0 / [] on a foul. Must run before StreamManager.on_shot_ended (Viewer_Scalar is pre-shot).
 func award_shot_reward(raw_points: int, trick_ids: Array[StringName], _pocket_id: StringName) -> int:
 	var trick_mult := TrickShot.multiplier_for(trick_ids[0]) if not trick_ids.is_empty() else 1.0
-	# ponytail: Camera_Mult / Event_Mult stay literal 1.0 until M5 (cameras) / M6 (events) exist; pocket_id feeds M5.
+	# ponytail: Camera_Mult stays literal 1.0 until M5 (cameras) exists; pocket_id feeds M5.
 	var camera_mult := 1.0
-	var event_mult := 1.0
+	var fx := get_node_or_null(^"../EffectManager")  # duck-typed: the economy probe runs without one
+	var event_mult: float = fx.get_reward_multiplier() * fx.pot_bonus() if fx != null else 1.0
 	var scalar := stream.viewer_scalar() if stream != null else 1.0
 	var reward := roundi(raw_points * trick_mult * camera_mult * event_mult * scalar * POINT_TO_CASH_RATE)
 	add_cash(reward, &"shot")
 	return reward
+
+
+## False (nothing spent) when Cash does not cover it. WorldInteractions costs go through here (03 §3.4).
+func try_spend_cash(amount: int, reason: StringName) -> bool:
+	if amount > cash:
+		return false
+	add_cash(-amount, reason)
+	return true
 
 
 func add_cash(amount: int, reason: StringName) -> void:

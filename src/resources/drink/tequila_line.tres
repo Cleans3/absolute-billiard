@@ -1,0 +1,31 @@
+[gd_resource type="Resource" script_class="Drink" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_78isy"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_k4kic"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_i7scg"]
+
+[sub_resource type="Resource" id="Resource_enawk"]
+script = ExtResource("2_k4kic")
+stat = &"rule_call_pocket"
+value = 1.0
+
+[sub_resource type="Resource" id="Resource_42n7f"]
+script = ExtResource("2_k4kic")
+stat = &"shot_clock_sec"
+value = 10.0
+
+[sub_resource type="Resource" id="Resource_asb20"]
+script = ExtResource("1_78isy")
+id = &"tequila_call"
+target = 1
+stat_modifiers = Array[ExtResource("2_k4kic")]([SubResource("Resource_enawk"), SubResource("Resource_42n7f")])
+duration_sec = -1.0
+tag = &"booze"
+
+[resource]
+script = ExtResource("3_i7scg")
+id = &"tequila_line"
+effects = Array[ExtResource("1_78isy")]([SubResource("Resource_asb20")])
+reward_mult = 1.3
+roll_weights = PackedFloat32Array()
+cost_cash = 150
