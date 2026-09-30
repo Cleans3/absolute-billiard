@@ -92,6 +92,7 @@ func _run() -> void:
 	await _pocket_and_wobble()
 	await _pose()
 	await _interact()
+	await _background()
 	finished = true
 	print("PLAYER OK" if fails == 0 else "PLAYER FAIL (%d)" % fails)
 	quit(0 if fails == 0 else 1)
@@ -502,3 +503,36 @@ func _interact() -> void:
 	await _frames(3)
 	_check(player.mode == Player.Mode.WALK, "place → WALK")
 	_check(rig.held_by == 0 and rig.global_position.distance_to(Vector3(-2.0, 0.0, 3.0 - Player.PLACE_AHEAD_M)) < 0.05, "rig stands where it was placed: %s" % rig.global_position)
+
+
+# --- backgrounding (04 §6) ------------------------------------------------------------------------------
+
+func _background() -> void:
+	var nm := root.get_node("NetManager")
+	var slot := player.get_parent()
+	_stand_by_cue_ball()
+	rd.current_shooter_id = root.multiplayer.get_unique_id()
+	await _physics(30)
+	# pose gate: a backgrounded peer sends nothing, so the send timer stands still
+	nm.set_backgrounded(true)
+	await _frames(2)
+	var frozen: float = slot._accum
+	await _frames(20)
+	_check(slot._accum == frozen, "pose timer frozen while backgrounded")
+	nm.set_backgrounded(false)
+	await _frames(2)
+	_check(slot._accum != frozen or slot._accum == 0.0, "pose timer runs again after resume")
+	# banner: the host's app away → banner up, CUE refused / left; back → banner down
+	_check(not controls._away.visible, "banner hidden at start")
+	_check(player.enter_cue(), "CUE before the host leaves")
+	nm.host_away_changed.emit(true)
+	_check(controls._away.visible and player.mode == Player.Mode.WALK, "host away: banner up and CUE left")
+	_check(not player.enter_cue(), "CUE refused while the host is away")
+	nm.host_away_changed.emit(false)
+	_check(not controls._away.visible and player.enter_cue(), "host back: banner down, CUE allowed")
+	player.exit_cue()
+	# shot clock cleared at Round end
+	rd.shot_clock_started.emit(5.0)
+	_check(player.shot_clock_text() == "Shot clock 5", "clock running before the Round ends")
+	level.get_node("GameLoop").round_ended.emit(&"timer", 0)
+	_check(player.shot_clock_text() == "", "clock cleared at round_ended")

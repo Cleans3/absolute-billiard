@@ -13,10 +13,12 @@ var peer_id := 0
 var player: Player
 
 var _accum := 0.0
+var _net: Node  ## NetManager, by path: a `-s` probe compiles this script before the autoloads exist
 
 
 func _ready() -> void:
 	name = str(peer_id)
+	_net = get_tree().root.get_node(^"NetManager")
 	set_multiplayer_authority(peer_id)
 	player = PLAYER.instantiate()
 	player.name = "Player"
@@ -35,6 +37,8 @@ func is_local() -> bool:
 
 
 func _process(delta: float) -> void:
+	if _net.backgrounded:  # a paused phone sends nothing (04 §6)
+		return
 	_accum += delta
 	if _accum >= 1.0 / POSE_HZ:
 		_accum = 0.0

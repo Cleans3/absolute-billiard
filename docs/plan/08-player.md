@@ -38,6 +38,8 @@ Mouse captured in `WALK`/`CARRY`: `WASD` move, mouse look (`0.0025 rad/px`), `F`
 ### 2.6 Remote avatars
 One capsule mesh + head sphere tinted by seat colour (`Player.SEAT_COLOURS`, one shared material), a `Label3D` name tag (billboard, `fixed_size`), and the cue stick mesh while that peer is in `CUE` — 3 draw calls plus the tag. The stick lies on the aim line with its tip `BACK_M` in front of the body. Poses come from `PlayerSlot` at `10 Hz` (04 `push_player_pose`) and are interpolated `100 ms` behind, like balls. A pose is 16 B: `pos 3×f32 | yaw u16 | u16 = mode << 14 | pitch (14 bit, ±π/2)`; the mode bits let remote shooters show their cue. The puppet renders the sample bracket at `now − 100 ms` (a newer sample is reached, never jumped to). No animation rig in v1.
 
+**Backgrounding (04 §6):** `PlayerSlot` sends no pose while `NetManager.backgrounded`; on `host_away_changed(true)` `TouchControls` shows *Host away, waiting…*, the Player leaves `CUE` and refuses to enter it until the host is back. The shot-clock text also clears at `round_ended`.
+
 ## 3. Rules & numbers
 | knob | value |
 |---|---|
