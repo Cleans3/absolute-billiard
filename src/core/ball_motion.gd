@@ -8,10 +8,11 @@ extends RefCounted
 ## jaw, landing) is NOT modelled — the host transmits those as events.
 
 const SLIP_EPS := 0.005  # m/s of contact-point slip below which the ball counts as rolling
-const AIR_TOL := 0.002  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne
-const AIR_VY := 0.05
+const AIR_TOL := 0.003  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne; below = micro-hop noise
+const AIR_VY := 0.25
 const REST_ANG := 0.15  # rad/s, same as Ball._integrate_forces
-const MAX_PHASES := 4
+const MAX_PHASES := 80
+const SLIDE_STEP := 1.0 / 60.0  # slide drag is first-order per step; short steps keep long dt honest
 
 
 class State extends RefCounted:
@@ -104,7 +105,7 @@ static func _ground(s: State, t: float, p: Params) -> float:
 	var speed := sqrt(vx * vx + vz * vz)
 	if slip > SLIP_EPS:
 		var mu := p.slide_mu * p.friction_mult * g
-		var t1 := minf(t, slip / (3.5 * mu))
+		var t1 := minf(minf(t, slip / (3.5 * mu)), SLIDE_STEP)
 		var uhx := ux / slip
 		var uhz := uz / slip
 		var dhx := vx / speed if speed > 0.001 else 0.0

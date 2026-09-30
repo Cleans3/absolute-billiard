@@ -111,6 +111,7 @@ func _spawn(type: BallType, pos: Vector2, index: int) -> Ball:
 	b.ball_type = type
 	b.spec = table.spec
 	b.spawn_index = index
+	b.net_id = index  # wire id: cue 0, rack balls 1.. in spawn order, identical on every peer
 	b.id = "%s_%d" % [type.id, index]
 	add_child(b)
 	b.global_position = _world(pos, b)
