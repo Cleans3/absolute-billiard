@@ -363,13 +363,17 @@ func _pocket_and_wobble() -> void:
 	cue.cue_spec.wobble_reduction = 9.0
 	cue.refresh_stats()
 	_check(_near(cue.swayed_yaw(), cue.aim_yaw), "reduction past the wobble floors at 0")
-	if &"called_pocket" in i:
-		cue.release_power(0.5)
-		_check(captured.size() == 1 and captured[0].get(&"called_pocket") == table.layout.pockets[2].id, "intent carries called_pocket")
-	else:
-		print("note: ShotIntent.called_pocket absent (RULES owns it) — call-pocket carry not asserted")
-		cue.release_power(0.5)
+	cue.release_power(0.5)
+	_check(captured.size() == 1 and captured[0].called_pocket == table.layout.pockets[2].id, "intent carries called_pocket")
 	_check(player.mode == Player.Mode.WALK, "fired: back to WALK")
+	# shot clock: RoundDirector's once-per-Turn seconds, counted down locally, mine only
+	rd.current_shooter_id = root.multiplayer.get_unique_id()
+	rd.shot_clock_started.emit(5.0)
+	_check(player.shot_clock_text() == "Shot clock 5", "shot clock text: '%s'" % player.shot_clock_text())
+	rd.current_shooter_id = 99
+	_check(player.shot_clock_text() == "", "no clock text when it is not my turn")
+	rd.current_shooter_id = root.multiplayer.get_unique_id()
+	player._clock_end_msec = 0
 	fx.stats = {}
 	cue.effects = null
 	fx.queue_free()
