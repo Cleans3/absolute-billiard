@@ -1,6 +1,6 @@
 # Absolute Billiard — Design Plan Index
 
-Systems-only pass. **Player (character, controller, input, cosmetics) deferred** — every doc treats Player as a black box.
+Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosmetics and gamepad still deferred.
 
 | # | Doc | Scope | Author |
 |---|-----|-------|--------|
@@ -10,6 +10,7 @@ Systems-only pass. **Player (character, controller, input, cosmetics) deferred**
 | 03 | [03-bar-drinks-events.md](03-bar-drinks-events.md) | typed StatMod/Effect, Drinks, crew-chosen Events, world-interaction catalog (free-roam), griefing guard | sonnet → opus rewrite |
 | 04 | [04-architecture-netcode.md](04-architecture-netcode.md) | mobile-first platform matrix, ENet+Noray (Steam optional), event-based sync, RPC/channel table, SaveProfile broadcast, M0 perf spike | omp → opus rewrite |
 | 07 | [07-optimization.md](07-optimization.md) | per-aspect mobile budgets: physics, render, net, memory, GDScript, load, battery, assets, CI gates | opus |
+| 08 | [08-player.md](08-player.md) | Player v1: touch-first first person, WALK/CUE/CARRY modes, touch layout, desktop parity, avatars | alpha (claude), 2026-09-30 (P6) |
 
 ## Cross-module signal map (post-rewrite, 2026-08-29)
 
@@ -38,10 +39,7 @@ Autoload: `NetManager` only. `SaveManager` static. `GameLoop`, `EconomyManager`,
 8. **Cash ownership**: 04 open question (host campaign vs per-client cut) affects 02 save schema. Decide before netcode work.
 
 ## Open questions rolled up (need Cleanse)
-- 01: ghost_ball passthrough scope; bomb_ball fragments; massé gated by upgrade?; asymmetric "house" pocket?; split_multi score once vs per carom
-- 02: scratch = flat Cash penalty or viewer drop + lost turn only?; idle players in 4p — camera switching / hype emotes?
-- 03: Drink effects persist across Rounds?; cancel a drink early (ice_water)?; telegraph event queue vs surprise?; endless-mode tier >3
-- 04: cross-play beyond Steam?; Cash host-only vs per-client
+Closed 2026-09-30 by 06 P8 (alpha defaults). Still open, none blocking: 01 jaw-restitution owner after playtest · 03 hostile payoff scaling with shot difficulty (flat ships) · 04 Noray relay-fallback rate at 4 peers (measure at M4) · 07 trails budget, avatar render cost, replay memory.
 
 ## Review checklist (for Cleanse) — post-rewrite
 - [ ] 06 P1–P5 rulings reflected in every doc (grep: roles, Forward+, Steam-only should be gone)

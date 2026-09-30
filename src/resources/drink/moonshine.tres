@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="Drink" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_huhe7"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_t2673"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_ruht5"]
+
+[sub_resource type="Resource" id="Resource_4wm24"]
+script = ExtResource("2_t2673")
+stat = &"cue_power_mult"
+op = 1
+value = 1.25
+
+[sub_resource type="Resource" id="Resource_q5nqg"]
+script = ExtResource("1_huhe7")
+id = &"moonshine_power"
+target = 1
+stat_modifiers = Array[ExtResource("2_t2673")]([SubResource("Resource_4wm24")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Resource_hhs5l"]
+script = ExtResource("2_t2673")
+stat = &"cue_ball_mass_mult"
+op = 1
+value = 1.5
+
+[sub_resource type="Resource" id="Resource_enawk"]
+script = ExtResource("2_t2673")
+stat = &"rule_call_pocket"
+value = 1.0
+
+[sub_resource type="Resource" id="Resource_yobj6"]
+script = ExtResource("1_huhe7")
+id = &"moonshine_heavy"
+target = 1
+stat_modifiers = Array[ExtResource("2_t2673")]([SubResource("Resource_hhs5l"), SubResource("Resource_enawk")])
+duration_sec = -1.0
+tag = &"booze"
+
+[resource]
+script = ExtResource("3_ruht5")
+id = &"moonshine"
+effects = Array[ExtResource("1_huhe7")]([SubResource("Resource_q5nqg"), SubResource("Resource_yobj6")])
+reward_mult = 1.6
+roll_weights = PackedFloat32Array()
+night_limit = 1
+cost_cash = 300

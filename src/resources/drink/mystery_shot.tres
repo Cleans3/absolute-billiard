@@ -1,0 +1,84 @@
+[gd_resource type="Resource" script_class="Drink" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_vgo8y"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_nknno"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_w5on3"]
+
+[sub_resource type="Resource" id="Resource_2h5po"]
+script = ExtResource("2_nknno")
+stat = &"cue_ball_mass_mult"
+op = 1
+value = 1.6
+
+[sub_resource type="Resource" id="Resource_adcfm"]
+script = ExtResource("1_vgo8y")
+id = &"mystery_heavy_mass"
+target = 1
+stat_modifiers = Array[ExtResource("2_nknno")]([SubResource("Resource_2h5po")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Resource_gm5lg"]
+script = ExtResource("3_w5on3")
+id = &"mystery_heavy"
+effects = Array[ExtResource("1_vgo8y")]([SubResource("Resource_adcfm")])
+reward_mult = 1.5
+roll_weights = PackedFloat32Array()
+
+[sub_resource type="Resource" id="Resource_cyqqa"]
+script = ExtResource("2_nknno")
+stat = &"shot_clock_sec"
+value = 8.0
+
+[sub_resource type="Resource" id="Resource_5l3xt"]
+script = ExtResource("1_vgo8y")
+id = &"mystery_clock_timer"
+target = 1
+stat_modifiers = Array[ExtResource("2_nknno")]([SubResource("Resource_cyqqa")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Resource_wyftn"]
+script = ExtResource("3_w5on3")
+id = &"mystery_clock"
+effects = Array[ExtResource("1_vgo8y")]([SubResource("Resource_5l3xt")])
+reward_mult = 1.2
+roll_weights = PackedFloat32Array()
+
+[sub_resource type="Resource" id="Resource_iqch8"]
+script = ExtResource("3_w5on3")
+id = &"mystery_flat"
+roll_weights = PackedFloat32Array()
+
+[sub_resource type="Resource" id="Resource_enawk"]
+script = ExtResource("2_nknno")
+stat = &"rule_call_pocket"
+value = 1.0
+
+[sub_resource type="Resource" id="Resource_sbmga"]
+script = ExtResource("2_nknno")
+stat = &"cue_spin_radius_mult"
+op = 1
+
+[sub_resource type="Resource" id="Resource_axf6l"]
+script = ExtResource("1_vgo8y")
+id = &"mystery_wild_call"
+target = 1
+stat_modifiers = Array[ExtResource("2_nknno")]([SubResource("Resource_enawk"), SubResource("Resource_sbmga")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Resource_arf1a"]
+script = ExtResource("3_w5on3")
+id = &"mystery_wild"
+effects = Array[ExtResource("1_vgo8y")]([SubResource("Resource_axf6l")])
+reward_mult = 2.0
+roll_weights = PackedFloat32Array()
+
+[resource]
+script = ExtResource("3_w5on3")
+id = &"mystery_shot"
+roll_on_use = true
+roll_table = Array[Resource]([SubResource("Resource_gm5lg"), SubResource("Resource_wyftn"), SubResource("Resource_iqch8"), SubResource("Resource_arf1a")])
+roll_weights = PackedFloat32Array(40, 35, 20, 5)
+cost_cash = 60

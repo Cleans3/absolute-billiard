@@ -11,6 +11,12 @@
 [ext_resource type="Script" path="res://src/gameplay/economy_manager.gd" id="8_econ"]
 [ext_resource type="Script" path="res://src/gameplay/stream_manager.gd" id="9_stream"]
 [ext_resource type="PackedScene" path="res://src/ui/HUD.tscn" id="10_hud"]
+[ext_resource type="Script" path="res://src/gameplay/effects/effect_manager.gd" id="11_fx"]
+[ext_resource type="Script" path="res://src/gameplay/effects/event_scheduler.gd" id="12_events"]
+[ext_resource type="Script" path="res://src/gameplay/bar/world_interactions.gd" id="13_world"]
+[ext_resource type="Script" path="res://src/gameplay/bar/bar.gd" id="14_bar"]
+[ext_resource type="PackedScene" path="res://src/ui/EventVote.tscn" id="15_vote"]
+[ext_resource type="PackedScene" path="res://src/ui/ViewOverlay.tscn" id="16_view"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 
@@ -82,11 +88,12 @@ enabled = false
 script = ExtResource("6_round")
 table = NodePath("../Table")
 
-[node name="GameLoop" type="Node" parent="." node_paths=PackedStringArray("round_director", "economy", "stream", "hud")]
+[node name="GameLoop" type="Node" parent="." node_paths=PackedStringArray("round_director", "economy", "stream", "events", "hud")]
 script = ExtResource("7_loop")
 round_director = NodePath("../RoundDirector")
 economy = NodePath("../EconomyManager")
 stream = NodePath("../StreamManager")
+events = NodePath("../EventScheduler")
 hud = NodePath("../UILayer/HUD")
 
 [node name="EconomyManager" type="Node" parent="." node_paths=PackedStringArray("stream")]
@@ -96,12 +103,43 @@ stream = NodePath("../StreamManager")
 [node name="StreamManager" type="Node" parent="."]
 script = ExtResource("9_stream")
 
+[node name="EffectManager" type="Node" parent="." node_paths=PackedStringArray("sim", "round_director", "game_loop")]
+script = ExtResource("11_fx")
+sim = NodePath("../Table/PhysicsSim")
+round_director = NodePath("../RoundDirector")
+game_loop = NodePath("../GameLoop")
+
+[node name="EventScheduler" type="Node" parent="." node_paths=PackedStringArray("effects", "game_loop", "table")]
+script = ExtResource("12_events")
+effects = NodePath("../EffectManager")
+game_loop = NodePath("../GameLoop")
+table = NodePath("../Table")
+
+[node name="WorldInteractions" type="Node" parent="." node_paths=PackedStringArray("effects", "stream", "economy", "game_loop", "round_director", "table")]
+script = ExtResource("13_world")
+effects = NodePath("../EffectManager")
+stream = NodePath("../StreamManager")
+economy = NodePath("../EconomyManager")
+game_loop = NodePath("../GameLoop")
+round_director = NodePath("../RoundDirector")
+table = NodePath("../Table")
+
+[node name="Bar" type="Node3D" parent="."]
+script = ExtResource("14_bar")
+
 [node name="UILayer" type="CanvasLayer" parent="."]
 
 [node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy", "stream") instance=ExtResource("10_hud")]
 game_loop = NodePath("../../GameLoop")
 economy = NodePath("../../EconomyManager")
 stream = NodePath("../../StreamManager")
+
+[node name="EventVote" parent="UILayer" node_paths=PackedStringArray("scheduler", "game_loop") instance=ExtResource("15_vote")]
+scheduler = NodePath("../../EventScheduler")
+game_loop = NodePath("../../GameLoop")
+
+[node name="ViewOverlay" parent="UILayer" node_paths=PackedStringArray("effects") instance=ExtResource("16_view")]
+effects = NodePath("../../EffectManager")
 
 [node name="Debug" parent="." instance=ExtResource("4_debug") node_paths=PackedStringArray("table", "rack", "spawner")]
 table = NodePath("../Table")

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="Drink" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_tq5o1"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_leoan"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_v30kv"]
+
+[sub_resource type="Resource" id="Resource_s1pfl"]
+script = ExtResource("2_leoan")
+stat = &"stream_hype_gain_mult"
+op = 1
+value = 1.15
+
+[sub_resource type="Resource" id="Resource_n32ul"]
+script = ExtResource("1_tq5o1")
+id = &"nuts_hype"
+target = 6
+stat_modifiers = Array[ExtResource("2_leoan")]([SubResource("Resource_s1pfl")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_v30kv")
+id = &"bar_nuts"
+effects = Array[ExtResource("1_tq5o1")]([SubResource("Resource_n32ul")])
+mid_round = true
+roll_weights = PackedFloat32Array()
+cost_cash = 20

@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="1_fbqe4"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="2_tr61a"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="3_gsm3p"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="4_4fyf3"]
+
+[sub_resource type="Resource" id="Resource_2kg0d"]
+script = ExtResource("1_fbqe4")
+kind = 0
+amount = 0.1
+
+[sub_resource type="Resource" id="Resource_vhlam"]
+script = ExtResource("3_gsm3p")
+stat = &"table_tilt_deg"
+value = 1.5
+
+[sub_resource type="Resource" id="Resource_0dam8"]
+script = ExtResource("2_tr61a")
+id = &"bump_table_tilt"
+source_kind = 2
+target = 2
+stat_modifiers = Array[ExtResource("3_gsm3p")]([SubResource("Resource_vhlam")])
+duration_sec = -2.0
+exclusive_group = &"bump"
+
+[sub_resource type="Resource" id="Resource_pkhcs"]
+script = ExtResource("1_fbqe4")
+amount = 80.0
+condition = &"shot_potted"
+
+[resource]
+script = ExtResource("4_4fyf3")
+id = &"bump_table"
+prop = &"table"
+hostile = true
+cost = SubResource("Resource_2kg0d")
+payoffs = Array[ExtResource("1_fbqe4")]([SubResource("Resource_pkhcs")])
+effect = SubResource("Resource_0dam8")
+cooldown_sec = 20.0
+requires_live_shot = true
