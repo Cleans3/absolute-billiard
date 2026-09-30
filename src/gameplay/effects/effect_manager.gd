@@ -195,6 +195,37 @@ func apply_effect(effect_id: StringName, owner_peer_id: int, target_id: int, dur
 		apply_local(e, owner_peer_id, target_id, duration_ms)
 
 
+## Host: a client came back from the background (RoundDirector.send_full_state). Effects it is missing are
+## added, the ones it has get the host's remaining time; a client never loses an Effect it applied locally.
+func resync_peer(peer_id: int) -> void:
+	var ids := PackedStringArray()
+	var owners := PackedInt32Array()
+	var targets := PackedInt32Array()
+	var durations := PackedInt32Array()
+	var remaining := PackedFloat32Array()
+	for le in _live:
+		ids.append(le.effect.id)
+		owners.append(le.owner_peer_id)
+		targets.append(le.target_id)
+		durations.append(le.duration_ms)
+		remaining.append(le.remaining)
+	_resync_effects_rpc.rpc_id(peer_id, ids, owners, targets, durations, remaining)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _resync_effects_rpc(ids: PackedStringArray, owners: PackedInt32Array, targets: PackedInt32Array, durations: PackedInt32Array, remaining: PackedFloat32Array) -> void:
+	for i in ids.size():
+		var e := FxCatalog.effect(StringName(ids[i]))
+		if e == null:
+			continue
+		var le := _find(e.id, targets[i])
+		if le == null:
+			le = apply_local(e, owners[i], targets[i], durations[i])
+		if le != null:
+			le.remaining = remaining[i]
+	_changed()
+
+
 static func duration_ms_of(e: Effect) -> int:
 	return roundi(e.duration_sec * 1000.0) if e.duration_sec > 0.0 else int(e.duration_sec)
 

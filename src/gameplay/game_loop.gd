@@ -268,6 +268,11 @@ func _push_state() -> void:
 		round_state.rpc(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
 
 
+## Host: a client came back from the background (RoundDirector.send_full_state); it just needs the numbers.
+func resync_peer(peer_id: int) -> void:
+	round_state.rpc_id(peer_id, night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
+
+
 ## Clients: adopt the host's numbers and re-emit the signals the host raised, in the host's order.
 @rpc("authority", "call_remote", "reliable", 3)
 func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p_shots: int, p_points: int, p_seed: int, p_reason: StringName) -> void:

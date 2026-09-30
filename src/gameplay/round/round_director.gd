@@ -32,6 +32,7 @@ const BALL_TYPES: Array[BallType] = [
 	preload("res://src/resources/ball_types/split_ball.tres"),
 	preload("res://src/resources/ball_types/joker_ball.tres"),
 ]
+const HOST_ID := 1
 const HIGH_VALUE_MULT := 1.25  # 01 §2 `high_value` tag
 const BOMB_MIN_IMPACT_MPS := 3.0  # [tune] relative pre-impact speed that sets a bomb_ball off
 const BOMB_RADIUS_RADII := 14.0   # [tune] blast radius in ball radii
@@ -91,6 +92,10 @@ func _ready() -> void:
 	if _fx != null:
 		_fx.effect_applied.connect(_refresh_pocket_stats.unbind(4))
 		_fx.effect_expired.connect(_refresh_pocket_stats.unbind(3))
+	table.sim.blind_ended.connect(_on_blind_ended)
+	var nm := get_node_or_null(^"/root/NetManager")  # absent in `-s` probes
+	if nm != null:
+		nm.app_resumed.connect(_on_host_resumed)
 	var events := get_node_or_null(^"../EventScheduler")
 	if events != null:
 		events.ball_shuffle_requested.connect(_on_shuffle_requested)
@@ -208,7 +213,7 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 		_set_shooter_rpc.rpc(order[0])
 	_begin_turn()
 	if not multiplayer.get_peers().is_empty():
-		_push_rack_rpc.rpc(_round_id, seed, _rack_blob())
+		_push_rack_rpc.rpc(_round_id, seed, _rack_blob(), table.sim.pocket_time())
 	rack_ready.emit(seed)
 
 
@@ -228,7 +233,15 @@ func _rack_blob() -> PackedByteArray:
 
 ## Clients spawn the host's rack as kinematic puppets (PhysicsSim.register flips them to client mode).
 @rpc("authority", "call_remote", "reliable", 3)
-func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray) -> void:
+func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray, host_pocket_t: float) -> void:
+	table.sim.sync_pocket_clock(host_pocket_t)
+	_apply_rack(round_id, seed, blob)
+	_round_active = true
+	rack_ready.emit(seed)
+
+
+## Client: rebuild the ball set from a rack blob (also the ball-set half of a full state).
+func _apply_rack(round_id: String, seed: int, blob: PackedByteArray) -> void:
 	_clear_balls()
 	_round_id = round_id
 	_seed = seed
@@ -240,8 +253,53 @@ func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray) -> void:
 		_next_net_id = maxi(_next_net_id, blob[o] + 1)
 		if ball.is_cue_ball:
 			_cue_ball = ball
-	_round_active = true
-	rack_ready.emit(seed)
+
+
+# ---------------------------------------------------------------- full state (04 §5, §6)
+
+## Client, back from the background: everything the stream carried meanwhile is gone.
+func _on_blind_ended() -> void:
+	if not multiplayer.is_server():
+		_request_full_state_rpc.rpc_id(HOST_ID)
+
+
+## Host, back from the background: its streams stalled, so every client re-syncs from a snapshot.
+func _on_host_resumed() -> void:
+	if multiplayer.is_server():
+		for id in multiplayer.get_peers():
+			send_full_state(id)
+
+
+@rpc("any_peer", "call_remote", "reliable", 3)
+func _request_full_state_rpc() -> void:
+	if multiplayer.is_server():
+		send_full_state(multiplayer.get_remote_sender_id())
+
+
+## Host: one peer gets the rack blob + a ball-state frame (the same encoders as the live stream) plus the
+## Round scalars, then whatever the sibling managers mirror (Round state, Cash, live Effects).
+func send_full_state(peer_id: int) -> void:
+	if _round_id == "":
+		return
+	_full_state_rpc.rpc_id(peer_id, _round_id, _seed, _shot_index, current_shooter_id, _round_active, shot_in_progress, shot_clock_left, _rack_blob(), table.sim.snapshot_frame(), table.sim.pocket_time())
+	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager"]:
+		var node := get_node_or_null(NodePath(n))
+		if node != null and node.has_method(&"resync_peer"):
+			node.call(&"resync_peer", peer_id)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _full_state_rpc(round_id: String, seed: int, shot_index: int, shooter_id: int, active: bool, live: bool, clock_left: float, blob: PackedByteArray, frame: PackedByteArray, host_pocket_t: float) -> void:
+	_apply_rack(round_id, seed, blob)
+	_shot_index = shot_index
+	_shot_id = "%s-s%d" % [round_id, shot_index] if shot_index > 0 else ""
+	_round_active = active
+	shot_in_progress = live
+	shot_clock_left = clock_left
+	table.sim.apply_snapshot(frame, host_pocket_t)
+	if current_shooter_id != shooter_id:
+		current_shooter_id = shooter_id
+		shooter_changed.emit(shooter_id)
 
 
 ## Freezes the table where it stands (visible through Intermission); start_round clears it.
@@ -360,12 +418,8 @@ func _shot_resolved_rpc(shot_id: String, shooter_id: int, end_tick: int, raw_poi
 	for t in trick_ids:
 		ids.append(StringName(t))
 	table.sim.at_playback(end_tick, func() -> void:
-		for id in ids:  # rebuilt from the id: `tags` are host-side detail and stay empty here
-			var trick := TrickShot.new()
-			trick.id = id
-			trick.multiplier = TrickShot.multiplier_for(id)
-			trick.shot_id = shot_id
-			trick_detected.emit(trick, shot_id)
+		for id in ids:  # rebuilt from the id: multiplier and tags are pure functions of it
+			trick_detected.emit(TrickShot.make(id, shot_id), shot_id)
 		shot_in_progress = false
 		shot_ended.emit(shot_id, shooter_id, raw_points, ids, foul))
 

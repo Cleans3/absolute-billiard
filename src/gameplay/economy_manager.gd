@@ -202,6 +202,17 @@ func update_owned(ids: PackedStringArray, counts: PackedInt32Array, item_id: Str
 	owned_changed.emit()
 
 
+## Host: a client came back from the background (RoundDirector.send_full_state).
+func resync_peer(peer_id: int) -> void:
+	update_cash.rpc_id(peer_id, cash, 0, &"resume")
+	var ids := PackedStringArray()
+	var counts := PackedInt32Array()
+	for id: StringName in owned:
+		ids.append(id)
+		counts.append(owned[id])
+	update_owned.rpc_id(peer_id, ids, counts, &"", 0)
+
+
 ## New campaign: everything resets except the persistent unlocks (02 §3.7).
 func wipe() -> void:
 	cash = 0

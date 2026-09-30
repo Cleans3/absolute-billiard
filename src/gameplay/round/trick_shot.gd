@@ -11,10 +11,30 @@ const MULTIPLIERS := {
 	&"RailRunner": 1.60,
 }
 
+## Effect-reaction tags (03) per trick id. Pure of the id, so a client rebuilds them from the wire id alone.
+const TAGS := {
+	&"Combo": [&"combo", &"pot"],
+	&"Combo3": [&"combo", &"pot"],
+	&"BankShot": [&"bank", &"rail"],
+	&"KickShot": [&"kick", &"rail"],
+	&"Carom": [&"carom", &"ball"],
+	&"RailRunner": [&"rail"],
+}
+
 var id: StringName
 var multiplier: float
 var shot_id: String
 var tags: Array[StringName] = []
+
+
+## A TrickShot from its id: what the host detects and what a client rebuilds are the same object.
+static func make(trick_id: StringName, p_shot_id: String) -> TrickShot:
+	var t := TrickShot.new()
+	t.id = trick_id
+	t.multiplier = multiplier_for(trick_id)
+	t.shot_id = p_shot_id
+	t.tags.assign(TAGS.get(trick_id, []))
+	return t
 
 
 static func multiplier_for(trick_id: StringName) -> float:

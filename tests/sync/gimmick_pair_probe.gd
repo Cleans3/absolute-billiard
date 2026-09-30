@@ -108,7 +108,7 @@ func _custom_rack(types: Array, spots: Array) -> Array[Ball]:
 	for i in types.size():
 		out.append(rd._spawn(RackDropper.ball_type(StringName(types[i])), spots[i], i + 1))
 	rd._next_net_id = types.size() + 1
-	rd._push_rack_rpc.rpc(rd._round_id, rd._seed, rd._rack_blob())
+	rd._push_rack_rpc.rpc(rd._round_id, rd._seed, rd._rack_blob(), table.sim.pocket_time())
 	for i in 120:
 		await physics_frame
 	await _until(func() -> bool: return table.sim.awake == 0, "custom rack at rest")

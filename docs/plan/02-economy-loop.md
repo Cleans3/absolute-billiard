@@ -16,7 +16,7 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 | `object_ball_count` | `int` | `10 [tune]` — 11 bodies with the cue ball, inside P1's `≤ 12` phone budget |
 | `base_viewers` | `int` | Stream starts here every Night (§3.3) |
 | `hazard_tiers` | `Array[int]` | `[0, 1, 2]` — one entry per Round, the tier the crew may pick from |
-| `unlocked_ball_types` | `Array[StringName]` | the Night's own drop pool (the five .tres: `red_basic` + `black_penalty`); `EconomyManager.round_config()` adds what the Shop unlocked, not the Night number |
+| `unlocked_ball_types` | `Array[StringName]` | the Night's own drop pool (the five .tres: `red_basic` + `black_penalty`, plus `stone_ball` on Nights 3 and 4 — one per rack, inside the 12-ball cap, 06 P8); `EconomyManager.round_config()` adds what the Shop unlocked, not the Night number |
 
 ### `RoundState` (`RefCounted`)
 `round_index: int`, `time_remaining: float`, `shots_taken: int`, `balls_remaining: int` (positive-value only), `round_points: int`, `active_event_id: StringName`.
