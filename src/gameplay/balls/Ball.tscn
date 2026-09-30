@@ -16,6 +16,7 @@ friction = 0.06
 bounce = 0.95
 
 [node name="Ball" type="RigidBody3D"]
+collision_mask = 7
 mass = 0.17
 physics_material_override = SubResource("PhysicsMaterial_ball")
 continuous_cd = true

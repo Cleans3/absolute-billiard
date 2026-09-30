@@ -6,6 +6,11 @@ extends RefCounted
 ## so a ball approaching a pocket off-angle rattles against a shaped jaw, not a peg.
 ## Visuals are table_visuals.gd's job — this file never adds a MeshInstance3D.
 
+# 07 §1 layer bits: balls 1, table (bed + rails) 2, pockets 3, world 4 (players, props). Ball mask = 1|2|3.
+const LAYER_TABLE := 1 << 1
+const LAYER_POCKET := 1 << 2
+const BALL_LAYER := 1
+
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
 
 
@@ -43,6 +48,8 @@ static func _cloth_material(spec: TableSpec) -> PhysicsMaterial:
 static func _build_bed(parent: Node3D, spec: TableSpec, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "Bed"
+	body.collision_layer = LAYER_TABLE
+	body.collision_mask = 0
 	body.physics_material_override = _cloth_material(spec)
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
@@ -74,6 +81,8 @@ static func _build_bed(parent: Node3D, spec: TableSpec, y: float) -> void:
 static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.RailSegment, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = String(rail.id)
+	body.collision_layer = LAYER_TABLE
+	body.collision_mask = 0
 	body.set_meta(&"rail_id", rail.id)
 	body.set_meta(&"rail_normal", rail.inward_normal)
 	var pm := PhysicsMaterial.new()
@@ -141,6 +150,9 @@ static func _build_drop_zone(parent: Node3D, spec: TableSpec, layout: TableLayou
 	var area := Area3D.new()
 	area.name = "Drop_" + String(pocket.id)
 	area.set_meta(&"pocket_id", pocket.id)
+	area.collision_layer = LAYER_POCKET
+	area.collision_mask = BALL_LAYER
+	area.monitorable = false
 	for dz in layout.drop_zones:
 		if dz.pocket_id != pocket.id:
 			continue

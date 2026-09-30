@@ -40,7 +40,6 @@ const REG_CUE_REACH := 1.75
 @export var spin_decay := 0.55
 @export var rest_speed_mps := 0.02
 @export var rest_time_sec := 0.30
-@export var ccd_speed_mps := 3.0              # object balls get CCD only above this (07 §1.2)
 @export var clearance_margin_m := 0.003
 @export var jaw_restitution := 0.55
 ## scale-invariant ceiling matching CueSpec.power_cap_speed_mps (01 §3 default 10.0) — thin static
@@ -52,6 +51,13 @@ const REG_CUE_REACH := 1.75
 @export var max_ball_speed_mps := 10.0
 
 ## derived — names kept so existing callers do not change
+## Object balls get CCD only above the speed where one physics step covers CCD_STEP_RADII of a ball radius:
+## discrete detection stops catching cushion/ball contacts cleanly when a step approaches R (07 §1.2). Probed at
+## scale 2.0 / 120 Hz: CCD off above 5 m/s (~0.7 R per step) is fine, above 7 m/s (~1.0 R) the round probe's bank
+## shot loses its rail contact. The old flat 3.0 m/s was tuned at scale 1.0, where this formula gives 2.7.
+const CCD_STEP_RADII := 0.8
+var ccd_speed_mps: float:
+	get: return CCD_STEP_RADII * ball_radius_m * PhysicsSim.LIVE_TICK
 var length_m: float:
 	get: return REG_LENGTH * scale
 var width_m: float:

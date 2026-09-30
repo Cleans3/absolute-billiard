@@ -6,6 +6,8 @@ extends Node
 
 signal shot_started(ball: Ball, intent: ShotIntent)
 signal all_resting
+## `awake > 0` flipped — Table arms/disarms its pocket sensors with it (idle sensors cost ~0.45 ms/tick).
+signal active_changed(active: bool)
 ## Every peer, host included (04 §5 `shot_started` RPC): the network-level start of a Shot.
 signal shot_started_net(shot_id: int, shooter_id: int, base_tick: int)
 signal shot_rejected(reason: StringName)
@@ -220,7 +222,9 @@ func register(ball: Ball) -> void:
 func _on_struck(ball: Ball, intent: ShotIntent) -> void:
 	for b in _balls:
 		b.contact_monitor = true
-	Engine.physics_ticks_per_second = LIVE_TICK
+		if not b.retired:
+			b.freeze = false  # thaw the rack: a body with _integrate_forces never sleeps, so rest = frozen (below)
+	Engine.physics_ticks_per_second = QualityManager.tick_cap(LIVE_TICK)
 	_begin_shot_stream(intent.shooter_id)
 	shot_started.emit(ball, intent)
 	# Struck ball's own is_resting already flipped false synchronously (Ball.strike, before this
@@ -236,10 +240,13 @@ func _recount() -> void:
 			n += 1
 	var was := awake
 	awake = n
+	if (n > 0) != (was > 0):
+		active_changed.emit(n > 0)
 	if n == 0 and was > 0:
 		for b in _balls:
 			if b.is_inside_tree():
 				b.contact_monitor = false
+				b.freeze = true  # ~40 us/tick each otherwise (07 §1: table at rest ~ 0); thawed on the next strike/restore
 		_end_shot_stream()
 		Engine.physics_ticks_per_second = REST_TICK  # only ever changed at rest (07 §7.2)
 		all_resting.emit()

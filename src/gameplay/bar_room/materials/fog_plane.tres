@@ -1,0 +1,11 @@
+[gd_resource type="ShaderMaterial" format=3]
+
+[ext_resource type="Shader" path="res://src/shaders/fog_plane.gdshader" id="1_gc8nv"]
+
+[resource]
+render_priority = 0
+shader = ExtResource("1_gc8nv")
+shader_parameter/tint = null
+shader_parameter/density = null
+shader_parameter/scroll = null
+shader_parameter/scale = null

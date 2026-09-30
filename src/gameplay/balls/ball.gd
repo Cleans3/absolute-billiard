@@ -20,6 +20,7 @@ const MASSE_MIN_ELEVATION_DEG := 45.0
 const MASSE_MIN_SPIN := 0.60
 const FALL_FLOOR_Y := -100.0  # BallMotion floor for a pocketed ball: free fall until retired
 
+static var _g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))  # hoisted: per-tick lookup
 static var _materials: Dictionary = {}  # BallType -> StandardMaterial3D, shared across balls
 
 @export var ball_type: BallType
@@ -39,6 +40,7 @@ var retired := false
 var pre_solve_velocity := Vector3.ZERO  # linear velocity at the start of the current step: the pre-impact one when a contact signal fires
 var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
 var _base_mass := 0.0
+var _ccd_speed := 0.0  # spec.ccd_speed_mps is derived; read once, not per tick
 var _pending_rail_id: StringName
 var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
 
@@ -51,6 +53,7 @@ func _ready() -> void:
 	mass = _base_mass
 	is_cue_ball = ball_type.behaviour_tags.has(&"cue")
 	continuous_cd = is_cue_ball
+	_ccd_speed = spec.ccd_speed_mps
 	contact_monitor = true
 	max_contacts_reported = 8 if is_cue_ball else 6
 	physics_material_override.friction = spec.ball_friction
@@ -105,6 +108,7 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 		aim3 = aim3.rotated(right, -deg_to_rad(elevation))
 	var up_c := right.cross(aim3).normalized()  # "top of the ball" as the cue sees it
 	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * spin_radius
+	freeze = false  # resting balls are frozen (PhysicsSim); an impulse on a frozen body is dropped
 	sleeping = false
 	_set_resting(false)
 	apply_impulse(aim3 * power * mass * cue.power_cap_speed_mps, offset)
@@ -261,8 +265,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		return
 	_set_resting(false)
 	if not is_cue_ball:
-		continuous_cd = speed > spec.ccd_speed_mps
+		continuous_cd = speed > _ccd_speed
 	if speed < 0.001:
+		# a ball spinning in place (english after a stop) must still bleed it, or it never rests (~7 s tail)
+		state.apply_torque(Vector3.DOWN * state.angular_velocity.y * mass * radius * spec.rolling_resistance * spec.spin_decay)
 		_last_good_y = state.linear_velocity.y
 		return
 	var up := Vector3.UP
@@ -271,8 +277,8 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		mu *= sim.cloth_friction_mult
 		if sim.table_tilt_deg != 0.0:
 			var t := deg_to_rad(sim.table_tilt_deg)
-			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(t))
-	var g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * _g * sin(t))
+	var g := _g
 	var dir := v / speed
 	# Coulomb-like: magnitude independent of speed, opposing travel
 	state.apply_central_force(-dir * mass * g * mu)

@@ -34,7 +34,9 @@ func get_pocket(id: StringName) -> PocketSpec:
 
 
 func _ready() -> void:
+	sim.active_changed.connect(_set_pockets_live)
 	set_physics_process(false)
+	set_process(false)  # _process is defined: it would walk every child each frame (~60 us) until oscillation asks for it
 	rebuild()
 
 
@@ -64,9 +66,19 @@ func rebuild() -> void:
 	for area in get_children():
 		if area is Area3D and area.has_meta(&"pocket_id"):
 			area.body_entered.connect(_on_drop_zone_entered.bind(area.get_meta(&"pocket_id")))
+	_set_pockets_live(sim.awake > 0)
 
 	_apply_pocket_offsets()
 	rebuilt.emit()
+
+
+## 07 §1.4: a monitoring Area3D is a Jolt sensor stepped every tick — 6 of them cost ~0.45 ms at rest. Only the
+## host resolves pots, and only while balls move; clients keep theirs on (kinematic balls, no awake count).
+func _set_pockets_live(on: bool) -> void:
+	on = on or not multiplayer.is_server()
+	for area in get_children():
+		if area is Area3D and area.has_meta(&"pocket_id"):
+			area.set_deferred(&"monitoring", on)
 
 
 func _on_drop_zone_entered(body: Node3D, pocket_id: StringName) -> void:

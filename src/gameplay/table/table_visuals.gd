@@ -49,6 +49,36 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	for pocket in layout.pockets:
 		_build_pocket_liner(parent, spec, pocket, y)
 	_build_apron_and_legs(parent, spec, layout, y)
+	_merge_by_material(parent)
+
+
+## 07 §2: one MeshInstance3D per colour instead of one per rail/leg/sight/liner (63 -> 7 draw calls).
+## Runs last, over the meshes built above; children are table-local so their own transforms carry over.
+static func _merge_by_material(parent: Node3D) -> void:
+	var groups: Dictionary = {}  # albedo Color -> SurfaceTool
+	var mats: Dictionary = {}
+	var merged: Array[MeshInstance3D] = []
+	for c in parent.get_children():
+		var mi := c as MeshInstance3D
+		if mi == null or not mi.material_override is StandardMaterial3D or String(mi.name).begins_with("Liner_"):
+			continue  # liners keep their node: Table slides them with the oscillating pockets
+		var color := (mi.material_override as StandardMaterial3D).albedo_color
+		if not groups.has(color):
+			var st := SurfaceTool.new()
+			st.begin(Mesh.PRIMITIVE_TRIANGLES)
+			groups[color] = st
+			mats[color] = mi.material_override
+		(groups[color] as SurfaceTool).append_from(mi.mesh, 0, mi.transform)
+		merged.append(mi)
+	for mi in merged:
+		parent.remove_child(mi)
+		mi.free()
+	for color: Color in groups:
+		var out := MeshInstance3D.new()
+		out.name = "Visual_" + color.to_html(false)
+		out.mesh = (groups[color] as SurfaceTool).commit()
+		out.material_override = mats[color]
+		parent.add_child(out)
 
 
 static func _material(color: Color) -> StandardMaterial3D:
