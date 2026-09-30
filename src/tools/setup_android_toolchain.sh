@@ -60,7 +60,7 @@ if [ ! -f "$KEYSTORE" ]; then
     -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999 -deststoretype pkcs12
 fi
 
-echo "== editor settings"
+echo "== editor settings (close every Godot editor first: a running one rewrites this file on exit)"
 if [ -f "$EDITOR_SETTINGS" ]; then
   sed -i -E "s|^export/android/java_sdk_path = .*|export/android/java_sdk_path = \"$JDK_DIR\"|; s|^export/android/android_sdk_path = .*|export/android/android_sdk_path = \"$SDK\"|" "$EDITOR_SETTINGS"
   grep -q '^export/android/java_sdk_path' "$EDITOR_SETTINGS" || echo "export/android/java_sdk_path = \"$JDK_DIR\"" >> "$EDITOR_SETTINGS"

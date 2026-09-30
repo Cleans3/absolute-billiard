@@ -13,6 +13,7 @@ config_version=5
 config/name="Absolute Billiard"
 run/main_scene="res://src/levels/Lobby.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
 
 [autoload]
 
