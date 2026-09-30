@@ -1,0 +1,13 @@
+[Unit]
+Description=Noray relay (absolute-billiard)
+After=network.target
+
+[Service]
+WorkingDirectory=/opt/noray/src
+EnvironmentFile=/opt/noray/.env
+ExecStart=/opt/noray/bun bin/noray.ts
+Restart=always
+User=noray
+
+[Install]
+WantedBy=multi-user.target
