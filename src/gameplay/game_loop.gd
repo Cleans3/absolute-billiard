@@ -157,6 +157,7 @@ func _start_round() -> void:
 		time_left += float(events.call(&"begin_round", round_index))
 	_timer_expired = false
 	_set_phase(Phase.ROUND_SETUP)
+	round_director.set(&"ball_overrides", economy.ball_overrides())  # Shop tier upgrades: value(ball_type)
 	round_director.call(&"start_round", economy.round_config(config), round_index, round_seed)
 	stream.set_live(true)
 	_sync_accum = 0.0
@@ -224,7 +225,9 @@ func _on_ball_potted(ball: Ball, shot_id: String, pocket_id: StringName) -> void
 	if stream != null:
 		stream.on_ball_potted(ball, shot_id, pocket_id)
 	if ball != null and not ball.is_cue_ball:
-		var value: int = ball.ball_type.base_value if ball.ball_type != null else 0
+		var value: int = 0
+		if ball.ball_type != null:
+			value = int(round_director.call(&"value_of", ball.ball_type)) if round_director.has_method(&"value_of") else ball.ball_type.base_value
 		if value > _best_pot:
 			_best_pot = value
 			_best_pocket = pocket_id

@@ -16,6 +16,8 @@ signal table_cleared(round_id: String)
 signal cue_respawned(reason: StringName)
 ## Host and clients: whose Turn it is (04 §5 `set_shooter`).
 signal shooter_changed(peer_id: int)
+## Every peer: the shooter's clock started with `seconds` on it (03 `shot_clock_sec`; never emitted at 0).
+signal shot_clock_started(seconds: float)
 
 const CUE_TYPE := preload("res://src/resources/ball_types/cue.tres")
 ## Wire ids for `push_rack`: the index. Append new BallTypes at the end, never reorder.
@@ -25,7 +27,15 @@ const BALL_TYPES: Array[BallType] = [
 	preload("res://src/resources/ball_types/blue_mid.tres"),
 	preload("res://src/resources/ball_types/gold_prize.tres"),
 	preload("res://src/resources/ball_types/black_penalty.tres"),
+	preload("res://src/resources/ball_types/stone_ball.tres"),
+	preload("res://src/resources/ball_types/bomb_ball.tres"),
+	preload("res://src/resources/ball_types/split_ball.tres"),
+	preload("res://src/resources/ball_types/joker_ball.tres"),
 ]
+const HIGH_VALUE_MULT := 1.25  # 01 §2 `high_value` tag
+const BOMB_MIN_IMPACT_MPS := 3.0  # [tune] relative pre-impact speed that sets a bomb_ball off
+const BOMB_RADIUS_RADII := 14.0   # [tune] blast radius in ball radii
+const BOMB_KICK_MPS := 3.0        # [tune] speed given to a neighbour at zero distance, linear falloff
 const RACK_ENTRY_SIZE := 10  # net_id u8 | type u8 | x f32 | z f32 (table-local)
 const SHOT_CEILING_SEC := 12.0  # 01 §3: past this every ball is stilled and the shot resolves anyway
 const WEDGE_DIRECTIONS := 16
@@ -37,7 +47,19 @@ const OFF_TABLE_RADII := 2.0    # past the nose rectangle by this many radii = o
 var shot_in_progress := false
 ## Peer whose Turn it is; rotates by NetManager.seat_order() after every shot_ended.
 var current_shooter_id := 1
+## Shop-bought tier upgrades (EconomyManager.ball_overrides()), installed by GameLoop before start_round.
+var ball_overrides: Array[BallTypeOverride] = []
+## Seconds left on the shooter's clock; 0 = no clock (03 `shot_clock_sec`). Host counts, clients mirror.
+var shot_clock_left := 0.0
 
+var _config: NightConfig
+var _fx: Node  # ../EffectManager, duck-typed: probes run without one
+var _called_pocket := &""
+var _call_rule := false
+var _pending_shuffle := 0
+var _shuffle_serial := 0
+var _pocket_dirty := false
+var _next_net_id := 0
 var _round_id := ""
 var _seed := 0
 var _shot_index := 0
@@ -55,6 +77,7 @@ var _rest_pos: Dictionary = {}    # Ball -> Vector2 table-local, taken as the sh
 
 func _ready() -> void:
 	set_physics_process(false)
+	set_process(false)
 	if not table.is_node_ready():
 		await table.ready
 	table.sim.shot_started.connect(_on_sim_shot_started)
@@ -64,6 +87,13 @@ func _ready() -> void:
 	table.sim.nudged.connect(_on_nudged)
 	table.sim.shot_validator = _validate_shot
 	table.ball_dropped.connect(_on_ball_dropped)
+	_fx = get_node_or_null(^"../EffectManager")
+	if _fx != null:
+		_fx.effect_applied.connect(_refresh_pocket_stats.unbind(4))
+		_fx.effect_expired.connect(_refresh_pocket_stats.unbind(3))
+	var events := get_node_or_null(^"../EventScheduler")
+	if events != null:
+		events.ball_shuffle_requested.connect(_on_shuffle_requested)
 
 
 ## A strike is legal on the cue ball only, and only between shots.
@@ -83,7 +113,13 @@ func _validate_shot(peer_id: int, intent: ShotIntent) -> StringName:
 		return &"bad_power"
 	if not intent.aim_dir.is_finite() or intent.aim_dir.length_squared() < 0.000001:
 		return &"bad_aim"
+	if _rule_call_pocket(peer_id) and not table.pockets.has(intent.called_pocket):
+		return &"call_pocket"  # 03 `rule_call_pocket`: the shot must name a pocket
 	return &""
+
+
+func _rule_call_pocket(peer_id: int) -> bool:
+	return _fx != null and _fx.get_stat(&"rule_call_pocket", peer_id, 0.0) > 0.0
 
 
 ## Peer ids by seat; empty when no NetManager session exists (headless probes, tools).
@@ -98,6 +134,46 @@ func _rotate_shooter() -> void:
 		return
 	var i := order.find(current_shooter_id)
 	_set_shooter_rpc.rpc(order[(i + 1) % order.size()])
+	_begin_turn()
+
+
+## Host: a Turn begins — arm the shot clock if 03's `shot_clock_sec` is live for the current shooter.
+func _begin_turn() -> void:
+	shot_clock_left = 0.0
+	if _fx != null:
+		shot_clock_left = _fx.get_stat(&"shot_clock_sec", current_shooter_id, 0.0)
+	set_process(shot_clock_left > 0.0)
+	if shot_clock_left > 0.0:
+		_shot_clock_rpc.rpc(shot_clock_left)
+
+
+@rpc("authority", "call_local", "reliable", 3)
+func _shot_clock_rpc(seconds: float) -> void:
+	shot_clock_left = seconds
+	shot_clock_started.emit(seconds)
+
+
+## The clock ran out with no strike: a whiff foul (08 §3) — no shot fired, the Shot still costs its
+## budget slot and the foul's viewer drop, exactly as GameLoop settles any foul shot_ended.
+func _clock_whiff() -> void:
+	set_process(false)
+	shot_clock_left = 0.0
+	_shot_index += 1
+	var id := "%s-s%d" % [_round_id, _shot_index]
+	var shooter := current_shooter_id
+	shot_started.emit(id, shooter)
+	if not multiplayer.get_peers().is_empty():
+		_shot_resolved_rpc.rpc(id, shooter, Engine.get_physics_frames(), 0, PackedStringArray(), true)
+	var no_tricks: Array[StringName] = []
+	shot_ended.emit(id, shooter, 0, no_tricks, true)
+	_rotate_shooter()
+
+
+func _process(delta: float) -> void:
+	if _round_active and not shot_in_progress and shot_clock_left > 0.0 and multiplayer.is_server():
+		shot_clock_left -= delta
+		if shot_clock_left <= 0.0:
+			_clock_whiff()
 
 
 @rpc("authority", "call_local", "reliable", 3)
@@ -115,17 +191,22 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 	_clear_balls()
 	_round_id = "n%d-r%d" % [config.night_number, round_index]
 	_seed = seed
+	_config = config
 	_shot_index = 0
+	_pending_shuffle = 0
+	_shuffle_serial = 0
+	_refresh_pocket_stats()  # geometry for this Round is settled while the table is empty
 	var head: Vector3 = table.layout.spots.head
 	_cue_ball = _spawn(CUE_TYPE, Vector2(head.x, head.z), 0)
-	var i := 1
-	for entry in RackDropper.drop(table.spec, table.layout, config, seed):
-		_spawn(entry.type, entry.pos, i)
-		i += 1
+	_next_net_id = 1
+	for entry in RackDropper.drop(table.spec, table.layout, config, seed, round_index):
+		_spawn(entry.type, entry.pos, _next_net_id)
+		_next_net_id += 1
 	_round_active = true
 	var order := _seat_order()
 	if not order.is_empty() and not order.has(current_shooter_id):
 		_set_shooter_rpc.rpc(order[0])
+	_begin_turn()
 	if not multiplayer.get_peers().is_empty():
 		_push_rack_rpc.rpc(_round_id, seed, _rack_blob())
 	rack_ready.emit(seed)
@@ -152,8 +233,11 @@ func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray) -> void:
 	_round_id = round_id
 	_seed = seed
 	_shot_index = 0
+	_next_net_id = 1
+	_refresh_pocket_stats()
 	for o in range(0, blob.size(), RACK_ENTRY_SIZE):
 		var ball := _spawn(BALL_TYPES[blob[o + 1]], Vector2(blob.decode_float(o + 2), blob.decode_float(o + 6)), blob[o])
+		_next_net_id = maxi(_next_net_id, blob[o] + 1)
 		if ball.is_cue_ball:
 			_cue_ball = ball
 	_round_active = true
@@ -230,6 +314,10 @@ func _on_sim_shot_started(_ball: Ball, intent: ShotIntent) -> void:
 	_shot_index += 1
 	_shot_id = "%s-s%d" % [_round_id, _shot_index]
 	_shooter_id = intent.shooter_id
+	_called_pocket = intent.called_pocket
+	_call_rule = _rule_call_pocket(_shooter_id)
+	shot_clock_left = 0.0
+	set_process(false)
 	_shot_time = 0.0
 	_log.clear()
 	_potted.clear()
@@ -290,6 +378,8 @@ func _on_nudged(_direction: Vector2, _strength: float, source_peer_id: int) -> v
 func _on_contacted(ball: Ball, other: Node, kind: StringName) -> void:
 	if not shot_in_progress:
 		return
+	if other is Ball:
+		_maybe_detonate(ball, other)
 	if kind == ContactLog.RAIL:
 		_log.add_rail(ball, other.get_meta(&"rail_id", &""))
 	elif other is Ball:
@@ -350,12 +440,12 @@ func _on_all_resting() -> void:
 	var raw_points := 0
 	var trick_ids: Array[StringName] = []
 	if not foul:
-		for b in _potted:
-			raw_points += b.ball_type.base_value
+		raw_points = raw_points_for(_scoring_pots())
 		for t in TrickDetector.detect(_log, _cue_ball, _shot_id):
 			trick_ids.append(t.id)
 			trick_detected.emit(t, _shot_id)
 
+	_spawn_splits()
 	var cleared := is_table_cleared()
 	var round_id := _round_id
 	var shot_id := _shot_id
@@ -368,12 +458,13 @@ func _on_all_resting() -> void:
 	if cleared:
 		table_cleared.emit(round_id)
 	_rotate_shooter()
+	_after_shot()
 
 
 ## No ball that counts for clear and is worth points is still on the table (01 §3).
 func is_table_cleared() -> bool:
 	for b in _balls:
-		if b.ball_type.counts_for_clear and b.ball_type.base_value > 0 and not b.is_pocketed:
+		if b.ball_type.counts_for_clear and b.ball_type.base_value > 0 and not b.is_pocketed and not b.retired:
 			return false
 	return true
 
@@ -404,3 +495,172 @@ func _respawn_cue(reason: StringName) -> void:
 	_off_table.erase(_cue_ball)
 	_cue_ball.restore(_world(spot, _cue_ball))
 	cue_respawned.emit(reason)
+
+
+# ---------------------------------------------------------------- rules: value, score, gimmicks (01 §2)
+
+## `value(ball_type)`: a shop override replaces the resource's `base_value`; nothing mutates the resource.
+func value_of(type: BallType) -> int:
+	for o in ball_overrides:
+		if String(o.id) == type.id:
+			return o.base_value
+	return type.base_value
+
+
+## Σ value over `potted`: `high_value` +25 %, `wild` (joker) doubles the single best ball of the Shot,
+## penalties stay negative in the sum. Trick multipliers are 02's and disjoint from this.
+func raw_points_for(potted: Array[Ball]) -> int:
+	var total := 0.0
+	var best := 0.0
+	var wild := false
+	for b in potted:
+		var v := float(value_of(b.ball_type))
+		if b.ball_type.behaviour_tags.has(&"high_value"):
+			v *= HIGH_VALUE_MULT
+		wild = wild or b.ball_type.behaviour_tags.has(&"wild")
+		total += v
+		best = maxf(best, v)
+	if wild:
+		total += best
+	return roundi(total)
+
+
+## With `rule_call_pocket` live, a pot elsewhere than the called pocket scores 0 — never a foul.
+func _scoring_pots() -> Array[Ball]:
+	if not _call_rule:
+		return _potted
+	return _potted.filter(func(b: Ball) -> bool: return b.pocketed_in == _called_pocket)
+
+
+var _detonating: Array[Ball] = []
+
+
+## A bomb_ball struck at ≥ BOMB_MIN_IMPACT_MPS (relative, pre-solve) scatters its neighbours and removes
+## only itself (06 P8). Host only: clients never see contacts, they see the retire + the scattered balls.
+func _maybe_detonate(a: Ball, b: Ball) -> void:
+	if (a.pre_solve_velocity - b.pre_solve_velocity).length() < BOMB_MIN_IMPACT_MPS:
+		return
+	for bomb in [a, b]:
+		if bomb.ball_type.behaviour_tags.has(&"volatile") and not bomb.retired and not _detonating.has(bomb):
+			_detonating.append(bomb)
+			_detonate.call_deferred(bomb)
+
+
+func _detonate(bomb: Ball) -> void:
+	_detonating.erase(bomb)
+	if bomb.retired or bomb.is_pocketed or not shot_in_progress:
+		return
+	var reach := BOMB_RADIUS_RADII * bomb.radius
+	for b in _balls:
+		if b == bomb or b.retired or b.is_pocketed:
+			continue
+		var d := b.global_position - bomb.global_position
+		d.y = 0.0
+		var dist := d.length()
+		if dist >= reach:
+			continue
+		var dir := d / dist if dist > 0.0001 else Vector3.RIGHT
+		b.wake()
+		b.apply_central_impulse(dir * BOMB_KICK_MPS * (1.0 - dist / reach) * b.mass)
+	bomb.retire()
+
+
+## One red_basic per potted split_ball at its last rest spot (or the nearest clear one), 12-ball cap.
+## Returns how many were spawned. Clients spawn them at playback of the Shot's end.
+func _spawn_splits() -> int:
+	var n := 0
+	for b in _potted.duplicate():
+		if not b.ball_type.behaviour_tags.has(&"splitter") or _next_net_id >= BallEventCodec.MAX_BALLS or _live_object_count() >= RackDropper.MAX_OBJECT_BALLS:
+			continue
+		var spot := RackDropper.place_near(table.spec, table.layout, _rest_pos.get(b, Vector2.ZERO), RackDropper.interior(table.spec), _positions_except(null), hash([_seed, _shot_index, b.spawn_index]))
+		var nb := _spawn(BALL_TYPES[1], spot, _next_net_id)
+		_next_net_id += 1
+		n += 1
+		if not multiplayer.get_peers().is_empty():
+			_spawn_rpc.rpc(nb.net_id, 1, spot.x, spot.y, table.sim.after_shot_tick())
+	return n
+
+
+func _live_object_count() -> int:
+	var n := 0
+	for b in _balls:
+		if not b.is_cue_ball and not b.retired:
+			n += 1
+	return n
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _spawn_rpc(net_id: int, type_idx: int, x: float, z: float, tick: int) -> void:
+	table.sim.at_playback(tick, func() -> void:
+		_spawn(BALL_TYPES[type_idx], Vector2(x, z), net_id)
+		_next_net_id = maxi(_next_net_id, net_id + 1))
+
+
+func _on_shuffle_requested(count: int) -> void:
+	if not multiplayer.is_server() or count <= 0 or not _round_active:
+		return
+	if shot_in_progress:
+		_pending_shuffle += count  # never swap a ball under a live Shot
+	else:
+		_shuffle(count)
+
+
+## 03 `ball_type_shuffle_count`: re-roll that many object balls' types in place (same spot), seeded from
+## the Round, and tell the clients which id became what.
+func _shuffle(count: int) -> void:
+	var candidates: Array[Ball] = []
+	for b in _balls:
+		if not b.is_cue_ball and not b.retired and not b.is_pocketed and not b.ball_type.behaviour_tags.has(&"obstacle"):
+			candidates.append(b)
+	var pool := RackDropper.reroll_pool(_config)
+	if pool.is_empty():
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([_seed, _shot_index, _shuffle_serial])
+	_shuffle_serial += 1
+	for i in mini(count, candidates.size()):
+		var b: Ball = candidates.pop_at(rng.randi_range(0, candidates.size() - 1))
+		var t: BallType = pool[rng.randi() % pool.size()]
+		var nb := _replace_ball(b, t)
+		if not multiplayer.get_peers().is_empty():
+			_reroll_rpc.rpc(nb.net_id, BALL_TYPES.find(t), table.sim.after_shot_tick())
+
+
+func _replace_ball(old: Ball, type: BallType) -> Ball:
+	var pos := _local(old)
+	var index := old.spawn_index
+	_balls.erase(old)
+	remove_child(old)
+	old.queue_free()
+	return _spawn(type, pos, index)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _reroll_rpc(net_id: int, type_idx: int, tick: int) -> void:
+	table.sim.at_playback(tick, func() -> void:
+		for b in _balls:
+			if b.net_id == net_id:
+				_replace_ball(b, BALL_TYPES[type_idx])
+				return)
+
+
+## Host, after a Shot fully resolved: work that must not run under a live Shot.
+func _after_shot() -> void:
+	if _pocket_dirty:
+		_refresh_pocket_stats()
+	if _pending_shuffle > 0:
+		var n := _pending_shuffle
+		_pending_shuffle = 0
+		_shuffle(n)
+
+
+## 03 `pocket_radius_mult` / `pocket_oscillation_m` -> Table. Every peer resolves them from the same
+## synced Effects, the phase comes from the Round seed: no pocket packets. Deferred past a live Shot.
+func _refresh_pocket_stats() -> void:
+	if _fx == null or table == null:
+		return
+	if shot_in_progress:
+		_pocket_dirty = true
+		return
+	_pocket_dirty = false
+	table.apply_pocket_stats(_fx.get_stat(&"pocket_radius_mult", EffectManager.ALL_PEERS, 1.0), _fx.get_stat(&"pocket_oscillation_m", EffectManager.ALL_PEERS, 0.0), _seed)

@@ -10,3 +10,5 @@ var elevation_deg := 0.0
 var jump := false
 var masse := false
 var shooter_id := 0
+## 03 `rule_call_pocket` (08 §2.5): the pocket the shooter names; `&""` = none.
+var called_pocket := &""

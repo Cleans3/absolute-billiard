@@ -107,8 +107,13 @@ func _client() -> void:
 	var intent := ShotIntent.new()
 	intent.aim_dir = Vector2.RIGHT
 	intent.power = 0.8
-	table.sim.request_shot(intent)
-	await _until(func() -> bool: return _rejected != &"", "shot_rejected")
+	for i in 20:  # the rack may still be settling on the host: `balls_moving` outranks the turn check
+		_rejected = &""
+		table.sim.request_shot(intent)
+		await _until(func() -> bool: return _rejected != &"", "shot_rejected")
+		if _rejected != &"balls_moving":
+			break
+		await create_timer(0.5).timeout
 	assert(_rejected == &"not_your_turn", "out-of-turn reason was %s" % _rejected)
 	var f := FileAccess.open(_file("client_rejected"), FileAccess.WRITE)
 	f.store_string("1")

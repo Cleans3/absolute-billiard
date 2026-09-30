@@ -7,7 +7,8 @@ extends RefCounted
 const DROP_CHUTE_RATIO := 40.0  # drop-zone chute depth as a multiple of ball radius
 
 
-static func layout(spec: TableSpec) -> TableLayout:
+## `pocket_mult` scales both mouth widths (03 `pocket_radius_mult`, e.g. the magnetic_pockets shop row).
+static func layout(spec: TableSpec, pocket_mult := 1.0) -> TableLayout:
 	var out := TableLayout.new()
 	var hl := spec.length_m * 0.5
 	var hw := spec.width_m * 0.5
@@ -16,8 +17,10 @@ static func layout(spec: TableSpec) -> TableLayout:
 	# much before the extra radius below — the straight cushion keeps its full outward depth (2R)
 	# right up to where it is truncated, so without the extra margin a dead-centre shot at the
 	# pocket grazes the outward corner of the cushion box with exactly zero clearance
-	var c := spec.corner_mouth_m / sqrt(2.0) + r
-	var s := spec.side_mouth_m * 0.5
+	var corner_mouth := spec.corner_mouth_m * pocket_mult
+	var side_mouth := spec.side_mouth_m * pocket_mult
+	var c := corner_mouth / sqrt(2.0) + r
+	var s := side_mouth * 0.5
 	var pocket_out := r  # pocket centre sits just outside the playfield nose corner
 
 	out.kitchen_line_x = spec.kitchen_line_x
@@ -28,12 +31,12 @@ static func layout(spec: TableSpec) -> TableLayout:
 	}
 
 	var pocket_defs := [
-		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), spec.corner_mouth_m],
-		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), spec.corner_mouth_m],
-		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), spec.corner_mouth_m],
-		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), spec.corner_mouth_m],
-		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), spec.side_mouth_m],
-		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), spec.side_mouth_m],
+		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), corner_mouth],
+		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), corner_mouth],
+		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), corner_mouth],
+		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), corner_mouth],
+		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), side_mouth],
+		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), side_mouth],
 	]
 	var pockets_by_id := {}
 	for p in pocket_defs:
