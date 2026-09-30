@@ -67,7 +67,15 @@ Balls move piecewise: ballistic between contacts, discontinuous at them. So the 
 - A **2 Hz full-state heartbeat** corrects drift and re-seats a client that missed a packet or joined mid-shot.
 - **Presentation is gated on the playback clock, not on packet arrival.** `shot_resolved` reaches the client ~100 ms before the client has finished watching the shot; it is queued and the `+500!` popup, the pot sound and the cash tick fire when `playback_tick` passes the potting event. Without this the score appears before the ball drops.
 
-Events are **hand-packed** into a `PackedByteArray`, not pushed through `MultiplayerSynchronizer` — the synchroniser samples state on a timer, which is the snapshot model we just rejected. Layout per event: `ball_id u8 | tick_offset u16 | pos 3×f16 | lin_vel 3×f16 | ang_vel 3×f16` = **21 bytes**; a frame prefixes `shot_id u16 | base_tick u32 | count u8`. A 40-contact break is under 1 KB for the whole shot. `MultiplayerSpawner` *is* used, but only for `PlayerSlot`s (§4).
+Events are **hand-packed** into a `PackedByteArray`, not pushed through `MultiplayerSynchronizer` — the synchroniser samples state on a timer, which is the snapshot model we just rejected. `MultiplayerSpawner` *is* used, but only for `PlayerSlot`s (§4).
+
+**Codec** (`BallEventCodec`, implemented). Frame = `shot_id u16 | base_tick u32 | count u8` then `count` × 21-byte events: `id_flags u8 | tick_offset u16 | pos 3×s16 | lin 3×s16 | ang 3×s16`. `id_flags` = ball id (6 bits, < 64) | flag << 6 (`NONE`, `POCKETED`, `RETIRED`, `RESTORED`). Fixed point, not f16 (f16 cannot hold 0.1 mm over a 5 m table): pos 0.1 mm about the Table origin (±3.27 m, error ≤ 0.05 mm), lin 0.5 mm/s (±16.3 m/s), ang 0.02 rad/s (±655 rad/s). `tick_offset` counts `LIVE_TICK` ticks from `base_tick` (= `Engine.get_physics_frames()` at the strike); `0xFFFF` = "apply now" for lifecycle events between shots. A frame holds ≤ 255 events; a 40-contact break is ~190 events ≈ 4 KB, well inside the 07 §3 budget (≤ 200 events/shot).
+
+**What is sent.** The host keeps, per ball, the state a client will have reconstructed (the last *sent, quantized* state advanced by `BallMotion.advance` each tick). It emits an event when a contact flags the ball (both balls), or when that prediction drifts > `DIVERGE_M` (2 mm [tune]) from Jolt, or when Jolt says rest but the prediction is still moving. So the 5 mm client-vs-host gate holds **by construction**, not because the model is exact; determinism is never needed. Events are coalesced per tick and flushed at 30 Hz (reliable, ch1). A 2 Hz **heartbeat** (unreliable ch2, full state) runs only while a Shot is live and is *corrective*: a client adopts a heartbeat state only when it is > 6 mm off (lost packet, late join), otherwise the host's prediction bookkeeping would no longer match what clients render. The net is silent at rest (R3).
+
+**Client** (`BallReplica` + `PhysicsSim`). Balls are kinematic. Per ball, a tick-sorted event list; a sample at tick T dead-reckons the newest event ≤ T with `BallMotion.advance` (interpolation only: the client renders at `playback_tick = shot_start + elapsed − 100 ms`, so events have already arrived). `shot_started` re-bases the clock and freezes every ball at its on-screen state. Visual spin integrates `ang_vel` per frame. Lifecycle flags (`POCKETED`, `RETIRED`, `RESTORED`) apply at their playback tick; `RoundDirector` derives the pocket from the nearest `PocketSpec` and re-emits `ball_potted`, and `shot_ended` fires when `playback_tick` passes the `end_tick` carried by `shot_resolved`. Known limit: host-side stat mods (`cloth_friction_mult`, tilt) are not mirrored into a client's `BallMotion.Params`, so under them the client relies on more divergence events.
+
+**Model** (`BallMotion.advance(state, dt, params)`, pure). Coulomb slide → roll (slip < 5 mm/s), rolling-resistance decel, Jolt's default linear/angular damping folded in as `(lin + 0.4·ang) / 1.4`, spin about the normal decaying exponentially, ballistic flight above `floor_y` (a pocketed ball's floor is −100 m: it falls through the cloth plane like Jolt's). Cushions, balls, jaws and landings are not modelled — they are events. `tests/sync/simdiff_probe.gd` (`SimDiff`): 40+ contact break, 50 ms simulated link, playback 100 ms behind → max error ≈ 2 mm, ≈ 190 events.
 
 ### 2.5 Channels
 `transfer_channel 0` is internally three ENet channels (one per transfer mode), so channel 0 traffic never blocks the others by default. We still split explicitly:
@@ -76,7 +84,7 @@ Events are **hand-packed** into a `PackedByteArray`, not pushed through `Multipl
 |---|---|---|
 | 0 | Godot internals, `MultiplayerSpawner` replication | Leave it alone. |
 | 1 | Shot intents, contact events (**reliable**) | Sparse and each one unrecoverable if lost — a dropped contact event corrupts dead reckoning forever. Reliability is cheap at ~40 packets per shot. |
-| 2 | Heartbeat, viewer count, player poses (**unreliable_ordered**) | Redundant and frequent; a late one is worse than a lost one. |
+| 2 | Shot-live heartbeat (2 Hz, corrective), viewer count, player poses (**unreliable_ordered**) | Redundant and frequent; a late one is worse than a lost one. |
 | 3 | Session, economy, effects, saves (**reliable**) | Must not be blocked behind a sim burst. |
 
 Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
@@ -168,12 +176,14 @@ MainLevel.tscn
 
 | RPC | Node | Dir | mode | sync | transfer | ch |
 |---|---|---|---|---|---|---|
-| `request_shot(dir, power, spin)` | PhysicsSim | C→H | `any_peer` | `call_remote` | `reliable` | 1 |
-| `shot_rejected(reason)` | PhysicsSim | H→1 | `authority` | `call_remote` | `reliable` | 1 |
-| `shot_started(shot_id, shooter_id, base_tick)` | PhysicsSim | H→A | `authority` | `call_local` | `reliable` | 1 |
-| `push_contact_events(shot_id, base_tick, blob)` | PhysicsSim | H→A | `authority` | `call_remote` | `reliable` | 1 |
-| `push_heartbeat(tick, blob)` | PhysicsSim | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
-| `shot_resolved(shot_id, shooter_id, end_tick, raw_points, trick_ids, foul)` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `request_shot(intent)` — wire: `_request_shot_rpc(blob 6×f32)`; the public `PhysicsSim.request_shot` is the entry (solo = local call) | PhysicsSim | C→H | `any_peer` | `call_remote` | `reliable` | 1 |
+| `shot_rejected(reason)` — `_shot_rejected_rpc`, also a local signal | PhysicsSim | H→1 | `authority` | `call_remote` | `reliable` | 1 |
+| `shot_started(shot_id, shooter_id, base_tick)` — `_shot_started_rpc` → signal `shot_started_net` | PhysicsSim | H→A | `authority` | `call_local` | `reliable` | 1 |
+| `push_contact_events(shot_id, base_tick, blob)` — `_push_events_rpc` | PhysicsSim | H→A | `authority` | `call_remote` | `reliable` | 1 |
+| `push_heartbeat(tick, blob)` — `_push_heartbeat_rpc` | PhysicsSim | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `shot_resolved(shot_id, shooter_id, end_tick, raw_points, trick_ids, foul)` — `_shot_resolved_rpc`, **`call_remote`**: the host already emitted `shot_ended` itself | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `push_rack(round_id, seed, blob)` — `_push_rack_rpc`; blob = `net_id u8, type u8, x f32, z f32` per ball | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `set_shooter(peer_id)` — `_set_shooter_rpc` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `round_state(round_index, phase, time_left)` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `update_cash(absolute_balance)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `update_viewers(count)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
