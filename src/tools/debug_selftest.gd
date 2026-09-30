@@ -55,7 +55,7 @@ func _process(_delta: float) -> bool:
 		quit()
 		return true
 
-	var player: Node = _scene.get_node("Player")
+	var player: Node = _scene.get_node("PlayerSpawner").get_local_player()
 	var rack: Node = _scene.get_node("DemoRack")
 	var s: String = STEPS[_step]
 	match s:

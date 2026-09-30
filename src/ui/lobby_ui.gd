@@ -11,4 +11,4 @@ func _ready() -> void:
 
 func _on_solo_pressed() -> void:
 	_solo.disabled = true
-	NetManager.host()
+	NetManager.host_solo()

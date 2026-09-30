@@ -8,12 +8,12 @@ extends Node3D
 ## this guard + code inspection rather than a built template (contract T2.1 note).
 ## Gameplay code never references src/debug (grep -r "debug" src/gameplay is empty);
 ## this script only calls Table.rebuild()/rack.spawn_layout()/Ball.strike() — all
-## consumer-facing gameplay API, and toggles built-in Node process flags on the Player
+## consumer-facing gameplay API, and toggles built-in Node process flags on the local Player
 ## subtree (no new fields, no edits to src/gameplay files) so the free camera can take over.
 
 @export var table: Table
 @export var rack: Node3D  # DemoRack
-@export var player: CharacterBody3D
+@export var spawner: PlayerSpawner  # finds the local walker; slots spawn after Debug is ready
 
 const TIMESCALE_STEPS := [1.0, 0.5, 0.25, 0.1, 2.0]
 
@@ -37,7 +37,6 @@ func _ready() -> void:
 	add_child(_hud)
 
 	_freecam = DebugFreeCamera.new()
-	_freecam.player = player
 	add_child(_freecam)
 
 	_gizmos = DebugGizmos.new()
@@ -61,6 +60,10 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("debug_hud"):
 		_hud.visible = not _hud.visible
 	elif event.is_action_pressed("debug_freecam"):
+		if _freecam.player == null:
+			_freecam.player = spawner.get_local_player()
+		if _freecam.player == null:
+			return
 		_freecam.toggle()
 		_refresh_mouse_mode()
 	elif event.is_action_pressed("debug_gizmos"):

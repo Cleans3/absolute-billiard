@@ -1,5 +1,5 @@
 extends SceneTree
-## C1: Lobby boots, Solo → NetManager.host() installs OfflineMultiplayerPeer, MainLevel loads,
+## C1: Lobby boots, Solo → NetManager.host_solo() installs OfflineMultiplayerPeer, MainLevel loads,
 ## this peer is the host with id 1. `godot --path . --headless -s tests/core/lobby_probe.gd`
 
 const LOBBY := "res://src/levels/Lobby.tscn"
