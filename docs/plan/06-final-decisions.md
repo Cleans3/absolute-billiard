@@ -174,4 +174,6 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 
 **P8 — Open questions closed with alpha's defaults.** bomb scatters and removes only itself · split = one spawn per pot · no house pocket · stone counts toward the ≤12 cap · fouls cost no Cash · hostile cap 2/Turn, no per-Round cap · `ice_water` refunds nothing · **netcode is silent at rest**: heartbeat 2 Hz only while a Shot is live (07 §3 over 04 §3), one full-state on join/resume.
 
+**P10 — Noray first, own tunnel relay as fallback (2026-09-30, after the first real relay run).** Noray stays for the lobby code and the direct punch. Its built-in relay is not used: it cannot reach a host behind a symmetric NAT (Cleanse's own network, many mobile carriers). The fallback is `deploy/noray/tunnel.py` on the same VPS: one UDP port per joiner, both addresses learned from token packets on that port, so it works behind any NAT (04 §2.3).
+
 **P9 — M0 is measured later, not waited on.** The mobile perf spike ships as a one-command device run (`src/tools/m0_device_run.sh`); M2+ proceed meanwhile. `PhysicsSim.LIVE_TICK` is the single tick constant, so the 240/120 Hz outcome is a one-line change.

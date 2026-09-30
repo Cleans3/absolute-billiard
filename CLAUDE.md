@@ -14,7 +14,7 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 | `03-bar-drinks-events.md` | typed `StatMod`/`Effect` schema, Drinks, crew-chosen Events, free-roam world interactions |
 | `04-architecture-netcode.md` | project layout, scene tree, autoloads, transport, RPC/channel table, `SaveProfile` |
 | `05-index.md` | cross-module signal map, open questions, review checklist |
-| `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P9** (P rulings override everything above them in that file) |
+| `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P10** (P rulings override everything above them in that file) |
 | `07-optimization.md` | per-aspect mobile budgets and measurement gates |
 | `08-player.md` | Player v1 (P6): touch-first first person, WALK/CUE/CARRY modes, touch layout, avatars |
 
@@ -46,7 +46,7 @@ Do not hand-edit `.godot/` (editor cache) or `*.uid` / `*.import` files.
 - **Mobile first.** Keep `renderer/rendering_method="mobile"`; no Forward+-only features (SSR, SDFGI, volumetric fog). Bar mood = `LightmapGI` bake + emissive + fog plane. Web export is out of scope.
 - **One autoload: `NetManager`** (`src/core/`). `SaveManager` is a static class. `GameLoop`, `RoundDirector`, `EconomyManager`, `StreamManager`, `EffectManager`, `EventScheduler` are children of `MainLevel`; `PhysicsSim` lives inside the `Table` scene. No global signal bus. "New campaign" = scene reload.
 - **Host-authoritative, event-based sync.** Host runs Jolt; clients dead-reckon between transmitted contact events via shared `BallMotion.advance`, interpolate only, gate presentation on the playback clock. Hand-packed `PackedByteArray`, not `MultiplayerSynchronizer` (only `PlayerSlot`s use `MultiplayerSpawner`). RPC modes/channels are tabulated in 04 §5 — match them exactly.
-- **Transport enum** `{enet_direct, enet_noray, steam}`; Noray is primary, Steam optional PC-only, loaded conditionally. Singleplayer = host with zero peers (`OfflineMultiplayerPeer`), never an `if singleplayer` branch.
+- **Transport enum** `{enet_direct, enet_noray, steam}`; Noray is primary (lobby code + direct punch) with our own tunnel relay as the any-NAT fallback (06 P10, `deploy/noray/tunnel.py`), Steam optional PC-only, loaded conditionally. Singleplayer = host with zero peers (`OfflineMultiplayerPeer`), never an `if singleplayer` branch.
 - **One `Shot` at a time; non-shooters free-roam** and affect play through `request_world_interaction(kind, target_id, payload)` → host-validated `Effect` with `owner_peer_id`. Physics-altering Effects apply on host `PhysicsSim` first, then broadcast.
 - **Effects are the only modifier path** (`Array[StatMod]`, `op ADD|MUL`); `Reward = Drink_Mult × Event_Mult`. Trick bonuses are disjoint multipliers, never summed.
 - Boot scene is `Lobby.tscn`.
@@ -65,4 +65,4 @@ M0–M7 built (2026-09-30), every milestone's code and probes on `main`; what is
 
 Table reads as a real pool table at scale **2.0** (regulation × `TableSpec.scale`), everything derived from `REG_*` constants — no metre literal outside `TableSpec` in `src/gameplay/{table,balls,round}`. Data → pure geometry → scene split: `table_geometry.gd` → `table_builder.gd` → `table_visuals.gd`; `table.gd` only orchestrates. `Ball.is_resting` (not Jolt's `sleeping`) is what `PhysicsSim` counts toward `awake`. GameLoop keeps `round_director` typed `Node` on purpose: the economy probe injects a fake director. Debug tooling in `src/debug/` (NetGraph on F8, SimDiff) — see `src/debug/README.md`.
 
-**Open, needs the user:** Noray relay not deployed yet on 160.191.243.188 (then `pair.sh … --noray` / `--relay-only` against it); GodotSteam not fetched (Steam API names unverified, its peer has no channels); M0 numbers on a real phone (`m0_device_run.sh`); iOS/macOS exports unverified (no Mac).
+**Open, needs the user:** tunnel relay not deployed yet on 160.191.243.188 (Noray + share page are; then `pair.sh tests/net/pair_probe.gd --noray --relay-only` against it); `ufw` fails on that box, so it has no firewall; GodotSteam not fetched (Steam API names unverified, its peer has no channels); M0 numbers on a real phone (`m0_device_run.sh`); iOS/macOS exports unverified (no Mac).

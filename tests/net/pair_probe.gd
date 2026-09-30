@@ -8,6 +8,7 @@ var nm: Node
 var noray := false
 var relay := ""
 var relay_only := false
+var tunnel := ""
 
 
 func _init() -> void:
@@ -20,8 +21,10 @@ func _init() -> void:
 			noray = true
 		elif a.begins_with("--relay="):  # relay_host override, e.g. 127.0.0.1 for a local noray
 			relay = a.substr(8)
-		elif a == "--relay-only":  # skip the direct attempt so the relay path is what gets tested
+		elif a == "--relay-only":  # skip the direct attempt so the tunnel relay is what gets tested
 			relay_only = true
+		elif a.begins_with("--tunnel="):  # tunnel_host override, e.g. 127.0.0.1 for a local tunnel.py
+			tunnel = a.substr(9)
 	call_deferred("_run")
 
 
@@ -46,6 +49,8 @@ func _run() -> void:
 		nm.config.relay_host = relay
 	if relay_only:
 		nm.config.direct_try_sec = 0.0
+	if tunnel != "":
+		nm.config.tunnel_host = tunnel
 	var code_file := OS.get_environment("PAIR_DIR") + "/code"
 	if role == "host":
 		nm.host(nm.Transport.ENET_NORAY if noray else nm.Transport.ENET_DIRECT)

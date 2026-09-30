@@ -11,3 +11,9 @@ services:
     command: python /app/join_page.py 8892
     volumes: ["./join_page.py:/app/join_page.py:ro"]
     network_mode: host
+  tunnel:
+    image: python:3-alpine
+    restart: unless-stopped
+    command: python /app/tunnel.py 8893 49252 100
+    volumes: ["./tunnel.py:/app/tunnel.py:ro"]
+    network_mode: host

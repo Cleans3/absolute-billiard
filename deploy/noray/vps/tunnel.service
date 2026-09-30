@@ -1,0 +1,11 @@
+[Unit]
+Description=Tunnel relay, the any-NAT fallback (absolute-billiard)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/noray/tunnel.py 8893 49252 100
+Restart=always
+User=noray
+
+[Install]
+WantedBy=multi-user.target

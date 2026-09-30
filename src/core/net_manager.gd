@@ -17,6 +17,10 @@ const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
 const HOST_ID := 1
 const STEAM_TRANSPORT := "res://src/core/transport_steam.gd"  # loaded by path: phone builds must not parse it
+## An ENet header naming no peer and carrying no command: every ENet receiver drops it silently.
+const PUNCH_PACKET: PackedByteArray = [0x0f, 0xff]
+const PUNCH_COUNT := 20
+const PUNCH_INTERVAL_SEC := 0.1
 
 var config: NetConfig = preload("res://src/resources/net_config.tres")
 var transport := Transport.ENET_DIRECT
@@ -34,6 +38,7 @@ var _level_ready: Dictionary = {}  # peer_id -> true, host only, this session
 var _timeout: SceneTreeTimer
 var _steam: Node  # SteamTransport instance, PC + addon + Steam running only
 var _noray: NorayClient  # keeps the host's control connection (= its lobby registration) alive
+var _tunnel: NorayClient  # host's registration with the tunnel relay; closing it frees its tunnels
 var _gen := 0  # bumped by _reset(); an async join/host from an older generation must stand down
 
 
@@ -244,6 +249,50 @@ func _host_noray() -> void:
 	_noray = nc
 	lobby_code = nc.oid
 	_install_host(peer)
+	_host_handshakes(nc, peer, gen)
+
+
+## Host half of both handshakes (04 §2.3). Noray says where a joiner will appear from
+## (`connect <ip:port>`); the tunnel relay hands out one UDP port per joiner (`tunnel <port> <token>`).
+## A burst from ENet's own socket opens this side's NAT toward the joiner, or teaches the tunnel this
+## side's address.
+func _host_handshakes(nc: NorayClient, peer: ENetMultiplayerPeer, gen: int) -> void:
+	var tun := NorayClient.new()  # the tunnel relay speaks Noray's line framing
+	if await tun.open(_tunnel_host(), config.tunnel_tcp_port, config.timeout_sec):
+		tun.send("host " + nc.oid)
+	else:
+		push_warning("NetManager: tunnel relay unreachable; only direct joins will work")
+	if gen != _gen:
+		tun.close()
+		return
+	_tunnel = tun
+	var tunnel_ip := IP.resolve_hostname(_tunnel_host(), IP.TYPE_IPV4)
+	while gen == _gen and _noray == nc:
+		var direct := nc.take_command("connect")
+		if direct != "":
+			var sep := direct.rfind(":")
+			_punch(peer, direct.substr(0, sep), int(direct.substr(sep + 1)), PUNCH_PACKET, gen)
+		var tunnel := tun.take_command("tunnel")
+		if tunnel != "":
+			_punch(peer, tunnel_ip, int(tunnel.get_slice(" ", 0)), _tunnel_token(tunnel), gen)
+		await get_tree().process_frame
+
+
+func _punch(peer: ENetMultiplayerPeer, address: String, port: int, packet: PackedByteArray, gen: int) -> void:
+	for i in PUNCH_COUNT:
+		if gen != _gen or peer.host == null:
+			return
+		peer.host.socket_send(address, port, packet)
+		await get_tree().create_timer(PUNCH_INTERVAL_SEC).timeout
+
+
+func _tunnel_host() -> String:
+	return config.relay_host if config.tunnel_host.is_empty() else config.tunnel_host
+
+
+## `<port> <token>` from the tunnel relay → the datagram that teaches it our address on that port.
+static func _tunnel_token(answer: String) -> PackedByteArray:
+	return ("AB" + answer.get_slice(" ", 1)).to_ascii_buffer()
 
 
 func _join_noray(code: String) -> void:
@@ -263,21 +312,34 @@ func _join_noray(code: String) -> void:
 	if target == "":
 		_fail(&"unknown_code")
 		return
-	# Direct first (our outbound packet punches our own NAT); relay when that stays silent.
+	# Direct first (our outbound packet punches our own NAT, the host punches back).
 	var sep := target.rfind(":")
 	if await _try_client(target.substr(0, sep), int(target.substr(sep + 1)), nc.local_port, config.direct_try_sec, gen):
 		return
 	if gen != _gen:
 		return
-	nc.send("connect-relay " + oid)
-	var relay_port := int(await nc.wait_command("connect-relay", config.timeout_sec))
+	# Fallback (06 P10): the tunnel relay learns both addresses from packets sent to one port, so it works
+	# behind any NAT. Noray's own relay is not used: it cannot reach a host behind a symmetric NAT.
+	var tun := NorayClient.new()
+	var answer := ""
+	if await tun.open(_tunnel_host(), config.tunnel_tcp_port, config.timeout_sec):
+		tun.send("join " + oid)
+		answer = await tun.wait_command("tunnel", config.timeout_sec)
+	tun.close()
 	if gen != _gen:
 		return
-	if relay_port == 0:
+	var tunnel_ip := IP.resolve_hostname(_tunnel_host(), IP.TYPE_IPV4)
+	var port := int(answer.get_slice(" ", 0))
+	var local_port := 0
+	if port > 0:
+		local_port = await NorayClient.knock(tunnel_ip, port, _tunnel_token(answer), config.timeout_sec)
+	if gen != _gen:
+		return
+	if local_port == 0:
 		_fail(&"relay_failed")
 		return
 	var peer := ENetMultiplayerPeer.new()
-	if peer.create_client(config.relay_host, relay_port, config.channel_count, 0, 0, nc.local_port) != OK:
+	if peer.create_client(tunnel_ip, port, config.channel_count, 0, 0, local_port) != OK:
 		_fail(&"join_failed")
 		return
 	_install_client(peer)
@@ -423,12 +485,15 @@ func _reset() -> void:
 	_gen += 1
 	if _steam != null:
 		_steam.leave()
+	if multiplayer.multiplayer_peer != null:
+		multiplayer.multiplayer_peer.close()  # before the relays: its goodbye packets may travel through them
+	multiplayer.multiplayer_peer = null
 	if _noray != null:
 		_noray.close()
 		_noray = null
-	if multiplayer.multiplayer_peer != null:
-		multiplayer.multiplayer_peer.close()
-	multiplayer.multiplayer_peer = null
+	if _tunnel != null:
+		_tunnel.close()
+		_tunnel = null
 	_roster = []
 	_level_ready.clear()
 	lobby_code = ""
