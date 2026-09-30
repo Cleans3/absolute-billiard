@@ -22,8 +22,9 @@ var rising := true
 var spin := Vector2.ZERO        # unit disc: x = side (right +), y = follow (+) / draw (−)
 var elevation_deg := 0.0
 var _aim_radius := 0.0          # last-aimed ball's radius, drives the pullback visual
-## Optional veto `(ball: Ball) -> bool`; RoundDirector installs it. Invalid = every strike allowed.
-var gate: Callable
+## Where a release goes: `PhysicsSim.request_shot(intent)` — host validates and strikes, clients ask.
+## Installed by MainLevel; invalid = nothing fires.
+var shot_sink: Callable
 
 @onready var cue_mesh: Node3D = $CueMesh
 @onready var bar: ProgressBar = $HUD/PowerBar
@@ -97,7 +98,7 @@ func _find_ball() -> Ball:
 
 func _fire() -> void:
 	var ball := _find_ball()
-	if ball == null or (gate.is_valid() and not gate.call(ball)):
+	if ball == null or not ball.is_cue_ball or not shot_sink.is_valid():
 		return
 	var cam := get_viewport().get_camera_3d()
 	var fwd := -cam.global_basis.z
@@ -107,4 +108,4 @@ func _fire() -> void:
 	intent.spin_offset = spin
 	intent.elevation_deg = elevation_deg
 	intent.shooter_id = multiplayer.get_unique_id()
-	ball.strike(intent, cue_spec)
+	shot_sink.call(intent)

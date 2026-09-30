@@ -9,6 +9,8 @@ signal all_resting
 ## Every peer, host included (04 §5 `shot_started` RPC): the network-level start of a Shot.
 signal shot_started_net(shot_id: int, shooter_id: int, base_tick: int)
 signal shot_rejected(reason: StringName)
+## Client: a streamed lifecycle flag (BallEventCodec.Flag) reached its playback tick and was applied.
+signal ball_flag_applied(ball: Ball, flag: int)
 ## Host: a nudge was applied (RoundDirector logs it as a NUDGE ContactLog entry, 01 §3).
 signal nudged(direction: Vector2, strength: float, source_peer_id: int)
 ## Host: a frame of ball events / heartbeat was flushed (also emitted with no peers when `capture`).
@@ -474,7 +476,12 @@ func _on_replica_flag(id: int, flag: int, tick: int) -> void:
 	var b := _by_id[id] if id < _by_id.size() else null
 	if b == null:
 		return
-	at_playback(tick, b.net_apply_flag.bind(flag))
+	at_playback(tick, _apply_flag.bind(b, flag))
+
+
+func _apply_flag(b: Ball, flag: int) -> void:
+	b.net_apply_flag(flag)
+	ball_flag_applied.emit(b, flag)
 
 
 func _process(delta: float) -> void:
