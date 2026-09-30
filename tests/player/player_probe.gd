@@ -409,6 +409,7 @@ func _pose() -> void:
 # --- interact prompt, shop, camera carry --------------------------------------------------------------
 
 func _stand_at(pos: Vector3) -> void:
+	player.collision_mask |= 1  # the level floor is still on layer 1 (PERF moves it to 4)
 	player.global_position = pos
 	player.velocity = Vector3.ZERO
 	player.rotation.y = 0.0
@@ -425,13 +426,54 @@ func _interact() -> void:
 	_check(player.prompt == "", "no prompt out of reach: '%s'" % player.prompt)
 	_stand_at(Vector3(5.5, 0.05, 4.6))
 	await _physics(6)
-	_check(player.prompt == "Buy a drink", "bar counter prompts the shop (drink pickers excluded): '%s'" % player.prompt)
-	player.interact()
+	_check(player.prompt == "Bar counter", "the three counter props share one prompt: '%s'" % player.prompt)
+	var picker: DrinkPicker = level.get_node("UILayer/DrinkPicker")
 	var shop: ShopMenu = level.get_node("UILayer/ShopMenu")
-	_check(shop._panel.visible, "bar_buy opens the ShopMenu")
-	shop.close()
-	# camera carry
+	var econ: EconomyManager = level.get_node("EconomyManager")
 	var world: WorldInteractions = level.get_node("WorldInteractions")
+	player.interact()
+	_check(picker.is_open() and picker.kind == &"bar_serve", "Interact at the counter opens the drink picker")
+	_check(picker._rows.size() == ShopCatalog.in_category(&"drink").size(), "one row per drink")
+	for id: StringName in picker._rows:
+		var row: Button = picker._rows[id]
+		_check(row.custom_minimum_size.y >= 48.0, "row %s is touch-sized" % id)
+	picker.open(&"throw_drink")
+	_check(picker._rows[&"beer"].disabled, "throw rows grey out without Cash")
+	econ.add_cash(1000, &"test")
+	picker.open(&"bar_serve")
+	_check(not picker._rows[&"beer"].disabled, "serve row beer is enabled with Cash: %s" % picker._rows[&"beer"].text)
+	_check(picker._rows[&"energy_drink"].disabled, "intermission-only drink greyed while a Round is live")
+	var bought: Array[StringName] = []
+	econ.item_purchased.connect(func(id: StringName, _b: int) -> void: bought.append(id))
+	var cash0 := econ.cash
+	picker._rows[&"beer"].pressed.emit()
+	await _frames(2)
+	_check(not picker.is_open(), "a pick closes the picker")
+	_check(bought == [&"beer"] and econ.cash == cash0 - ShopCatalog.item(&"beer").cost_cash, "serve went to the host: drink bought (%s)" % [bought])
+	var rejected: Array[StringName] = []
+	world.interaction_rejected.connect(func(_k: StringName, r: StringName) -> void: rejected.append(r))
+	picker.open(&"throw_drink")
+	picker._rows[&"beer"].pressed.emit()
+	await _frames(2)
+	_check(rejected == [&"shooter_cant_grief"], "throw reached the host's hostile rules: %s" % [rejected])
+	picker.open(&"bar_serve")
+	picker.shop_requested.emit()
+	_check(shop._panel.visible, "picker's Shop button opens the ShopMenu")
+	shop.close()
+	picker.open(&"bar_serve")
+	_stand_at(Vector3(-1.0, 0.05, 3.0))
+	await _physics(6)
+	_check(not picker.is_open(), "walking away closes the picker")
+	# no two Interactables closer than 1 m (except the counter's own three)
+	var props := get_nodes_in_group(&"interactable")
+	for i in props.size():
+		for j in range(i + 1, props.size()):
+			var pa := props[i] as Interactable
+			var pb := props[j] as Interactable
+			if pa.effective_kind() in Player.BAR_KINDS and pb.effective_kind() in Player.BAR_KINDS:
+				continue
+			_check(pa.global_position.distance_to(pb.global_position) >= 1.0, "%s and %s are %.2f m apart" % [pa.effective_kind(), pb.effective_kind(), pa.global_position.distance_to(pb.global_position)])
+	# camera carry
 	world.clock = func() -> int: return _fake_ms
 	var cams: CameraRigs = level.get_node("Cameras")
 	var rig := cams.rigs[0]
@@ -442,6 +484,13 @@ func _interact() -> void:
 	await _frames(2)
 	_check(player.mode == Player.Mode.CARRY, "grab → CARRY")
 	_check(rig.held_by == root.multiplayer.get_unique_id(), "host marked the rig held")
+	# host says someone else holds it: CARRY ends, and the rig is no longer offered
+	rig.held_by = 999
+	cams.holders_changed.emit()
+	_check(player.mode == Player.Mode.WALK, "held_by mismatch ends CARRY")
+	rig.held_by = root.multiplayer.get_unique_id()
+	cams.holders_changed.emit()
+	_check(player.mode == Player.Mode.CARRY, "held_by == me (re)enters CARRY")
 	_fake_ms += 6000
 	_stand_at(Vector3(-2.0, 0.05, 3.0))
 	await _physics(4)

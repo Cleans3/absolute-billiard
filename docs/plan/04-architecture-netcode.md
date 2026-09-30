@@ -202,7 +202,7 @@ MainLevel.tscn
 | `reject_purchase(item_id, reason)` | EconomyManager | H→1 | `authority` | `call_local` | `reliable` | 3 |
 | `update_owned(ids, counts, item_id, buyer_peer_id)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
-| `push_rig_poses(poses)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `push_rig_poses(poses, holders)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `apply_event(event_id, round_index, pocket_id)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `event_offer(round_index, tier, event_ids)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
@@ -215,7 +215,7 @@ MainLevel.tscn
 | `start_session(seed)` | NetManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
 
-`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it). `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) at 4 Hz, only while a rig moved plus a few repeats at rest. `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
+`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it). `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) plus a `PackedInt32Array` of holder peer ids (0 = free) at 4 Hz, only while a rig moved or changed hands, plus a few repeats at rest; the Player derives `CARRY` from the holders (08 §5). `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 
 ### Free-roam world interaction (P2)
 Non-shooters roam the bar. Every one of those interactions is one RPC pair, and 04 owns only the envelope — the `kind` registry is a black box filled in by 01/02/03 and the Player pass:
