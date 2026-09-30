@@ -22,7 +22,7 @@ Open questions listed in `05`/each doc §6 need the user's decision — do not r
 
 ## Engine & commands
 
-Godot **4.7.1** (`godot` on PATH), GDScript, Mobile renderer, Jolt physics. No package manager, no build step, no test runner — `tests/**/*_probe.gd` are plain SceneTree scripts run with `-s`; codec round-trip and save migration fixtures are still planned in 04 §4.
+Godot **4.7.1** (`godot` on PATH), GDScript, Mobile renderer, Jolt physics. No package manager, no build step. `tests/**/*_probe.gd` are plain SceneTree scripts run with `-s`; `*_pair_probe.gd` need two processes and run through `tests/net/pair.sh`; `tests/run_all.sh` runs everything (CI: `.github/workflows/ci.yml`).
 
 ```bash
 godot --path . --editor                 # open editor
@@ -31,7 +31,13 @@ godot --path . res://src/levels/MainLevel.tscn   # run a specific scene
 godot --path . --headless -s src/tools/rig_builder.gd   # one-shot SceneTree tool script
 godot --path . --headless --import      # reimport assets (after adding to assets/) — also needed after adding a class_name
 godot --path . --headless -s tests/physics/probe.gd   # physics feel probe (roll-out, cushion angle, draw/follow); prints PROBE OK
+tests/run_all.sh                        # every probe + every pair probe; prints ALL PROBES OK
+bash tests/net/pair.sh tests/net/campaign_pair_probe.gd   # two peers (host + client) run one pair probe; prints PAIR OK
+bash src/tools/android_export.sh        # gradle debug APK (deep-link intent-filters) → build/android/ab.apk
+src/tools/m0_device_run.sh --quick      # M0 phone gate (07 §9): export, adb install, fixtures, budget table
 ```
+
+First-time Android: `src/tools/setup_android_toolchain.sh` (JDK 17, SDK 35, NDK r28b, 4.7.1 templates, debug keystore). Steam (PC only): `src/tools/fetch_godotsteam.sh` fetches the pinned GDExtensions into the gitignored `addons/`.
 
 Do not hand-edit `.godot/` (editor cache) or `*.uid` / `*.import` files.
 
@@ -49,8 +55,14 @@ Planned layout (04 §4): `src/core` net/save/shared motion · `src/gameplay` Tab
 
 ## Current state
 
-M1 local sim (2026-09-21): boot is `Lobby.tscn` → Solo → `NetManager.host()` installs `OfflineMultiplayerPeer` → `MainLevel.tscn`, whose `main_level.gd` starts the campaign. `MainLevel` children: `RoundDirector` (rack drop via seeded Poisson-disk `rack_dropper.gd`, shot boundary off `PhysicsSim.shot_started`/`all_resting`, `ContactLog`, `TrickDetector` — 5 disjoint tricks, foul + kitchen respawn, OFF_TABLE by bounds, wedged-cue respawn), `GameLoop` (Night/Round state machine, 120 s timer, shot budget, untimed Intermission, reckoning, Buyout on Night 5), `EconomyManager` (02 §3.2 with Camera_Mult/Event_Mult pinned 1.0 until M5/M6), `StreamManager` (viewers/hype/tips; buffers `ball_potted` and applies after Economy reads `viewer_scalar()`), `UILayer/HUD`. `NightConfig` ×5 in `src/resources/nights/`. `DemoRack` stays in the scene with `enabled = false` (debug presets only). `CueController.gate` lets `RoundDirector` restrict strikes to the cue ball between shots. Signal names follow 02 §5 verbatim; `round_ended` reasons `timer | cleared | shots` (`stuck` retired).
+M0–M7 built (2026-09-30), every milestone's code and probes on `main`; what is still open needs hardware or a user run (bottom).
 
-Headless checks (all must print their OK): `tests/core/lobby_probe.gd` (C1), `tests/core/main_level_probe.gd` (integration), `tests/round/round_probe.gd` (C3–C5), `tests/economy/economy_probe.gd` (C6), `tests/physics/probe.gd`, `tests/physics/geometry_probe.gd`. GameLoop keeps `round_director` typed `Node` on purpose: the economy probe injects a fake director.
+- **Boot → play.** `Lobby.tscn` (`LobbyUI`: Host / Join code / Advanced IP / Solo / Resume / Steam when available) → `NetManager` (autoload: roster, seat order, `start_game`, `all_peers_ready` barrier) → `MainLevel.tscn`. Solo = `NetManager.host_solo()` on `OfflineMultiplayerPeer`. Lobby code = Noray OID (6-char Crockford); share link `http://160.191.243.188:8892/j/<code>` and `absolutebilliard://j/<code>` both open the app (gradle build injects the intent-filters, `addons/deeplink`).
+- **Sync (M3).** Host strikes with `PhysicsSim.active_cue` after `shot_validator`; streams 25 B-intent / ≤21 B contact + divergence events (`BallEventCodec`, s16 fixed point), clients replay through `BallMotion.advance` 100 ms behind (`at_playback`). Balls freeze at rest and thaw at strike — anything that moves a resting ball outside a strike must thaw it first. Background/resume: `NetManager.backgrounded` + `request_full_state`. `tests/net/rpc_table_probe.gd` fails if any `@rpc` drifts from 04 §5.
+- **Game (01/02/03).** `RoundDirector` (racks incl. authored N1/N5, gimmick balls bomb/split/joker/stone, call-pocket, host shot clock, shuffle, pocket radius/oscillation), `GameLoop` (Night/Round, checkpoints each Round via `SaveManager`, Endless), `EconomyManager` (Bartender Shop, camera rigs + scorer, cue specs), `StreamManager`, `EffectManager`/`EventScheduler` (drinks, events + vote, world interactions via `WorldInteractions`).
+- **Player (08).** `player.gd` WALK/CUE/CARRY, `CueController` is the one `ShotIntent` source for touch (`src/ui/TouchControls`) and desktop keys; remote peers are puppets fed by 10 Hz poses.
+- **Mobile (07).** `BarRoom.tscn` baked lighting (rebuild: `build_bar_room.gd` + `bake_lightmaps.sh`), `QualityManager` tiers, collision layers per 08 §2.1 (balls mask 1|2|3, player layer 4), CCD threshold derived from `TableSpec`, Android APK arm64 with compressed native libs.
 
-Table (v0.0.3-beta) reads as a real pool table at scale **2.0** (regulation × `TableSpec.scale`), everything derived from `REG_*` constants — no metre literal outside `TableSpec` in `src/gameplay/{table,balls,round}`. Data → pure geometry → scene split: `table_geometry.gd` → `table_builder.gd` → `table_visuals.gd`; `table.gd` only orchestrates. `Ball.is_resting` (not Jolt's `sleeping`) is what `PhysicsSim` counts toward `awake`; a pocketed ball reports resting when it freezes. Debug tooling in `src/debug/` — see `src/debug/README.md`. `src/gameplay/player/` is a placeholder first-person walker — **Player design is deferred**, treat it as a black box. Not built yet: M0 mobile perf spike (needs the phone), M2+ netcode, Effects/Drinks/Events, Shop, cameras, SaveProfile, gimmick balls, authored racks.
+Table reads as a real pool table at scale **2.0** (regulation × `TableSpec.scale`), everything derived from `REG_*` constants — no metre literal outside `TableSpec` in `src/gameplay/{table,balls,round}`. Data → pure geometry → scene split: `table_geometry.gd` → `table_builder.gd` → `table_visuals.gd`; `table.gd` only orchestrates. `Ball.is_resting` (not Jolt's `sleeping`) is what `PhysicsSim` counts toward `awake`. GameLoop keeps `round_director` typed `Node` on purpose: the economy probe injects a fake director. Debug tooling in `src/debug/` (NetGraph on F8, SimDiff) — see `src/debug/README.md`.
+
+**Open, needs the user:** Noray relay not deployed yet on 160.191.243.188 (then `pair.sh … --noray` / `--relay-only` against it); GodotSteam not fetched (Steam API names unverified, its peer has no channels); M0 numbers on a real phone (`m0_device_run.sh`); iOS/macOS exports unverified (no Mac).
