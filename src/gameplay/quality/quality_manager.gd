@@ -27,6 +27,7 @@ const TICK_CAP_TIER2 := 120
 @export var sim: PhysicsSim
 @export var active_fps := 60  # 120 is PC-only (07 §2 modes)
 
+static var current_tier := 0
 var battery_mode := false: set = set_battery_mode
 var ladder := QualityLadder.new()
 var paused := false
@@ -57,9 +58,9 @@ func set_battery_mode(on: bool) -> void:
 		_apply_fps()
 
 
-## Live tick to use for `base` under the current tier (07 §7.4 tier 2: 120 Hz).
-func tick_cap(base: int) -> int:
-	return mini(base, TICK_CAP_TIER2) if ladder.tier >= 2 else base
+## Live tick to use for `base` under the current tier (07 §7.4 tier 2: 120 Hz); PhysicsSim calls it on strike.
+static func tick_cap(base: int) -> int:
+	return mini(base, TICK_CAP_TIER2) if current_tier >= 2 else base
 
 
 func trails_enabled() -> bool:
@@ -140,6 +141,7 @@ func _apply_fps() -> void:
 
 
 func _apply_tier() -> void:
+	current_tier = ladder.tier
 	var t: Dictionary = TIERS[ladder.tier]
 	var vp := get_viewport()
 	vp.scaling_3d_scale = t.scale

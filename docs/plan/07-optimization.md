@@ -31,7 +31,7 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 ## 1. Physics (Jolt)
 
-*Status (M0):* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured (one constant: `PhysicsSim.LIVE_TICK`). Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4). **Layers (item 1) are live**: balls layer 1 / mask `1|2|3` (`Ball.tscn`), bed + rails layer 2 (`table_builder.gd`), pocket drop zones layer 3 (Area3D, mask 1, not monitorable), world/players/bar layer 4 (`BarRoom` collision, `Player.tscn` layer 4 / mask `2|4`); `Interactable` keeps its own layer 6. `tests/physics/layers_probe.gd` proves a world-layer wall does not stop a ball. **Jolt limits trimmed** (`project.godot [physics]`): `max_bodies 512` (was 10240), `max_body_pairs 4096` (65536), `max_contact_constraints 2048` (20480), `temporary_memory_buffer_size 8` MiB (32) — `Memory/Static` with Table + 13 balls: **59.3 MB → 35.0 MB (−24.3 MB)**, measured on the dev PC, deterministic. `perf_break` findings that need a Ball/PhysicsSim decision (SYNC): CCD is on for up to **6–7** bodies during a break (budget ≤ 2 — the `ccd_speed_mps` gate lets every fast ball switch it on), and a max break takes up to **10–11 s** to all-rest (budget ≤ 9 s; 7.9 s in 6 emulator runs — aim jitter moves it).
+*Status (M0):* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured (one constant: `PhysicsSim.LIVE_TICK`). Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4). **Layers (item 1) are live**: balls layer 1 / mask `1|2|3` (`Ball.tscn`), bed + rails layer 2 (`table_builder.gd`), pocket drop zones layer 3 (Area3D, mask 1, not monitorable), world/players/bar layer 4 (`BarRoom` collision, `Player.tscn` layer 4 / mask `2|4`); `Interactable` keeps its own layer 6. `tests/physics/layers_probe.gd` proves a world-layer wall does not stop a ball. **Jolt limits trimmed** (`project.godot [physics]`): `max_bodies 512` (was 10240), `max_body_pairs 4096` (65536), `max_contact_constraints 2048` (20480), `temporary_memory_buffer_size 8` MiB (32) — `Memory/Static` with Table + 13 balls: **59.3 MB → 35.0 MB (−24.3 MB)**, measured on the dev PC, deterministic. **Closed by `perf_break` (REQ#perf-2, dev PC, ×20, same metric before/after):** (1) *CCD*: the flat `ccd_speed_mps = 3.0` was tuned at scale 1.0; at scale 2.0 (step 42 mm at 6 m/s vs R 57 mm) 7 balls switched it on. It is now derived, `TableSpec.ccd_speed_mps = 0.8 · R · LIVE_TICK` (5.5 m/s at scale 2.0, 2.7 at 1.0) — peak **7 → 2** (cue ball + one). Probed: CCD off above 7 m/s breaks the round probe's bank shot (rail contact lost), so "never CCD" is not an option. (2) *strike→rest*: a ball spinning in place (`|v| < 0.001`, english ≈ 2 rad/s) skipped `Ball`'s spin bleed and sat awake for 7+ s; the bleed now runs on that branch — max **11.4 s → 6.4 s**, roll-out feel unchanged (`probe.gd` OK). (3) *table at rest*: two causes, both fixed — the six pocket `Area3D` sensors were stepped by Jolt every tick (**~440 µs**; `Table` now arms them only while `PhysicsSim.active_changed`, host only, clients keep theirs), and a body with `_integrate_forces` never sleeps, so 13 "resting" balls still ran the callback every tick (**~530 µs**; `PhysicsSim` freezes them at `all_resting`, thaws at strike, `Ball.strike` thaws the cue ball before its impulse). Table + 13 balls at rest: **~550 → 8 µs/tick** over an empty scene (`tests/perf/rest_cost.gd`, CI-gated ≤ 50 µs). `perf_break`'s `bodies_active_at_rest` reads 0 either way — that monitor does not count these balls. (4) *live tick*: `TIME_PHYSICS_PROCESS` cannot resolve this (an empty scene reads 0.4–1.1 ms, and it is unusable under `--fixed-fps`); with `--fixed-fps 60 -- --fixed=1` the fixture takes wall/ticks over the shots: **0.63 ms/tick** live, before *and* after the hot-path hoists (`_integrate_forces` itself is ~8 µs/call = 0.1 ms/tick; gravity lookup and `ccd_speed_mps` hoisted, no behaviour change). The old 1.5 ms was the monitor, not Jolt. On the phone the row is the noisy monitor minus baseline; the Profiler decides.
 
 | metric | budget |
 |---|---|
@@ -46,7 +46,7 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 **Techniques, in order.**
 1. **Collision layers first — it is free.** 1 `balls`, 2 `table_rails`, 3 `pockets` (Area3D), 4 `world` (players, stools, jukebox). Ball mask = `1|2|3` only. Free-roaming players and bar props are *never* tested against balls; table-bumping (P2) is a scripted `Effect`, not a collision. This removes 13 × 4 player-capsule pairs × 240 Hz from the broad phase.
-2. **240 Hz tick, CCD gated on speed.** At 240 Hz a 10 m/s ball travels `41.7 mm` per step, under the `57.15 mm` ball-ball contact distance — discrete detection holds for ball-ball. It does *not* hold for the pocket jaw cylinders. So: `Ball.continuous_cd` toggled on when `linear_velocity.length() > 3.0 m/s [tune]`, off below. Cue ball keeps it on for the whole shot. Fallback ladder if the 695 misses budget: `240 Hz + gated CCD` → `120 Hz + CCD on all` (120 Hz travels 83 mm/step, CCD is then mandatory) → `120 Hz + max_physics_steps_per_frame 8`.
+2. **240 Hz tick, CCD gated on speed.** At 240 Hz a 10 m/s ball travels `41.7 mm` per step, under the `57.15 mm` ball-ball contact distance — discrete detection holds for ball-ball. It does *not* hold for the pocket jaw cylinders. So: `Ball.continuous_cd` toggled on when `linear_velocity.length() > TableSpec.ccd_speed_mps` (derived: `0.8 · R · LIVE_TICK`), off below. Cue ball keeps it on for the whole shot. Fallback ladder if the 695 misses budget: `240 Hz + gated CCD` → `120 Hz + CCD on all` (120 Hz travels 83 mm/step, CCD is then mandatory) → `120 Hz + max_physics_steps_per_frame 8`.
 3. **Sleep aggressively, and use sleep as the shot boundary.** Jolt has its *own* sleep settings: `physics/jolt_physics_3d/simulation/sleep_velocity_threshold = 0.05 [tune]`, `sleep_time_threshold = 0.3 [tune]`. Connect `RigidBody3D.sleeping_state_changed` and count awake balls; zero awake ⇒ `shot_resolved`. This kills the per-frame velocity poll *and* drops the sim to ~0 cost between shots.
 4. **Contact monitoring only during a live `Shot`.** `contact_monitor = true` at strike, `false` at rest. `max_contacts_reported = 6 [tune]` on object balls, `8` on the cue. Rails carry `rail_id` metadata (D1) so the ordered contact log is built from the signal, not from a per-step scan.
 5. **Physics interpolation on** (`physics/common/physics_interpolation = true`). Cheap insurance for the 30 fps and 120 Hz modes. Call `reset_physics_interpolation()` on Poisson-disk drop and on kitchen respawn or you get streak artifacts.
@@ -99,7 +99,7 @@ Event-based sync per D2, ENet + Noray primary per P1. Mobile radios punish *pack
 | metric | budget |
 |---|---|
 | contact event, packed | `16 B [tune]` |
-| events per `Shot` | `≤ 200 [tune]` (a break is ~40 in the first 0.5 s) |
+| events per `Shot` | `≤ 200 [tune]`; `≤ 400 [tune]` while table-stat Effects are live (cloth 0.7 + tilt 1° measured 298 by SYNC — the model diverges from Jolt more often). Hard gates are unchanged: host upstream `≤ 16 KB/s`, `30 Hz` flush |
 | host upstream, shot in flight | `≤ 16 KB/s [tune]` total, all peers |
 | host upstream, table at rest | `≈ 0` (ENet's own ping only) |
 | packet cadence during a shot | `30 Hz [tune]`, fixed |
@@ -297,7 +297,7 @@ Godot's importer maps *High Quality* to ASTC on mobile and BPTC on desktop, and 
 
 **Gate.** Fail the PR when any fixture metric regresses more than `10% [tune]` against the last tagged baseline, or breaches an absolute budget in §1–§8. Re-baseline only with a written reason in the commit body.
 
-**Status (M0).** Fixtures live in `src/debug/perf_*.tscn` (base `PerfFixture`, recorder `PerfLogger`): CSV of the monitor list above every 0.25 s to `user://perf/<fixture>-<ts>.csv`, plus a PASS/FAIL/INFO/SKIP row per budget (`PERF|fixture|budget|value|op limit unit|status` on stdout, `summary.csv`). GPU time comes from `RenderingServer.viewport_get_measured_render_time_gpu`; under `--headless` render rows print `SKIP`. `perf_break` args: `--runs=100 --seed --balls=12 --ci=1 --step-limit-ms`; `perf_bar`: `--seconds=60 --scale=0.85`; `perf_effects`: `--seconds=30` (ViewOverlay ubershader at full uniforms, 8 particle bursts, 4 decals); `perf_soak`: `--minutes=5 --aim=6` (real `QualityManager` in the loop). `perf_sequence.tscn` runs all four; the `m0` export feature boots it (`run/main_scene.m0`).
+**Status (M0).** Fixtures live in `src/debug/perf_*.tscn` (base `PerfFixture`, recorder `PerfLogger`): CSV of the monitor list above every 0.25 s to `user://perf/<fixture>-<ts>.csv`, plus a PASS/FAIL/INFO/SKIP row per budget (`PERF|fixture|budget|value|op limit unit|status` on stdout, `summary.csv`). GPU time comes from `RenderingServer.viewport_get_measured_render_time_gpu`; under `--headless` render rows print `SKIP`. `perf_break` args: `--runs=100 --seed --balls=12 --fixed=1 (with godot --fixed-fps 60) --cloth=0.7 --tilt=1.0 --step-limit-ms` (the fixture counts contact events; SYNC's NetGraph counts the stream); `perf_bar`: `--seconds=60 --scale=0.85`; `perf_effects`: `--seconds=30` (ViewOverlay ubershader at full uniforms, 8 particle bursts, 4 decals); `perf_soak`: `--minutes=5 --aim=6` (real `QualityManager` in the loop). `perf_sequence.tscn` runs all four; the `m0` export feature boots it (`run/main_scene.m0`).
 
 **One command on the phone** (USB debugging on, `adb devices` lists it; no phone → it stops with that message):
 
@@ -316,10 +316,10 @@ It exports the `Android M0` preset (gradle, arm64), installs, launches with `am 
 
 | fixture | budget row | dev PC | 07 budget |
 |---|---|---|---|
-| `perf_break` ×20 | Jolt tick, live, mean / p99 (ms, net of empty-frame baseline) | 1.50 / 4.44 | ≤ 1.0 |
-| | physics tick at rest, median (ms) | 0.87 (0 bodies active) | ≤ 0.05 |
-| | contacts per step (peak) / CCD bodies (peak) | 23 / **7** | ≤ 40 / ≤ 2 |
-| | events per shot (max) / strike→rest (max) | 48 / **11.4 s** | ≤ 200 / ≤ 9 |
+| `perf_break` ×20 (`--fixed-fps 60 -- --fixed=1`) | physics tick live, wall/ticks (ms) | 0.63 (before 0.64) | ≤ 1.0 |
+| | physics tick at rest over empty (µs, `rest_cost.gd`) | 8 (before ~550) | ≤ 50 |
+| | contacts per step (peak) / CCD bodies (peak) | 23 / 2 (before 7) | ≤ 40 / ≤ 2 |
+| | events per shot (max, contacts) / strike→rest (max) | 47 / 6.4 s (before 11.4) | ≤ 200 (≤ 400 with table-stat Effects) / ≤ 9 |
 | | balls off table or fell / ball count delta | 0 / 0 | 0 |
 | `perf_bar` 60 s, scale 0.85, MSAA 2× | frames within vsync | 99.9% | ≥ 95% |
 | | draw calls p95 / primitives max / nodes | 87 / 25.7k / 173 | ≤ 120 / ≤ 60k / ≤ 1500 |
@@ -330,7 +330,7 @@ It exports the `Android M0` preset (gradle, arm64), installs, launches with `am 
 | `perf_soak` 2 min | active-frame fps / deepest tier / orphans | 59.9 / 0 / 0 | ≥ 55 / < 2 / 0 |
 | | `Memory/Static` drift Round 1→5 / reduced-rate share | +0.04% / 48% | ≤ 5% / ≥ 50% |
 
-`perf_break`'s live step is a whole-tick number (engine + `_integrate_forces` GDScript) taken under load from other agents; the rest median stays ~0.9 ms although Jolt reports 0 active bodies — unexplained, worth a Profiler look on the device. The emulator smoke (`--emulator`, Compatibility renderer, software GL) reaches every row of the table and proves the pipeline; its fps/GPU rows are meaningless.
+The `perf_bar` / `perf_effects` / `perf_soak` rows are from REQ#perf-1 (real time, window open). The emulator smoke (`--emulator`, Compatibility renderer, software GL) reaches every row of the table and proves the pipeline; its fps/GPU rows are meaningless.
 
 **Acceptance:** every §1–§8 acceptance test runs unattended from one command on both devices and emits pass/fail per budget.
 
@@ -338,8 +338,6 @@ It exports the `Android M0` preset (gradle, arm64), installs, launches with `am 
 
 ## Open questions
 
-- **Ball.gd vs budgets (SYNC/alpha decide):** `perf_break` sees 6–7 simultaneous CCD bodies (≤ 2) and up to 11.4 s strike-to-rest (≤ 9 s); both are physics outcomes, not device noise. Candidates: a higher `ccd_speed_mps`, a stricter `rest_speed_mps`, or re-tune the budgets.
-- **Ball bodies at rest:** `Ball._integrate_forces` never sets `sleeping`, so the "table at rest ≈ 0.05 ms" row depends on Jolt sleeping the bodies anyway; `perf_break` reports `bodies_active_at_rest`.
 - Tier 0 scale: 07 §7.4 says 1.0, the frame budget is written at 0.85. If the 695 misses at 1.0, tier 0 becomes 0.85 (`QualityManager.TIERS[0]`, one line).
 - 240 Hz on the 695 is a projection, not a measurement — M0 (P1) settles it. Everything in §1 has a 120 Hz fallback for that reason.
 - Ball trails / felt scuff decals are unbudgeted until the effect catalog is final (03 rewrite).

@@ -34,6 +34,12 @@ func _run() -> void:
 	spawn_balls(int(arg("balls", 12)))
 	for b in balls:
 		b.contacted.connect(_on_contact)
+	# --cloth=0.7 --tilt=1.0: table-stat Effects live (raises the events/shot limit to 400, 07 §3)
+	var stat_fx := params.has("cloth") or params.has("tilt")
+	if stat_fx:
+		table.sim.set_stat(&"cloth_friction_mult", float(arg("cloth", 1.0)))
+		table.sim.set_stat(&"table_tilt_deg", float(arg("tilt", 0.0)))
+		table.sim.set_tilt_direction(Vector2(1, 0.5))
 	logger.awake_source = func() -> int: return table.sim.awake
 	logger.events_source = func() -> int: return _events_last
 	Performance.add_custom_monitor("Game/ContactEventsPerShot", func() -> int: return _events_last)
@@ -44,6 +50,8 @@ func _run() -> void:
 	var rest_s := PackedFloat32Array()
 	var max_events := 0
 	var off_table := 0
+	var shot_us := 0.0
+	var shot_ticks := 0
 	for i in runs:
 		reset_rack()
 		_fell_flag.clear()
@@ -53,31 +61,41 @@ func _run() -> void:
 		intent.aim_dir = Vector2.RIGHT.rotated(deg_to_rad(rng.randf_range(-0.4, 0.4)))
 		intent.power = 1.0
 		var f0 := Engine.get_physics_frames()
+		var t0 := Time.get_ticks_usec()
 		cue_ball.strike(intent, CUE)
 		await _wait_awake_zero(REST_CAP_S)
+		shot_us += Time.get_ticks_usec() - t0
+		shot_ticks += Engine.get_physics_frames() - f0
 		rest_s.append((Engine.get_physics_frames() - f0) / float(PhysicsSim.LIVE_TICK))
 		_events_last = _events
 		max_events = maxi(max_events, _events)
 		off_table += _count_off_table()
 	# at rest: every body asleep (07 §1 "table at rest <= 0.05 ms")
-	var rest_ms := PackedFloat32Array()
+	# rest cost in us/tick is tests/perf/rest_cost_probe.gd (TIME_PHYSICS_PROCESS cannot resolve 0.05 ms); here: structure
 	var active_rest := 0
-	for i in 90:
+	var sensors_on := 0
+	for i in 30:
 		await get_tree().physics_frame
-		rest_ms.append(maxf(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0 - _base_ms, 0.0))
 		active_rest = maxi(active_rest, int(Performance.get_monitor(Performance.PHYSICS_3D_ACTIVE_OBJECTS)))
+	for a in table.get_children():
+		if a is Area3D and a.monitoring:
+			sensors_on += 1
 	Performance.remove_custom_monitor("Game/ContactEventsPerShot")
 	var tree_balls := balls.filter(func(b: Ball) -> bool: return b.is_inside_tree()).size()
-	# --ci=1: only the machine-independent invariants (+ a coarse step ceiling) gate; the 07 budgets that
-	# depend on the device or on ball.gd tuning are listed as INFO (07 §9 "CI cannot measure ... device-only")
-	var hard := not bool(arg("ci", 0))
-	check("jolt_step_live_mean", logger.mean(_step_ms), float(arg("step-limit-ms", 1.0)), "<=", "ms/tick")
-	check("jolt_step_live_p99", logger.percentile(_step_ms, 0.99), 0.0, "<=", "ms/tick", false, false)
-	check("jolt_step_rest_median", logger.percentile(rest_ms, 0.5), 0.05, "<=", "ms/tick", false, hard)
+	# structural rows (CCD, rest time, contacts, sensors, events) are machine independent, so CI gates them too;
+	# only the step ceiling depends on the machine (--step-limit-ms)
+	var hard := true
+	# --fixed=1 (run with `godot --fixed-fps 60`, every frame = 2 live ticks, frames unthrottled): wall / ticks over the
+	# shots — stable to ~1%, and what CI / the dev PC use. On a device (real time) that ratio is just the tick period, so
+	# the row falls back to TIME_PHYSICS_PROCESS minus the empty-scene baseline: noisy (+-0.3 ms) but the only in-engine one.
+	var live_ms := shot_us / maxi(shot_ticks, 1) / 1000.0 if bool(arg("fixed", 0)) else logger.mean(_step_ms)
+	check("jolt_step_live_mean", live_ms, float(arg("step-limit-ms", 1.0)), "<=", "ms/tick")
+	check("tick_monitor_p99", logger.percentile(_step_ms, 0.99), 0.0, "<=", "ms/tick (monitor)", false, false)
+	check("pocket_sensors_on_at_rest", sensors_on, 0, "<=", "areas", false, hard)
 	check("bodies_active_at_rest", active_rest, 0, "<=", "bodies", false, hard)
 	check("contacts_per_step_peak", _pairs_peak, 40, "<=", "contacts", false, hard)
 	check("ccd_bodies_peak", _cd_peak, 2, "<=", "bodies", false, hard)
-	check("events_per_shot_max", max_events, 200, "<=", "events")
+	check("events_per_shot_max", max_events, 400 if stat_fx else 200, "<=", "events")
 	check("strike_to_rest_max", _max(rest_s), 9.0, "<=", "s", false, hard)
 	check("off_table_or_fell", off_table + _fell, 0, "<=", "balls")
 	check("ball_count_delta", absi(tree_balls - balls.size()), 0, "<=", "balls")

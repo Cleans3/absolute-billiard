@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Every headless probe + the two-peer pair probe. Used by CI (.github/workflows/ci.yml) and by hand.
+# Every headless probe + the two-peer pair probes. Used by CI (.github/workflows/ci.yml) and by hand.
 #   tests/run_all.sh            all probes
 #   tests/run_all.sh physics    only tests/physics/*
 # A probe passes when it exits 0, prints "OK" (or "... SKIP: reason") on a line of its own and no SCRIPT ERROR.
@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 filter=${1:-}
 fail=0
 for p in $(find tests -name '*_probe.gd' -o -name probe.gd | sort); do
-  [ "$(basename "$p")" = pair_probe.gd ] && continue
+  [[ $p == *pair_probe.gd ]] && continue
   [[ -n $filter && $p != tests/$filter/* ]] && continue
   log=$(mktemp)
   timeout "${PROBE_TIMEOUT:-300}" godot --path . --headless -s "$p" >"$log" 2>&1; rc=$?
@@ -20,7 +20,12 @@ for p in $(find tests -name '*_probe.gd' -o -name probe.gd | sort); do
   rm -f "$log"
 done
 if [[ -z $filter || $filter == net ]]; then
-  bash tests/net/pair.sh tests/net/pair_probe.gd || fail=1
+  for p in tests/net/pair_probe.gd tests/net/session_pair_probe.gd tests/net/resume_pair_probe.gd; do
+    bash tests/net/pair.sh $p || fail=1
+  done
+fi
+if [[ -z $filter || $filter == sync ]]; then
+  for p in tests/sync/shot_pair_probe.gd tests/sync/foul_pair_probe.gd; do bash tests/net/pair.sh $p || fail=1; done
 fi
 [ $fail = 0 ] && echo "ALL PROBES OK"
 exit $fail
