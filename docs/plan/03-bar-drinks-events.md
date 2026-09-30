@@ -13,7 +13,7 @@ Feeds one number to 02 (`Reward_Multiplier`); it does not define ball physics, s
 | `op` | `enum {ADD, MUL}` | `ADD` sums into the base, `MUL` multiplies it. No third op. |
 | `value` | `float` | for `MUL`, the factor itself (`0.0` = disabled, `1.5` = +50%), not `1.0 + x`. |
 
-Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. Order-independent, so two Effects landing in the same frame can never disagree about the result.
+Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. Order-independent, so two Effects landing in the same frame can never disagree about the result. The `stat` setter asserts against `Stats.ALL` when the `.tres` loads.
 
 ### 2.2 `Stats` — const stat list (`src/gameplay/effects/stats.gd`)
 | group | stats | applied by |
@@ -25,7 +25,7 @@ Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. O
 | stream (income) | `stream_camera_bonus_mult`, `stream_viewer_gain_mult`, `stream_hype_gain_mult` | host → `StreamManager` (02) |
 | round | `round_time_add_sec` | host → `GameLoop` (02) |
 
-`cue_aim_wobble_deg` **floors at 0** after resolution — a stacked pile of "steadier" effects can never produce negative wobble, and 01 never reads a negative angle. `player_view_*` is deliberately split from `stream_camera_*`: darkening the shooter's screen is difficulty, dimming the broadcast is income, and the old single `camera_visibility` conflated them.
+`cue_aim_wobble_deg` **floors at 0** and `shot_clock_sec` at `4.0 [tune]` after resolution — but only when at least one modifier touched the stat, so an untouched stat returns its base (`shot_clock_sec` base `0` = no clock, `ADD 8` = an 8 s clock). A stacked pile of "steadier" effects can never produce negative wobble, and 01 never reads a negative angle. `player_view_*` is deliberately split from `stream_camera_*`: darkening the shooter's screen is difficulty, dimming the broadcast is income, and the old single `camera_visibility` conflated them.
 `cue_aim_wobble_deg` depends on the deferred Player module (how a wobbling aim is even presented on touch) — **flagged**; every catalog entry below works without it.
 
 ### 2.3 `Effect` (`Resource`)
@@ -38,8 +38,11 @@ Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. O
 | `duration_sec` | `float` | `0` = instant, `-1` = until `Round` end, `-2` = until the live `Shot` resolves |
 | `stacking_rule` | `enum {REFRESH, IGNORE}` | `REFRESH` restarts the timer, `IGNORE` no-ops while an instance is live. Nothing accumulates. |
 | `exclusive_group` | `StringName` | at most one live Effect per group per owner; a new one replaces the old (`ice_water` vs alcohol, `heckle` vs `heckle`). Empty = ungrouped. |
-| `owner_peer_id` | `int` | who caused it, and — for `PLAYER`/`VIEW`/`CUE` targets — whose it is. `0` = the whole crew/table. |
+| `tag` | `StringName` | classification only (`booze`); never exclusive. |
+| `clears_tag` | `StringName` | instant Effects: ends every live Effect carrying this tag on the subject (`ice_water` → `booze`). |
 | `visual_hook` | `StringName` | one tag, budgeted per §3.6 |
+
+`owner_peer_id` (who caused it) and `target_id` (who it lands on) are **per-instance**: they live on the live instance in `EffectManager` and in the `apply_effect` RPC, never on the shared resource. `target_id` is the subject peer for `PLAYER`/`CUE`/`VIEW` (`0` = crew-wide; a crew-wide `VIEW` Effect shows on the current shooter's screen only), the rail id for a `TABLE` Effect scoped to one rail (`lean_on_rail`), and `0` otherwise. Player-scoped table/ball stats (`cue_ball_mass_mult`, `cushion_restitution_mult` from a drink) use target `CUE`: `EffectManager` resolves them for the current shooter and pushes them to `PhysicsSim` whenever they change or the shooter rotates.
 
 There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event`, which compose differently (§3.1). There is no `requires_host_apply`: it is derived, `target != VIEW`. One line, one source of truth, and a `VIEW` effect never needs a round trip.
 
@@ -54,6 +57,10 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | `serve_target` | `enum {SELF, NAMED_PLAYER}` | a non-shooter can buy at the bar and serve the shooter — that is the team play |
 | `mid_round` | `bool` | buyable from the bar during a live Round (Drinks only; everything else is Intermission-only per P3) |
 | `roll_on_use` | `bool` | `mystery_shot` only — see §3.5 |
+| `roll_table`, `roll_weights` | `Array[Resource]` (`Drink`s), `PackedFloat32Array` | `roll_on_use` outcomes and their odds; typed `Resource` because a self-typed `Array[Drink]` leaks the script at exit |
+| `neighbour_reward_mult` | `float` | `!= 1.0`: the seat-left player (`NetManager.seat_order()`, wrapping) gets this factor for the Round. Takes no drink slot |
+| `night_limit` | `int` | `0` = unlimited; per player per Night (`moonshine` = 1) |
+| `cost_cash` | `int` | catalog price `[tune]` — 02's `ShopItem` may override; `throw_drink` spends it |
 
 ### 2.5 `Event` (`Resource`)
 | field | type | notes |
@@ -65,7 +72,8 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | `min_night` | `int` | earliest `Night` this can be offered |
 | `scripted_first` | `bool` | first occurrence is forced (not offered) at `min_night`, so the crew meets it once before it becomes a choice |
 | `round_time_add_sec` | `float` | Round length delta, positive or negative — the honest knob the old `energy_drink` faked |
-| `warning_lead_time_sec` | `float` | telegraph before activation, default `3.0 [tune]` |
+| `warning_lead_time_sec` | `float` | telegraph before activation, default `3.0 [tune]`; emitted with `event_warning` for a forced `scripted_first` Event (a voted one is telegraphed by the vote itself) |
+| `opportunity`, `opportunity_mult` | `enum {NONE, NEXT_POT, RANDOM_POCKET}`, `float` | the two opportunity Events' targeted payoff (§3.6), read through `EffectManager.pot_bonus()` |
 
 ### 2.6 `WorldInteraction` (`Resource`)
 | field | type | notes |
@@ -73,11 +81,12 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | `id` | `StringName` | |
 | `prop` | `StringName` | which bar `Interactable` exposes it: `table`, `camera`, `stool`, `jukebox`, `lights`, `rail`, `bar`, `crowd` |
 | `hostile` | `bool` | true = it makes the live shot harder. Gates the guard in §3.4. |
-| `cost` | `{kind: enum {HYPE, VIEWERS, CASH}, amount: float}` | paid on use, from the crew's shared pool |
-| `payoff` | `{kind, amount, condition: StringName}` | paid back on `condition` (`always`, `shot_potted`, `shot_missed`) |
+| `cost` | `PoolDelta {kind: enum {HYPE, VIEWERS, CASH}, amount}` | paid on use, from the crew's shared pool; `amount` is a positive magnitude. `throw_drink` pays the drink's `cost_cash` instead |
+| `payoffs` | `Array[PoolDelta]` (`kind`, `amount`, `condition`) | paid back on `condition` (`always` at use, `shot_potted`, `shot_missed` when the Shot resolves); an array because `heckle` pays hype *and* viewers |
 | `effect` | `Effect` | usually `duration_sec = -2` (dies with the shot) |
 | `cooldown_sec` | `float` | per interactor |
-| `requires_live_shot` | `bool` | true = only while balls are moving or the shooter is aiming |
+| `once_per_round` | `bool` | crew-wide, per Round (`jukebox`) |
+| `requires_live_shot` | `bool` | true = only during a live Round (balls moving or the shooter aiming) |
 
 ## 3. Rules & formulas
 
@@ -88,7 +97,7 @@ Event_Mult = clamp(product(e.reward_mult for e in active Events), 1.0, 3.0 [tune
 
 Reward_Multiplier = Drink_Mult * Event_Mult          # max 6.0, no separate global cap
 ```
-That product is the whole contract with 02, consumed at Shot resolution as the `Event_Hazard_Multiplier` slot (02 renames the slot to `Reward_Multiplier`). World interactions contribute **nothing** here: they pay in hype, viewers and cash (§3.4), which 02 already routes into the income formula. There is no trick-sync term — 5% of noise on a product that already swings 6× is not a mechanic.
+That product is the whole contract with 02, consumed at Shot resolution as the `Event_Hazard_Multiplier` slot (02 renames the slot to `Reward_Multiplier`). World interactions contribute **nothing** here: they pay in hype, viewers and cash (§3.4), which 02 already routes into the income formula. There is no trick-sync term — 5% of noise on a product that already swings 6× is not a mechanic. The two opportunity Events' payoff is **not** in this product: `EffectManager.pot_bonus()` (`crowd_roar` ×2 on the first paying Shot, `pocket_jackpot` ×3 on a Shot that potted in the chosen pocket) is a separate factor `award_shot_reward` multiplies in at Shot level, until ECON prices each pot on its own.
 
 ### 3.2 Events are chosen before the Round, not rolled
 - Round 1: no Event. Round 2: one tier-1 Event. Round 3: one tier-2 Event. Rounds must differ (D4) and this is how.
@@ -98,18 +107,19 @@ That product is the whole contract with 02, consumed at Shot resolution as the `
 
 ### 3.3 Drinks
 - Bought as `ShopItem`s (02) at the bar: during Intermission, or mid-Round for `mid_round` drinks, by walking to the bar NPC (P3) — no menu teleport.
-- Max `3 [tune]` live Drink effects per player; a 4th is refused with the reason named, not silently dropped.
+- Max `3 [tune]` live Drinks per player; a 4th is refused with the reason named (`serve_drink` returns `drink_cap` and emits `drink_refused`; also `intermission_only`, `night_limit`), not silently dropped. Re-buying a live drink refreshes it and needs no slot: nothing accumulates. A drink whose Effects have all ended (`ice_water`, timers) stops counting for its slot and its `reward_mult`.
+- `mid_round` drinks (`beer`, `whiskey_shot`, `ice_water`, `neighbours_round`, `bar_nuts` `[tune]`) may be bought during a live Round; the rest are Intermission-only.
 - Drink effects hard-reset at Round end. Persisting them across the Intermission would make the shop screen the place you play the game.
 - Every downside must change **how you play**, never just how accurate you are: call-your-pocket, no english, a heavy cue ball, a shot clock, or a buff handed to the player on your left. A wobble slider is a difficulty setting wearing a drink's name.
 
 ### 3.4 World interaction & the griefing guard
 Non-shooters are free-roaming (P2). Everything they do to the table, the shooter or the stream goes through a `WorldInteraction` that spawns an `Effect` with their `owner_peer_id` stamped on it, so the shooter always sees *who*.
 
-Guard, four layers, all cheap:
+Guard, four layers, all cheap. Gate order on the host: toggle → live Round → prop + reach (`2.0 m [tune]`) → cooldown → per-Turn cap → cost (last, so a rejection never charges) → Effect + payoffs. A Turn ends with its Shot; the shooter cannot use a hostile interaction:
 1. **Cost first.** Every `hostile` interaction spends shared hype/viewers/cash before it resolves. Griefing is self-taxing — you are spending the crew's quota to do it.
 2. **Cooldown per interactor** (`cooldown_sec`), plus **max 2 hostile interactions per Turn across the whole crew**. The third is refused.
 3. **`exclusive_group` on every hostile Effect** (`heckle`, `bump`, `blind`) — three players cannot stack the same harassment, and `shot_clock_sec` never resolves below `4.0 [tune]`.
-4. **Host toggle** `hostile_world_interactions: {on, friends_only, off}` (default `on`; `off` leaves every non-hostile interaction working). Shooter-side mute of a named peer is a Player-module concern — deferred, noted.
+4. **Host toggle** `hostile_world_interactions: {on, friends_only, off}` (default `on`; `off` leaves every non-hostile interaction working; `friends_only` lets the host and a host-managed peer list act). Shooter-side mute of a named peer is a Player-module concern — deferred, noted.
 
 Payoff is the other half: a bumped shot that still drops is drama, and the stream pays for drama. That is why the costs are refundable-with-interest on `shot_potted` rather than flat.
 
@@ -128,18 +138,18 @@ Payoff is the other half: a bumped shot that still drops is drama, and the strea
 | `mystery_shot` | $60 | rolled | rolled on use (§below) | rolled on use |
 | `moonshine` | $300 | 1.60 | `cue_power_mult MUL 1.25` | `cue_ball_mass_mult MUL 1.5` + `rule_call_pocket ADD 1`; `1 per Night [tune]` |
 
-`mystery_shot` rolls **on use, not on purchase** — buying an unknown is a shop decision, drinking one is a table decision, and only the second is interesting. The shop shows the odds table before you buy: `40%` a `1.5` reward with a heavy cue ball, `35%` a `1.2` reward with a shot clock, `20%` a flat `1.0` with no downside, `5%` a `2.0` reward with call-pocket *and* no english `[tune]`. The roll is host-side and broadcast; the client never picks its own outcome.
+`mystery_shot` rolls **on use, not on purchase** — buying an unknown is a shop decision, drinking one is a table decision, and only the second is interesting. The shop shows the odds table before you buy: `40%` a `1.5` reward with a heavy cue ball, `35%` a `1.2` reward with a shot clock, `20%` a flat `1.0` with no downside, `5%` a `2.0` reward with call-pocket *and* no english `[tune]`. The roll is host-side and broadcast as ordinary `apply_effect`s of the outcome's Effects; the client never picks its own outcome. Outcomes (`mystery_heavy/clock/flat/wild`) carry mass `×1.6`, `shot_clock ADD 8`, nothing, and call-pocket + no english.
 
 ### 3.6 Event catalog — hazards that change the task, plus two opportunities
 | id | tier | `reward_mult` | `min_night` | `scripted_first` | `round_time_add_sec` | effect |
 |---|---:|---:|---:|---|---:|---|
 | `tilted_table` | 1 | 1.25 | 1 | no | 0 | `table_tilt_deg ADD 4` — constant drift to one rail; every roll must be re-read |
 | `glass_cushions` | 1 | 1.30 | 1 | no | 0 | `cushion_restitution_mult MUL 1.35` — banks become the whole game |
-| `bouncer` | 1 | 1.20 | 2 | yes | 0 | one Turn per Round: `shot_clock_sec ADD 6`, he is standing there |
+| `bouncer` | 1 | 1.20 | 2 | yes | 0 | one Turn per Round: `shot_clock_sec ADD 6` with duration `-2`, applied at Round start so it dies with the first Shot |
 | `crowd_roar` | 1 | 1.00 | 1 | no | `-15` | **opportunity** — next pot this Round scores ×2; short Round is the price |
 | `moving_pockets` | 2 | 1.70 | 2 | yes | 0 | `pocket_radius_mult MUL 0.85`, `pocket_oscillation_m ADD 0.05` — aim at a moving hole |
 | `ball_swap_chaos` | 2 | 1.60 | 3 | no | 0 | `ball_type_shuffle_count ADD 2` at Round start and once at half-time — value memory is worthless |
-| `lights_out` | 2 | 1.80 | 3 | yes | `+20` | `player_view_light_level MUL 0.25`, `player_view_fog_density ADD 0.3` — **shooter's screen only**, the stream sees fine |
+| `lights_out` | 2 | 1.80 | 3 | yes | `+20` | `player_view_light_level MUL 0.25`, `player_view_fog_density ADD 0.3` — **shooter's screen only** (crew-wide `VIEW` Effect, shown only on the current shooter's overlay), the stream sees fine |
 | `pocket_jackpot` | 2 | 1.00 | 2 | no | 0 | **opportunity** — one randomly chosen pocket pays ×3 all Round; every shot is now a routing problem |
 
 The two opportunity Events carry `reward_mult 1.0` on purpose: the crew trades a smaller global multiplier for a targeted payoff, which is a real decision rather than a strictly-worse option. `power_flicker` is gone (a hazard that *lowers* payout is a punishment with extra steps); fog merged into `lights_out`, sticky/sway merged into `glass_cushions`, gangster-stare merged into `bouncer`.
@@ -171,7 +181,9 @@ Per D7 there is no autoload here — these are children of `MainLevel`, so "new 
 
 - `src/gameplay/effects/effect_manager.gd` (`EffectManager`) — live-effect lists keyed by `target` + `owner_peer_id`, stacking and `exclusive_group` resolution, stat resolution (§2.1), `Reward_Multiplier` (§3.1). Applies `target != VIEW` on host only; `VIEW` is applied by the owning client with no round trip.
 - `src/gameplay/effects/event_scheduler.gd` (`EventScheduler`) — name kept from D7, but it no longer rolls: it builds the eligible offer list (§3.2), runs the vote, and applies the winner at Round start.
-- `src/gameplay/effects/stats.gd` — the const stat list (§2.2), asserted against at resource load.
+- `src/gameplay/effects/stats.gd` — the const stat list (§2.2), base values, floors, sim-pushed and full-screen-hook lists; `catalog.gd` (`FxCatalog`) — explicit preloads of every `.tres` and the Effect registry (`apply_effect` resolves ids through it).
+- `src/gameplay/bar/world_interactions.gd` (`WorldInteractions`) — the RPCs, host validation and the guard; `bar.gd` (`Bar`) places the `Interactable`s.
+- `src/ui/ViewOverlay.tscn` + `src/shaders/player_view.gdshader` — one `ColorRect`, one shader, three uniforms; hidden (no pass) while nothing is active.
 - `src/gameplay/bar/interactable.gd` — `Area3D` + prompt on every prop; holds a `WorldInteraction`, enforces cooldown and the §3.4 guard client-side for responsiveness, host-side for truth.
 - `src/resources/effect/effect.gd`, `stat_mod.gd`, `drink.gd`, `event.gd`, `world_interaction.gd` — `.tres` instances under `src/resources/{drink,event,world}/`.
 - `src/ui/EventVote.tscn` — the three-card Intermission vote. Bar purchase UI belongs to 02's `Shop`.
@@ -182,11 +194,15 @@ Per D7 there is no autoload here — these are children of `MainLevel`, so "new 
 - `effect_applied(effect_id: StringName, target: int, owner_peer_id: int, duration_sec: float)`
 - `effect_expired(effect_id: StringName, target: int, owner_peer_id: int)`
 - `reward_multiplier_changed(new_value: float)`
+- `drink_refused(drink_id, peer_id, reason)`, `shooter_changed(peer_id)`, `visual_hook_started/stopped(tag)`
+
+Timers live here, not in `PhysicsSim`: `-2` expires on `RoundDirector.shot_ended`, `-1` on `GameLoop.round_ended`, seconds on a local countdown — every peer expires from its own signals, so there is no expiry RPC. `PhysicsSim` is only a sink (`stat_source`, `set_stat`, `set_rail_restitution_mult`, `set_tilt_direction`).
 
 ### Signals (`EventScheduler`)
 - `event_offer_ready(round_index: int, tier: int, event_ids: Array[StringName])`
 - `event_applied(event_id: StringName, tier: int, reward_mult: float)`
 - `event_ended(event_id: StringName)`
+- `event_warning(event_id, lead_time_sec)`, `ball_shuffle_requested(count)` (Round start and half-time; RoundDirector re-rolls that many `BallType`s)
 
 ### To 01 (physics/table/balls)
 - Host-side `StatMod`s write into `PhysicsSim` scalars owned by 01 (`cloth_friction_mult`, `cushion_restitution_mult`, `table_tilt_deg`, `pocket_radius_mult`, `pocket_oscillation_m`, `cue_ball_mass_mult`). 03 offsets constants, never redefines them.
@@ -198,19 +214,22 @@ Per D7 there is no autoload here — these are children of `MainLevel`, so "new 
 - `EffectManager.get_reward_multiplier() -> float` at Shot resolution — call it, never cache it.
 - 02 owns `ShopItem`: price, unlock, `try_spend_cash`. 03 owns what a Drink *does* (§3.5).
 - World-interaction costs and payoffs go through `StreamManager.add_viewers/add_hype` and `EconomyManager.try_spend_cash`; 03 never writes those fields directly.
-- `round_time_add_sec` is handed to `GameLoop` at Round start, before the timer is armed.
+- `round_time_add_sec` is handed to `GameLoop` at Round start, before the timer is armed: `_start_round` calls `EventScheduler.begin_round(round_index)`, which applies the chosen Event and returns its `round_time_add_sec` plus live Effects' (`energy_drink`).
+- `EconomyManager.award_shot_reward` reads `EffectManager.get_reward_multiplier() × pot_bonus()` for the `Event_Mult` slot (duck-typed sibling lookup, `1.0` when absent). `stream_*` stats are resolved by `EffectManager.get_stat` and **consumed by ECON** in wave 2 (`StreamManager` gains are not scaled yet).
 - `stream_camera_bonus_mult` modifies the camera score 02 computes; 03 does not pick the live camera.
 
 ### To 04 (architecture/netcode)
-- `@rpc("any_peer", "reliable") request_world_interaction(interaction_id: StringName)` — client to host; host validates cost, cooldown and the §3.4 guard, then broadcasts.
-- `@rpc("authority", "reliable") apply_effect(effect_id: StringName, owner_peer_id: int)` and `apply_event(event_id: StringName)`.
-- `@rpc("any_peer", "reliable") submit_event_vote(event_id: StringName)`.
+- On `MainLevel/WorldInteractions`: `request_world_interaction(kind, target_id, payload)` (any_peer, call_remote) — client to host; host validates §3.4, then `world_interaction_applied` (authority, call_local) or `world_interaction_rejected` (to the requester). `kind` is a `WorldInteraction` id, or `bar_buy` / `bar_serve` (validated, signalled as `bar_purchase_requested`, nothing charged — the Shop buys).
+- `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` (authority, call_local, ch3): `duration_ms` `0` instant, `-1` Round, `-2` Shot. `apply_event(event_id, round_index, pocket_id)` (authority, call_local): every peer applies the Event's Effects itself, so Events need no `apply_effect` fan-out.
+- `submit_event_vote(event_id)` (any_peer, call_local) and `event_offer(round_index, tier, event_ids)` (authority, call_local). A single-id offer is a forced `scripted_first` Event: an announcement, not a vote.
 - `VIEW`-target Effects are broadcast for presentation but applied locally by the owner — they never enter the physics path, so they need no host tick.
 
-## 6. Open questions
-1. Should a hostile interaction's viewer payoff scale with the shot's difficulty (bump on a long thin cut pays more), or stay flat? Flat is shipping.
-2. Does the per-Turn hostile cap of 2 want to be per-Turn or per-Round at 4 players? Needs a playtest, not a decision.
-3. Should `ice_water` refund part of the cleared drink's cost, or only its downside?
+## 6. Open questions — ruled 2026-09-30 (Cleanse via alpha, R3)
+1. Hostile viewer payoff stays **flat**, not scaled by shot difficulty.
+2. The hostile cap stays **2 per Turn**, no per-Round cap; revisit after a 4-player playtest.
+3. `ice_water` refunds **nothing**: it ends the downsides and takes the cleared drinks' `reward_mult` with them.
+
+Still open: `aim_wobble` presentation (needs Player); who prices each pot for `pot_bonus` (ECON). `lean_on_rail`'s `target_id` is 1 + the index in `Stats.RAILS` (the six `PhysicsSim` rail ids).
 
 ## 7. MVP cut vs later
 | Feature | In MVP (Phase 1) | Post-MVP / Later |

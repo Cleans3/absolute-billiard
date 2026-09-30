@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_ghu8s"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_45to7"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_hplgu"]
+
+[sub_resource type="Resource" id="Resource_lqjmc"]
+script = ExtResource("2_45to7")
+stat = &"table_tilt_deg"
+value = 4.0
+
+[sub_resource type="Resource" id="Resource_mkcyp"]
+script = ExtResource("1_ghu8s")
+id = &"tilted_table_tilt"
+source_kind = 1
+target = 2
+stat_modifiers = Array[ExtResource("2_45to7")]([SubResource("Resource_lqjmc")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_hplgu")
+id = &"tilted_table"
+display_name = "Tilted Table"
+effects = Array[ExtResource("1_ghu8s")]([SubResource("Resource_mkcyp")])
+reward_mult = 1.25

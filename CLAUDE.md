@@ -14,8 +14,9 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 | `03-bar-drinks-events.md` | typed `StatMod`/`Effect` schema, Drinks, crew-chosen Events, free-roam world interactions |
 | `04-architecture-netcode.md` | project layout, scene tree, autoloads, transport, RPC/channel table, `SaveProfile` |
 | `05-index.md` | cross-module signal map, open questions, review checklist |
-| `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P5** (P rulings override everything above them in that file) |
+| `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P9** (P rulings override everything above them in that file) |
 | `07-optimization.md` | per-aspect mobile budgets and measurement gates |
+| `08-player.md` | Player v1 (P6): touch-first first person, WALK/CUE/CARRY modes, touch layout, avatars |
 
 Open questions listed in `05`/each doc §6 need the user's decision — do not resolve them silently in code.
 

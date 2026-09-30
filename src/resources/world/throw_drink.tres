@@ -1,0 +1,35 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_ys8ni"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_7yiy8"]
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="3_3xywr"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="4_xksuw"]
+
+[sub_resource type="Resource" id="Resource_fd67v"]
+script = ExtResource("2_7yiy8")
+stat = &"player_view_shake_amp"
+value = 0.4
+
+[sub_resource type="Resource" id="Resource_fcqnd"]
+script = ExtResource("1_ys8ni")
+id = &"throw_drink_shake"
+source_kind = 2
+target = 5
+stat_modifiers = Array[ExtResource("2_7yiy8")]([SubResource("Resource_fd67v")])
+duration_sec = -2.0
+exclusive_group = &"blind"
+visual_hook = &"shake"
+
+[sub_resource type="Resource" id="Resource_ai22f"]
+script = ExtResource("3_3xywr")
+amount = 60.0
+
+[resource]
+script = ExtResource("4_xksuw")
+id = &"throw_drink"
+prop = &"bar"
+hostile = true
+payoffs = Array[ExtResource("3_3xywr")]([SubResource("Resource_ai22f")])
+effect = SubResource("Resource_fcqnd")
+cooldown_sec = 15.0
+requires_live_shot = true

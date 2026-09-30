@@ -1,0 +1,36 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_1prb6"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_1vikg"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_v1pva"]
+
+[sub_resource type="Resource" id="Resource_55ksh"]
+script = ExtResource("2_1vikg")
+stat = &"player_view_light_level"
+op = 1
+value = 0.25
+
+[sub_resource type="Resource" id="Resource_66m82"]
+script = ExtResource("2_1vikg")
+stat = &"player_view_fog_density"
+value = 0.3
+
+[sub_resource type="Resource" id="Resource_5c6d4"]
+script = ExtResource("1_1prb6")
+id = &"lights_out_dark"
+source_kind = 1
+target = 5
+stat_modifiers = Array[ExtResource("2_1vikg")]([SubResource("Resource_55ksh"), SubResource("Resource_66m82")])
+duration_sec = -1.0
+visual_hook = &"blackout"
+
+[resource]
+script = ExtResource("3_v1pva")
+id = &"lights_out"
+display_name = "Lights Out"
+tier = 2
+effects = Array[ExtResource("1_1prb6")]([SubResource("Resource_5c6d4")])
+reward_mult = 1.8
+min_night = 3
+scripted_first = true
+round_time_add_sec = 20.0

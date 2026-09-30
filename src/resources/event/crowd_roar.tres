@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_j0lua"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="2_pcarr"]
+
+[resource]
+script = ExtResource("2_pcarr")
+id = &"crowd_roar"
+display_name = "Crowd Roar"
+round_time_add_sec = -15.0
+opportunity = 1
+opportunity_mult = 2.0

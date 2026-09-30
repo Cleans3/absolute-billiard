@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_wxr60"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_12emf"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_gwicg"]
+
+[sub_resource type="Resource" id="Resource_nmhd8"]
+script = ExtResource("2_12emf")
+stat = &"cushion_restitution_mult"
+op = 1
+value = 1.35
+
+[sub_resource type="Resource" id="Resource_sqm2p"]
+script = ExtResource("1_wxr60")
+id = &"glass_cushions_bounce"
+source_kind = 1
+target = 2
+stat_modifiers = Array[ExtResource("2_12emf")]([SubResource("Resource_nmhd8")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_gwicg")
+id = &"glass_cushions"
+display_name = "Glass Cushions"
+effects = Array[ExtResource("1_wxr60")]([SubResource("Resource_sqm2p")])
+reward_mult = 1.3

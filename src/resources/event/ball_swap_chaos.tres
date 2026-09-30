@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_rhfyr"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_pw7co"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_7uol3"]
+
+[sub_resource type="Resource" id="Resource_sg65j"]
+script = ExtResource("2_pw7co")
+stat = &"ball_type_shuffle_count"
+value = 2.0
+
+[sub_resource type="Resource" id="Resource_16wvt"]
+script = ExtResource("1_rhfyr")
+id = &"ball_swap_shuffle"
+source_kind = 1
+target = 3
+stat_modifiers = Array[ExtResource("2_pw7co")]([SubResource("Resource_sg65j")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_7uol3")
+id = &"ball_swap_chaos"
+display_name = "Ball Swap Chaos"
+tier = 2
+effects = Array[ExtResource("1_rhfyr")]([SubResource("Resource_16wvt")])
+reward_mult = 1.6
+min_night = 3
