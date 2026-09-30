@@ -165,3 +165,13 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 - 04/07 aligned by alpha: event flush `30 Hz`, `shot_resolved` carries 01's exact `shot_ended` payload + `end_tick`.
 - 07 flags: Jolt ignores `physics/3d/solver/*` sleep params (use `physics/jolt_physics_3d/simulation/*`); Mobile renderer has no SSAO; measure `linear_damp`/`angular_damp` REPLACE mode before writing D1's rolling-resistance torque; CCD speed-gated above `3.0 m/s` at 240 Hz.
 - Web export: **no** (no UDP, wasm single-thread Jolt, itch COOP/COEP headers).
+
+# Cleanse's rulings (2026-09-30) — M0–M7 campaign
+
+**P6 — Player v1 now.** The Player module is no longer deferred: touch-first first-person player, cue control and bar interaction per `08-player.md`. Cosmetics and gamepad stay later.
+
+**P7 — Noray relay host.** The self-hosted relay runs on the old GenCloud VPS (`160.191.243.188`, the ex-Minecraft/Palworld box). `net_config.tres` points there by default; a fork edits one field.
+
+**P8 — Open questions closed with alpha's defaults.** bomb scatters and removes only itself · split = one spawn per pot · no house pocket · stone counts toward the ≤12 cap · fouls cost no Cash · hostile cap 2/Turn, no per-Round cap · `ice_water` refunds nothing · **netcode is silent at rest**: heartbeat 2 Hz only while a Shot is live (07 §3 over 04 §3), one full-state on join/resume.
+
+**P9 — M0 is measured later, not waited on.** The mobile perf spike ships as a one-command device run (`src/tools/m0_device_run.sh`); M2+ proceed meanwhile. `PhysicsSim.LIVE_TICK` is the single tick constant, so the 240/120 Hz outcome is a one-line change.

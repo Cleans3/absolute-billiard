@@ -13,10 +13,19 @@ config_version=5
 config/name="Absolute Billiard"
 run/main_scene="res://src/levels/Lobby.tscn"
 config/features=PackedStringArray("4.7", "Mobile")
+config/icon="res://icon.svg"
 
 [autoload]
 
 NetManager="*res://src/core/net_manager.gd"
+
+[display]
+
+window/size/viewport_width=1280
+window/size/viewport_height=720
+window/stretch/mode="canvas_items"
+window/stretch/aspect="expand"
+window/handheld/orientation=4
 
 [file_customization]
 
@@ -151,3 +160,4 @@ common/physics_interpolation=true
 [rendering]
 
 renderer/rendering_method="mobile"
+textures/vram_compression/import_etc2_astc=true
