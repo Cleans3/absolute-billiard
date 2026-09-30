@@ -1,0 +1,57 @@
+name: ci
+
+# 07 §9: CI has no GPU — it gates what needs none (probes, structural perf_break invariants, static asset/size
+# gates). fps, GPU time and thermals are device-only: src/tools/m0_device_run.sh.
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+env:
+  GODOT_VERSION: 4.7.1
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Godot binary
+        id: godot-cache
+        uses: actions/cache@v4
+        with:
+          path: ~/godot
+          key: godot-${{ env.GODOT_VERSION }}-linux
+
+      - name: Install Godot
+        if: steps.godot-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p ~/godot
+          curl -fsSL -o /tmp/godot.zip "https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip"
+          unzip -q /tmp/godot.zip -d ~/godot
+          mv ~/godot/Godot_v${GODOT_VERSION}-stable_linux.x86_64 ~/godot/godot
+
+      - name: Godot on PATH
+        run: |
+          echo "$HOME/godot" >> "$GITHUB_PATH"
+          chmod +x ~/godot/godot
+
+      - name: Import assets and class_names
+        run: godot --path . --headless --import
+
+      - name: Probes (all) + pair
+        run: tests/run_all.sh
+
+      - name: perf_break headless gate
+        # structural invariants gate (no ball off table, ball count conserved, events <= 200) + a coarse step ceiling;
+        # the on-device budgets (1.0 ms step, CCD <= 2, rest <= 9 s) are listed but not gated here
+        run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --step-limit-ms=15
+
+      - name: Export PCK (Android M0 preset)
+        run: |
+          mkdir -p build/ci
+          godot --headless --path . --export-pack "Android M0" build/ci/m0.pck
+
+      - name: Size + texture gates
+        run: godot --headless --path . -s src/tools/check_gates.gd -- --pck=build/ci/m0.pck

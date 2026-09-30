@@ -31,7 +31,7 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 ## 1. Physics (Jolt)
 
-*Status v0.0.2:* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured. Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4).
+*Status (M0):* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured (one constant: `PhysicsSim.LIVE_TICK`). Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4). **Layers (item 1) are live**: balls layer 1 / mask `1|2|3` (`Ball.tscn`), bed + rails layer 2 (`table_builder.gd`), pocket drop zones layer 3 (Area3D, mask 1, not monitorable), world/players/bar layer 4 (`BarRoom` collision, `Player.tscn` layer 4 / mask `2|4`); `Interactable` keeps its own layer 6. `tests/physics/layers_probe.gd` proves a world-layer wall does not stop a ball. **Jolt limits trimmed** (`project.godot [physics]`): `max_bodies 512` (was 10240), `max_body_pairs 4096` (65536), `max_contact_constraints 2048` (20480), `temporary_memory_buffer_size 8` MiB (32) — `Memory/Static` with Table + 13 balls: **59.3 MB → 35.0 MB (−24.3 MB)**, measured on the dev PC, deterministic. `perf_break` findings that need a Ball/PhysicsSim decision (SYNC): CCD is on for up to **6** bodies during a break (budget ≤ 2 — `ccd_speed_mps` gate lets every fast ball switch it on), and a max break takes **10.0 s** to all-rest (budget ≤ 9 s).
 
 | metric | budget |
 |---|---|
@@ -54,7 +54,7 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 **Do not.** Do not tune `physics/3d/solver/*` or `PhysicsServer3D` sleep-velocity params — **Jolt ignores them**, they are GodotPhysics3D-only. Do not set `continuous_cd` on all 13 balls permanently. Do not raise the tick above 240 Hz "for accuracy" — a 30 fps frame then needs 8 steps and physics doubles per frame. Do not poll velocities at 240 Hz to detect rest.
 
-**Acceptance:** `perf_break.tscn` at max power, 100 runs, zero balls outside the table AABB and mean Jolt step `≤ 1.0 ms` on the Snapdragon 695.
+**Acceptance:** `perf_break.tscn` at max power, 100 runs, zero balls outside the table AABB and mean Jolt step `≤ 1.0 ms` on the Snapdragon 695. The fixture's "Jolt step" is `Performance.TIME_PHYSICS_PROCESS` minus an empty-scene baseline sampled at start — the whole physics tick (engine step + `_integrate_forces`), the closest scripted number; Godot has no Jolt-only timer, and `PHYSICS_3D_COLLISION_PAIRS` reads 0 under Jolt, so contacts/step is counted from `get_colliding_bodies()` (ball–ball once, rails once, bed excluded).
 
 ---
 
@@ -86,7 +86,9 @@ Mobile has **no** SSAO, SSR, SSIL, SDFGI, volumetric fog, TAA, FSR2 or auto-expo
 
 **Modes:** `60 fps` (default) / `30 fps` battery / `120 fps` PC only. The 30 fps mode **must** also drop the physics tick to 120 Hz — otherwise it is 8 Jolt steps per frame and saves nothing.
 
-**Acceptance:** `perf_bar.tscn` orbit, 60 s on the 695 — `≥ 95%` of frames under 16.6 ms, draw calls `≤ 120`.
+**Status (M0):** the room is `src/gameplay/bar_room/BarRoom.tscn` (built by `src/tools/build_bar_room.gd`, baked by `src/tools/bake_lightmaps.sh`; screenshots `docs/plan/img/bar_room_*.png`): 8 merged static meshes (10 surfaces / 10 materials), UV2-unwrapped, `LightmapGI` (interior, medium, 2 bounces, denoised, 1 atlas `256×1024` HDR), emissive neon ×2 / TV / jukebox glass, **2 realtime lights, 1 shadowed** (`TableLamp` SpotLight3D + `BarFill` omni) plus 5 baked-only omnis, `WorldEnvironment` (exponential depth fog, filmic, glow low), 3 `fog_plane.gdshader` quads (additive, unshaded, ALU-only value noise, no depth/screen read), 2 `ReflectionProbe`s, MSAA 2×, occlusion culling off. Deviations, all deliberate: (a) Godot 4 has **no baked-reflection asset** — the probes are `UPDATE_ONCE` (captured at load, 128² atlas, 4 slots); (b) tier 0 keeps the 07 §7.4 scale `1.0` — `0.85` is tier 1 *and* the frame-budget baseline, so `perf_bar` runs at `0.85` by default; (c) every room mesh is `cast_shadow = off` (props never enter the one shadow map, they are baked). `LightmapGI.bake` is not in the scripting API: the bake presses the editor's Bake button through a temporary editor plugin (`src/tools/bake_plugin`, enabled only by the script). Two cheap wins found by `perf_bar`: the default reflection atlas (256², 64 slots) alone was **~250 MB** of texture memory — trimmed to 128² × 4 (`RENDER_TEXTURE_MEM_USED` 296 → 53 MB, room + table); `TableVisuals` now merges its 63 meshes into one per colour (draw calls 73 → 17, look unchanged).
+
+**Acceptance:** `perf_bar.tscn` orbit, 60 s on the 695 — `≥ 95%` of frames under 16.6 ms, draw calls `≤ 120`. "Under 16.6 ms" is read as *no missed 60 Hz vsync*: a frame passes at `≤ 16.6 + 1.0 ms` (timer jitter); a missed vsync is 33 ms.
 
 ---
 
@@ -239,6 +241,8 @@ The single hottest function in this game is `Ball._integrate_forces`: 13 bodies 
 
 **Do not.** Do not run uncapped in menus or the lobby. Do not lower quality by lowering the physics tick alone — that changes shot outcomes, not heat. Do not keep the socket chatty in the background.
 
+**Status (M0):** `QualityManager` (`src/gameplay/quality/`, a `MainLevel` child; ladder logic is the pure `QualityLadder`, `tests/perf/quality_probe.gd`). `Engine.max_fps = 60` + vsync via project settings; idle = table at rest (`PhysicsSim.all_resting`) and no input event for 2 s → 30 fps, any input wakes to 60 instantly (`keep_awake()` for pose/effect sources; tick stays `PhysicsSim`'s: `REST_TICK` 60 at rest). Ladder: 10 s mean-fps window (idle/paused frames excluded), `< 55` (`< 27.5` at a 30 fps cap) steps down; recovery one step after ≥ 60 s dwell with mean ≥ 96% of target, dwell doubles (cap 8 min) if a recovery is undone within 30 s. 30 fps battery setting = `battery_mode`. `NOTIFICATION_APPLICATION_PAUSED` / focus-out → mute bus 0, `max_fps 10`, signal `app_paused`; resume restores and emits `app_resumed` (NET/SYNC hook these for the resync). Tier 2's 120 Hz live-tick cap is `QualityManager.tick_cap(base)`; `PhysicsSim._on_struck` must call it once `LIVE_TICK` goes above 120 (SYNC's file, no-op today).
+
 **Acceptance:** 20-minute `perf_soak.tscn` autoplay on the 695 ends with mean fps `≥ 55` and no tier-2 entry.
 
 ---
@@ -268,6 +272,8 @@ Godot's importer maps *High Quality* to ASTC on mobile and BPTC on desktop, and 
 
 **Do not.** Do not ship 2048² textures to a phone. Do not disable mipmaps on 3D textures. Do not leave desktop texture formats enabled in a mobile preset. Do not import `.blend` (requires Blender at import time).
 
+**Status (M0):** `src/tools/check_gates.gd` fails on any image above `1024²`, on a mobile (Android/iOS) preset with S3TC/BPTC on, on `import_etc2_astc` off, and on a PCK over 90 MB or > max(10%, 2 MB) above `tests/perf/baseline.json` (re-baseline only with a written reason). `Android M0` presets ship arm64 only (`Android M0 emu`: x86_64 only, smoke) with `gradle_build/compress_native_libraries=true` — the sideload debug APK drops from 84 MB (uncompressed `libgodot_android.so`) to __APK_MB__ MB. The AAB gate itself needs a release build; until then the APK size is printed by `m0_device_run.sh`.
+
 **Acceptance:** exported AAB `≤ 90 MB` with no texture asset above `1024²` (CI-checkable, see §9).
 
 ---
@@ -291,12 +297,34 @@ Godot's importer maps *High Quality* to ASTC on mobile and BPTC on desktop, and 
 
 **Gate.** Fail the PR when any fixture metric regresses more than `10% [tune]` against the last tagged baseline, or breaches an absolute budget in §1–§8. Re-baseline only with a written reason in the commit body.
 
+**Status (M0).** Fixtures live in `src/debug/perf_*.tscn` (base `PerfFixture`, recorder `PerfLogger`): CSV of the monitor list above every 0.25 s to `user://perf/<fixture>-<ts>.csv`, plus a PASS/FAIL/INFO/SKIP row per budget (`PERF|fixture|budget|value|op limit unit|status` on stdout, `summary.csv`). GPU time comes from `RenderingServer.viewport_get_measured_render_time_gpu`; under `--headless` render rows print `SKIP`. `perf_break` args: `--runs=100 --seed --balls=12 --ci=1 --step-limit-ms`; `perf_bar`: `--seconds=60 --scale=0.85`; `perf_effects`: `--seconds=30` (ViewOverlay ubershader at full uniforms, 8 particle bursts, 4 decals); `perf_soak`: `--minutes=5 --aim=6` (real `QualityManager` in the loop). `perf_sequence.tscn` runs all four; the `m0` export feature boots it (`run/main_scene.m0`).
+
+**One command on the phone** (USB debugging on, `adb devices` lists it; no phone → it stops with that message):
+
+```
+src/tools/m0_device_run.sh                 # 100 breaks + 60 s orbit + 30 s effects + 5 min soak, ~25 min
+src/tools/m0_device_run.sh --soak-min 20   # the §7 acceptance soak
+src/tools/m0_device_run.sh --quick         # 2-minute pipeline smoke
+src/tools/m0_device_run.sh --emulator      # AVD smoke; numbers are not budgets
+```
+
+It exports the `Android M0` preset (gradle, arm64), installs, launches with `am start -W` (`TotalTime` vs §6), waits, samples `dumpsys meminfo` RSS and thermal zones every 10 s, captures a SurfaceFlinger latency window during the orbit (Godot's Vulkan surface bypasses HWUI, so `dumpsys gfxinfo` framestats stay empty — the dump is saved anyway), pulls the CSVs with `run-as` into `build/m0/<ts>/` and prints the budget table + `M0 RESULT`. Drain is only valid unplugged (USB charges); use wireless adb for the §7 drain number.
+
+**CI** (`.github/workflows/ci.yml`, no GPU): all probes + the pair probe (`tests/run_all.sh`), `perf_break --ci=1` (gates: no ball off the table, ball count conserved, events/shot ≤ 200, a coarse step ceiling), Android-preset PCK export + `check_gates.gd`. Device-only budgets are printed as INFO in CI.
+
+**Dev-PC reference (i7-11800H + RTX 3050 Ti Laptop, other agents running — never a sign-off):**
+
+__REF_TABLE__
+
 **Acceptance:** every §1–§8 acceptance test runs unattended from one command on both devices and emits pass/fail per budget.
 
 ---
 
 ## Open questions
 
+- **Ball.gd vs budgets (SYNC/alpha decide):** `perf_break` sees 6 simultaneous CCD bodies (≤ 2) and 10.0 s strike-to-rest (≤ 9 s) on the dev PC; both are deterministic, not device noise. Candidates: a higher `ccd_speed_mps`, a stricter `rest_speed_mps`, or re-tune the budgets.
+- **Ball bodies at rest:** `Ball._integrate_forces` never sets `sleeping`, so the "table at rest ≈ 0.05 ms" row depends on Jolt sleeping the bodies anyway; `perf_break` reports `bodies_active_at_rest`.
+- Tier 0 scale: 07 §7.4 says 1.0, the frame budget is written at 0.85. If the 695 misses at 1.0, tier 0 becomes 0.85 (`QualityManager.TIERS[0]`, one line).
 - 240 Hz on the 695 is a projection, not a measurement — M0 (P1) settles it. Everything in §1 has a 120 Hz fallback for that reason.
 - Ball trails / felt scuff decals are unbudgeted until the effect catalog is final (03 rewrite).
 - Free-roam player rendering cost (4 characters, animated) is a Player-module number and is currently a `1.0 ms [tune]` placeholder inside the rendering CPU budget.
