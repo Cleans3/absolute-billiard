@@ -3,12 +3,13 @@ extends RefCounted
 
 ## Ordered record of one Shot (01 §2): the only input to foul and trick detection. Entry =
 ## {tick: int, kind: BALL|RAIL|POCKET|OFF_TABLE, a: Ball, b: Ball|null, pocket_id: StringName,
-## rail_id: StringName}. A BALL entry puts the cue ball in `a` when it is one of the pair.
+## rail_id: StringName, peer_id: int}. A BALL entry puts the cue ball in `a` when it is one of the pair.
 
 const BALL := &"BALL"
 const RAIL := &"RAIL"
 const POCKET := &"POCKET"
 const OFF_TABLE := &"OFF_TABLE"
+const NUDGE := &"NUDGE"  # `a` null, `peer_id` = who shoved the table
 
 var entries: Array[Dictionary] = []
 
@@ -39,12 +40,16 @@ func add_off_table(a: Ball) -> void:
 	_add(OFF_TABLE, a)
 
 
+func add_nudge(peer_id: int) -> void:
+	_add(NUDGE, null, null, &"", &"", peer_id)
+
+
 static func touches(entry: Dictionary, ball: Ball) -> bool:
 	return entry.a == ball or entry.b == ball
 
 
-func _add(kind: StringName, a: Ball, b: Ball = null, pocket_id := &"", rail_id := &"") -> void:
-	entries.append({tick = Engine.get_physics_frames(), kind = kind, a = a, b = b, pocket_id = pocket_id, rail_id = rail_id})
+func _add(kind: StringName, a: Ball, b: Ball = null, pocket_id := &"", rail_id := &"", peer_id := 0) -> void:
+	entries.append({tick = Engine.get_physics_frames(), kind = kind, a = a, b = b, pocket_id = pocket_id, rail_id = rail_id, peer_id = peer_id})
 
 
 func _pair_logged_this_tick(a: Ball, b: Ball) -> bool:

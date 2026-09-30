@@ -213,7 +213,7 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 	var e0 := spec.cushion_restitution
 	var e := spec.cushion_restitution_at(vn / e0)
 	if sim != null:
-		e *= sim.rail_restitution_mult(_pending_rail_id)
+		e = minf(e * sim.rail_restitution_mult(_pending_rail_id), 1.0)  # a glass cushion never adds energy
 	state.linear_velocity += n * vn * (e / e0 - 1.0)
 
 

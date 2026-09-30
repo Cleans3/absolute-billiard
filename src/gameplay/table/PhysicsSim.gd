@@ -9,6 +9,8 @@ signal all_resting
 ## Every peer, host included (04 §5 `shot_started` RPC): the network-level start of a Shot.
 signal shot_started_net(shot_id: int, shooter_id: int, base_tick: int)
 signal shot_rejected(reason: StringName)
+## Host: a nudge was applied (RoundDirector logs it as a NUDGE ContactLog entry, 01 §3).
+signal nudged(direction: Vector2, strength: float, source_peer_id: int)
 ## Host: a frame of ball events / heartbeat was flushed (also emitted with no peers when `capture`).
 signal frame_flushed(frame: PackedByteArray)
 signal heartbeat_flushed(frame: PackedByteArray)
@@ -20,6 +22,7 @@ const NUDGE_IMPULSE := 0.06  # N·s per unit strength [tune] (01 §3)
 const DIVERGE_M := 0.002  # host re-sends a ball once its model drifts this far from Jolt [tune]
 const FLUSH_HZ := 30
 const HEARTBEAT_HZ := 2
+const HEARTBEAT_SNAP_M := 0.006  # client adopts a heartbeat state only when this far off
 const INTERP_DELAY_SEC := 0.1  # client renders this far behind the host (04 §2.4)
 
 ## Installed by EffectManager: (stat: StringName, peer_id: int, base: float) -> float. Default = base.
@@ -49,6 +52,7 @@ var _dirty := PackedByteArray()
 var _frame := PackedByteArray()
 var _hb := PackedByteArray()
 var _scratch := BallMotion.State.new()
+var _hb_state := BallMotion.State.new()
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
 var _hb_every := LIVE_TICK / HEARTBEAT_HZ
 var _emitted_events := 0
@@ -76,6 +80,7 @@ func set_stat(stat_name: StringName, value: float) -> void:
 			cloth_friction_mult = value
 			for b in _balls:
 				b.motion.friction_mult = value
+			_scale_bed_friction(value)
 		&"cushion_restitution_mult": cushion_restitution_mult = value
 		&"table_tilt_deg": table_tilt_deg = value
 		_: push_error("PhysicsSim.set_stat: unknown stat %s" % stat_name)
@@ -94,11 +99,20 @@ func rail_restitution_mult(rail_id: StringName) -> float:
 
 
 ## Central impulse to every non-resting ball (01 §3). Host-only.
-func nudge(direction: Vector2, strength: float, _source_peer_id: int) -> void:
+func nudge(direction: Vector2, strength: float, source_peer_id: int) -> void:
 	var j := Vector3(direction.x, 0.0, direction.y).normalized() * strength * NUDGE_IMPULSE
 	for b in _balls:
 		if not b.is_resting and not b.freeze:
 			b.apply_central_impulse(j)
+	nudged.emit(direction, strength, source_peer_id)
+
+
+## Ball–cloth contact friction is the bed body's material (Jolt), on top of the rolling-resistance term.
+func _scale_bed_friction(mult: float) -> void:
+	var table := get_parent() as Table
+	var bed := table.get_node_or_null("Bed") as StaticBody3D if table != null else null
+	if bed != null:
+		bed.physics_material_override.friction = table.spec.cloth_friction * mult
 
 
 func _ready() -> void:
@@ -395,8 +409,18 @@ func _push_events_rpc(_id: int, _base: int, frame: PackedByteArray) -> void:
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _push_heartbeat_rpc(_tick: int, frame: PackedByteArray) -> void:
-	apply_frame(frame)
+func _push_heartbeat_rpc(tick: int, frame: PackedByteArray) -> void:
+	# Corrective only: the host's predictions assume the clients follow the event stream, so a
+	# heartbeat state is adopted just when the client is provably off (lost packet, late join).
+	var o := origin()
+	for i in BallEventCodec.count(frame):
+		var id := BallEventCodec.ball_id(frame, i)
+		var b := _by_id[id] if id < _by_id.size() else null
+		if b == null or b.retired:
+			continue
+		BallEventCodec.read_state(frame, i, o, _hb_state)
+		if not _replica.sample(id, tick, b.motion, _scratch) or _scratch.pos.distance_to(_hb_state.pos) > HEARTBEAT_SNAP_M:
+			_replica.insert(id, tick, _hb_state)
 
 
 # ---------------------------------------------------------------- client
