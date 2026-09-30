@@ -17,6 +17,10 @@ const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
 const HOST_ID := 1
 const STEAM_TRANSPORT := "res://src/core/transport_steam.gd"  # loaded by path: phone builds must not parse it
+## An ENet header naming no peer and carrying no command: every ENet receiver drops it silently.
+const PUNCH_PACKET: PackedByteArray = [0x0f, 0xff]
+const PUNCH_COUNT := 20
+const PUNCH_INTERVAL_SEC := 0.1
 
 var config: NetConfig = preload("res://src/resources/net_config.tres")
 var transport := Transport.ENET_DIRECT
@@ -244,6 +248,32 @@ func _host_noray() -> void:
 	_noray = nc
 	lobby_code = nc.oid
 	_install_host(peer)
+	_noray_host_punch(nc, peer, gen)
+
+
+## Host half of Noray's handshake. The relay tells the host where each joiner will appear from
+## (`connect <ip:port>` = the joiner itself, `connect-relay <port>` = the joiner's relay port); a burst
+## from ENet's own socket opens this side's NAT toward it. Without it a port-restricted NAT drops both
+## the punched and the relayed path.
+func _noray_host_punch(nc: NorayClient, peer: ENetMultiplayerPeer, gen: int) -> void:
+	var relay_ip := IP.resolve_hostname(config.relay_host, IP.TYPE_IPV4)
+	while gen == _gen and _noray == nc:
+		var direct := nc.take_command("connect")
+		if direct != "":
+			var sep := direct.rfind(":")
+			_punch(peer, direct.substr(0, sep), int(direct.substr(sep + 1)), gen)
+		var relay_port := int(nc.take_command("connect-relay"))
+		if relay_port > 0:
+			_punch(peer, relay_ip, relay_port, gen)
+		await get_tree().process_frame
+
+
+func _punch(peer: ENetMultiplayerPeer, address: String, port: int, gen: int) -> void:
+	for i in PUNCH_COUNT:
+		if gen != _gen or peer.host == null:
+			return
+		peer.host.socket_send(address, port, PUNCH_PACKET)
+		await get_tree().create_timer(PUNCH_INTERVAL_SEC).timeout
 
 
 func _join_noray(code: String) -> void:

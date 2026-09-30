@@ -80,15 +80,23 @@ func send(line: String) -> void:
 func wait_command(name: String, timeout_sec: float) -> String:
 	var t0 := _now()
 	while true:
-		_pump()
-		for i in _inbox.size():
-			if _inbox[i][0] == name:
-				var text := _inbox[i][1]
-				_inbox.remove_at(i)
-				return text
+		var text := take_command(name)
+		if text != "":
+			return text
 		if _tcp.get_status() != StreamPeerTCP.STATUS_CONNECTED or _now() - t0 > timeout_sec * 1000.0:
 			return ""
 		await _frame()
+	return ""
+
+
+## Non-blocking: the oldest queued `name` command's text, or "" when none has arrived.
+func take_command(name: String) -> String:
+	_pump()
+	for i in _inbox.size():
+		if _inbox[i][0] == name:
+			var text := _inbox[i][1]
+			_inbox.remove_at(i)
+			return text
 	return ""
 
 
