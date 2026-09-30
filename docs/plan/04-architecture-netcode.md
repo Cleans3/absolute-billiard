@@ -210,6 +210,7 @@ MainLevel.tscn
 | `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `push_rig_poses(poses, holders)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `resync_effects(ids, owners, targets, durations, remaining)` — `_resync_effects_rpc`: sent with `full_state` to one client; adds Effects it lacks and syncs remaining time | EffectManager | H→1 | `authority` | `call_remote` | `reliable` | 3 |
 | `apply_event(event_id, round_index, pocket_id)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `event_offer(round_index, tier, event_ids)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `submit_event_vote(event_id)` | EventScheduler | C→H | `any_peer` | `call_local` | `reliable` | 3 |
@@ -217,6 +218,7 @@ MainLevel.tscn
 | `world_interaction_applied(peer_id, kind, target_id, payload)` | MainLevel/WorldInteractions | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `world_interaction_rejected(kind, reason)` | MainLevel/WorldInteractions | H→1 | `authority` | `call_remote` | `reliable` | 3 |
 | `push_save_checkpoint(save_version, blob)` | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `push_roster(roster)` — `_push_roster`: the seat list (host-written, clients mirror) | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `peer_ready()` | NetManager | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
 | `start_session(seed)` | NetManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
