@@ -84,7 +84,7 @@ static func write_checkpoint(key: String, blob: PackedByteArray) -> bool:
 		return false
 	f.store_buffer(blob)
 	f.close()
-	prune()
+	prune(checkpoint_path(key))
 	return true
 
 
@@ -93,11 +93,13 @@ static func delete_checkpoint(key: String) -> void:
 	DirAccess.remove_absolute(checkpoint_path(key))
 
 
-## Keeps the KEEP_CHECKPOINTS newest files.
-static func prune() -> void:
+## Keeps the KEEP_CHECKPOINTS newest files. `just_written` always survives: mtimes have 1 s resolution,
+## so a same-second tie must never evict the checkpoint this call exists to keep.
+static func prune(just_written := "") -> void:
 	var files: Array[Dictionary] = []
 	for file in DirAccess.get_files_at(checkpoint_dir()):
-		files.append({path = checkpoint_dir().path_join(file), modified = FileAccess.get_modified_time(checkpoint_dir().path_join(file))})
+		var path := checkpoint_dir().path_join(file)
+		files.append({path = path, modified = INF if path == just_written else float(FileAccess.get_modified_time(path))})
 	files.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.modified > b.modified)
 	for i in range(KEEP_CHECKPOINTS, files.size()):
 		DirAccess.remove_absolute(files[i].path)
