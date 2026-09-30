@@ -211,9 +211,8 @@ src/
 - **Amended (M1):** `round_ended` `reason` ∈ `timer | cleared | shots` — `shots` when the Round's shot budget hits 0 (every `shot_ended`, foul included, costs one); `stuck` is retired, "only penalty balls left" *is* `table_cleared` (01 §3).
 
 ## 6. Open questions
-1. Fouls cost the shot and 50 viewers. Should they also cost Cash directly, or is the lost shot out of a ~10-shot budget already the whole penalty?
+*Ruled 2026-09-30 (06 P8):* fouls cost the shot and the viewers, never Cash directly; griefing keeps 03's 2-hostile-per-Turn cap with no extra per-Round cap.
 2. *(retired — P2: non-shooters free-roam the bar; there are no idle-player roles to design.)*
-3. Free-roam griefing: bumping the table is an `Effect` with a viewer bonus and an accuracy cost. Does it need a per-Round cap, or is a shared quota enough social pressure?
 
 ## 7. MVP cut vs later
 

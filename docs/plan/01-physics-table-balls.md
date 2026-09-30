@@ -281,10 +281,7 @@ The cheapest insurance in the plan — each is a scripted `ShotIntent` against a
 **To 04 (architecture/netcode).** The host owns the sim; clients get contact events plus a low-rate heartbeat, so the contact log doubles as the sync payload. `Shot.intent` + `Round` seed is the whole replay record. `PhysicsSim` lives in `Table.tscn` as a plain node — 01 declares no autoload.
 
 ## 6. Open questions
-- `bomb_ball`: does the scatter destroy the bomb only, or convert its neighbours into 0-value fragments?
-- `split_ball`: one spawn per pot, or one per carom chain within the shot?
-- Should one pocket per table be a deliberately awkward "house" pocket (narrower mouth, harsher jaws)?
-- Does `stone_ball` count against the ≤12 cap, or sit outside it as scenery with collision?
+*Ruled 2026-09-30 (06 P8):* `bomb_ball` scatters its neighbours and removes only itself (no fragments); `split_ball` spawns one `red_basic` per pot, not per carom; no "house" pocket; `stone_ball` counts toward the `≤ 12` ball cap.
 - Jaw restitution `0.55` decides how often shots rattle; that is a feel dial — who owns it after the first playtest, 01 or 03?
 
 ## 7. MVP cut vs later
