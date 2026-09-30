@@ -224,7 +224,7 @@ All five are counters over the ordered contact log, evaluated once at shot end. 
 | `Carom` | the cue ball contacts ≥2 distinct object balls before the first `POCKET` event | `1.35` |
 | `RailRunner` | a potted object ball has ≥3 `RAIL` contacts before its `POCKET` event | `1.60` |
 
-**Disjointness: a `Shot` pays exactly one trick multiplier — the highest that fired.** `trick_ids` is emitted sorted by multiplier descending, and 02 multiplies by the first entry only. Everything detected is still emitted, so 03's Effects can react to a `KickShot` that lost to a `RailRunner`. `TrickShot { id: StringName, multiplier: float, shot_id: String, tags: Array[StringName] }` — no `bonus_points` field, because there are no flat bonuses.
+**Disjointness: a `Shot` pays exactly one trick multiplier — the highest that fired.** `trick_ids` is emitted sorted by multiplier descending, and 02 multiplies by the first entry only. Everything detected is still emitted, so 03's Effects can react to a `KickShot` that lost to a `RailRunner`. `TrickShot { id: StringName, multiplier: float, shot_id: String, tags: Array[StringName] }` — `multiplier` and `tags` are pure functions of `id` (`TrickShot.make`, `TrickShot.TAGS`), so a client rebuilds the same object from the wire id — no `bonus_points` field, because there are no flat bonuses.
 
 Cut and not coming back: `MasséCurve` (curve-radius fitting is noise), `DoubleCushionExit` (fires on nearly every rail), `ScratchEscape` (undefinable), `SplitChain` and `BombCascade` (they described balls that did not exist yet).
 

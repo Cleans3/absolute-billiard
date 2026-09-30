@@ -9,6 +9,9 @@ signal roster_changed()
 signal session_failed(reason: StringName)
 signal session_ended(reason: StringName)
 signal all_peers_ready()  ## host only; main_level.gd starts the campaign on it
+signal app_paused()  ## this app went to the background (phone); PhysicsSim / RoundDirector stop trusting streams
+signal app_resumed()
+signal host_away_changed(away: bool)  ## client: the host's app is in the background (UI shows "host away")
 
 const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
@@ -20,6 +23,9 @@ var transport := Transport.ENET_DIRECT
 var lobby_code := ""
 var session_seed := 0
 var in_session := false  ## true once start_session ran; late joiners are refused after this
+
+var backgrounded := false  ## this app is paused (04 §6): no sends, streams ignored, full state asked on resume
+var host_away := false  ## client mirror of the host's `backgrounded`
 
 var last_notice := &""  ## why the last session ended; the Lobby shows it once via take_notice()
 
@@ -34,6 +40,7 @@ var _gen := 0  # bumped by _reset(); an async join/host from an older generation
 func _ready() -> void:
 	_init_steam()
 	multiplayer.peer_connected.connect(_on_peer_connected)
+	multiplayer.peer_connected.connect(_relax_timeout)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(func() -> void: _fail(&"connection_failed"))
@@ -354,7 +361,50 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 
 func _on_connected_to_server() -> void:
+	_relax_timeout(HOST_ID)
 	session_started.emit(false)
+
+
+func _notification(what: int) -> void:
+	match what:
+		NOTIFICATION_APPLICATION_PAUSED: set_backgrounded(true)
+		NOTIFICATION_APPLICATION_RESUMED: set_backgrounded(false)
+		NOTIFICATION_APPLICATION_FOCUS_OUT:
+			if OS.get_name() == "Android":
+				set_backgrounded(true)
+		NOTIFICATION_APPLICATION_FOCUS_IN:
+			if OS.get_name() == "Android":
+				set_backgrounded(false)
+
+
+## Also the seam tests use to fake a pause. The host tells its clients (best effort, it may be frozen
+## right after) so they can show "host away"; the host's resume also re-sends every client full state.
+func set_backgrounded(value: bool) -> void:
+	if backgrounded == value:
+		return
+	backgrounded = value
+	if is_host() and not multiplayer.get_peers().is_empty():
+		_host_away_rpc.rpc(value)
+	if value:
+		app_paused.emit()
+	else:
+		app_resumed.emit()
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _host_away_rpc(away: bool) -> void:
+	host_away = away
+	host_away_changed.emit(away)
+
+
+## ENet default (5 s min / 30 s max) would drop a phone that spent 30 s in the background.
+func _relax_timeout(peer_id: int) -> void:
+	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
+	if enet == null:
+		return
+	var p := enet.get_peer(peer_id)
+	if p != null:
+		p.set_timeout(config.peer_timeout_limit, config.peer_timeout_min_ms, config.peer_timeout_max_ms)
 
 
 func _fail(reason: StringName) -> void:
@@ -383,6 +433,8 @@ func _reset() -> void:
 	_level_ready.clear()
 	lobby_code = ""
 	in_session = false
+	backgrounded = false
+	host_away = false
 
 
 ## Host → every client at each Round end (04 §2.6): each peer keeps its own copy for a re-host.

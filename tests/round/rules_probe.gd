@@ -69,6 +69,9 @@ func _run() -> void:
 	_scoring()
 	_calls_and_clock()
 	_pockets()
+	_pocket_visuals()
+	_stone_nights()
+	_trick_tags()
 	await _bomb()
 	_split()
 	_shuffle()
@@ -254,6 +257,57 @@ func _pockets() -> void:
 		or not is_equal_approx(Table.pocket_offset(SEED, &"side_s", 1.7, 0.06), Table.pocket_offset(SEED + 1, &"side_s", 1.7, 0.06)), "another seed shifts the phase")
 	_check(absf(Table.pocket_offset(SEED, &"corner_ne", 3.3, 0.06)) <= 0.06, "amplitude bounds it")
 	table.apply_pocket_stats(1.0, 0.0, SEED)
+
+
+## REQ#rules-2: the liner is drawn where the chute captures, at any clock value.
+func _pocket_visuals() -> void:
+	table.apply_pocket_stats(1.0, 0.06, SEED)
+	for t in [0.0, 0.9, 1.7, 3.3, 5.5]:
+		table.set_pocket_time(t)
+		for ps in table.layout.pockets:
+			var area := table.get_node("Drop_" + String(ps.id)) as Area3D
+			var liner := table.get_node("Liner_" + String(ps.id)) as MeshInstance3D
+			var tangent := Vector3(-ps.mouth_normal.y, 0.0, ps.mouth_normal.x).normalized()
+			var want := tangent * Table.pocket_offset(SEED, ps.id, t, 0.06)
+			var area_d: Vector3 = area.position - area.get_meta(&"base_position")
+			var liner_d: Vector3 = liner.position - liner.get_meta(&"base_position")
+			_check(area_d.is_equal_approx(want), "chute %s at t=%.1f follows the pure function" % [ps.id, t])
+			_check(liner_d.is_equal_approx(area_d), "liner %s at t=%.1f == capture position" % [ps.id, t])
+	table.apply_pocket_stats(1.0, 0.0, SEED)
+	for ps in table.layout.pockets:
+		var liner := table.get_node("Liner_" + String(ps.id)) as MeshInstance3D
+		_check(liner.position.is_equal_approx(liner.get_meta(&"base_position")), "no oscillation = liner at rest")
+
+
+## REQ#rules-2: stone_ball comes from the Night 3 and Night 4 pools, one per rack, inside the 12 cap.
+func _stone_nights() -> void:
+	for path in ["res://src/resources/nights/night_3.tres", "res://src/resources/nights/night_4.tres"]:
+		var cfg: NightConfig = load(path)
+		_check(cfg.unlocked_ball_types.has(&"stone_ball"), "%s lists stone_ball" % path)
+		_check(RackDropper.rack_size(cfg) == cfg.object_ball_count + RackDropper.STONES_PER_RACK and RackDropper.rack_size(cfg) <= RackDropper.MAX_OBJECT_BALLS, "%s rack size counts the stone under the cap" % path)
+		var rng := RandomNumberGenerator.new()
+		rng.seed = SEED
+		var stones := 0
+		for t in RackDropper.compose(cfg, RackDropper.rack_size(cfg), rng):
+			stones += 1 if t.id == &"stone_ball" else 0
+		_check(stones == RackDropper.STONES_PER_RACK, "%s composes exactly one stone" % path)
+		director.start_round(cfg, 1, SEED)
+		var n := 0
+		for b in director.get_balls():
+			n += 1 if b.ball_type.id == &"stone_ball" else 0
+		_check(n == 1 and director.get_balls().size() <= RackDropper.MAX_OBJECT_BALLS + 1, "%s Round racks one stone" % path)
+
+
+## REQ#rules-2: a client's TrickShot carries the same tags as the host's, rebuilt from the id alone.
+func _trick_tags() -> void:
+	var got: Array[TrickShot] = []
+	director.trick_detected.connect(func(t: TrickShot, _s: String) -> void: got.append(t))
+	director._shot_resolved_rpc("n1-r1-s1", 1, 0, 0, PackedStringArray(["Combo", "BankShot", "RailRunner"]), false)
+	_check(got.size() == 3, "three tricks re-emitted")
+	for t in got:
+		_check(not t.tags.is_empty() and t.tags == Array(TrickShot.TAGS[t.id], TYPE_STRING_NAME, &"", null), "client %s carries its tags" % t.id)
+		_check(is_equal_approx(t.multiplier, TrickShot.multiplier_for(t.id)) and t.shot_id == "n1-r1-s1", "client %s multiplier + shot id" % t.id)
+	_check(TrickShot.make(&"KickShot", "x").tags == TrickShot.make(&"KickShot", "y").tags, "tags are a pure function of the id")
 
 
 ## Chute positions after 1.7 s of oscillation under `seed`, as one comparable array.
