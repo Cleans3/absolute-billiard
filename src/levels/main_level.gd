@@ -11,9 +11,18 @@ const NIGHTS: Array[NightConfig] = [
 ]
 
 @onready var game_loop: GameLoop = $GameLoop
+@onready var round_director: RoundDirector = $RoundDirector
 
 
 func _ready() -> void:
 	game_loop.nights = NIGHTS
-	if game_loop.is_host():
-		game_loop.start_campaign()
+	$PlayerSpawner.local_player_spawned.connect(_on_local_player)
+	NetManager.all_peers_ready.connect(game_loop.start_campaign)
+	NetManager.main_level_ready()
+
+
+## The walker's cue talks to this peer's RoundDirector (SYNC replaces `gate` with the shot route).
+func _on_local_player(player: CharacterBody3D) -> void:
+	var cue := player.get_node("Head/CueController")
+	round_director.cue = cue
+	cue.set(&"gate", round_director.can_strike)
