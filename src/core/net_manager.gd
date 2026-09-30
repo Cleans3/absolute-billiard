@@ -13,6 +13,7 @@ signal all_peers_ready()  ## host only; main_level.gd starts the campaign on it
 const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
 const HOST_ID := 1
+const STEAM_TRANSPORT := "res://src/core/transport_steam.gd"  # loaded by path: phone builds must not parse it
 
 var config: NetConfig = preload("res://src/resources/net_config.tres")
 var transport := Transport.ENET_DIRECT
@@ -20,12 +21,18 @@ var lobby_code := ""
 var session_seed := 0
 var in_session := false  ## true once start_session ran; late joiners are refused after this
 
+var last_notice := &""  ## why the last session ended; the Lobby shows it once via take_notice()
+
 var _roster: Array[Dictionary] = []  # {peer_id, name, seat, ready}; host writes, clients mirror
 var _level_ready: Dictionary = {}  # peer_id -> true, host only, this session
 var _timeout: SceneTreeTimer
+var _steam: Node  # SteamTransport instance, PC + addon + Steam running only
+var _noray: NorayClient  # keeps the host's control connection (= its lobby registration) alive
+var _gen := 0  # bumped by _reset(); an async join/host from an older generation must stand down
 
 
 func _ready() -> void:
+	_init_steam()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -39,6 +46,9 @@ func host(p_transport := Transport.ENET_NORAY) -> void:
 	transport = p_transport
 	if transport == Transport.ENET_NORAY:
 		_host_noray()
+		return
+	if transport == Transport.STEAM:
+		_host_steam()
 		return
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(config.direct_port, config.max_players - 1, config.channel_count)
@@ -75,6 +85,17 @@ func join_code(code: String) -> void:
 	_join_noray(code)
 
 
+## True when the Steam button may show: PC build, addons present, Steam client running.
+func steam_available() -> bool:
+	return _steam != null
+
+
+## Overlay friend picker for the current Steam lobby.
+func steam_invite() -> void:
+	if _steam != null:
+		_steam.invite_overlay()
+
+
 func leave() -> void:
 	_reset()
 	if get_tree().current_scene == null or get_tree().current_scene.scene_file_path != LOBBY:
@@ -95,6 +116,16 @@ func seat_order() -> PackedInt32Array:
 	for e in _roster:
 		ids.append(e.peer_id)
 	return ids
+
+
+func share_link() -> String:
+	return "%s/j/%s" % [config.share_base_url, lobby_code]
+
+
+func take_notice() -> StringName:
+	var n := last_notice
+	last_notice = &""
+	return n
 
 
 ## Host: every peer loads MainLevel with one shared seed.
@@ -124,6 +155,8 @@ func start_session(p_seed: int) -> void:
 	_level_ready.clear()
 	if is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
 		multiplayer.multiplayer_peer.refuse_new_connections = true
+	if is_host() and _steam != null:
+		_steam.lock()
 	get_tree().change_scene_to_file(MAIN_LEVEL)
 
 
@@ -150,12 +183,132 @@ func _install_client(peer: MultiplayerPeer) -> void:
 			_fail(&"timeout"))
 
 
+## Registers with Noray, then serves ENet from the very port the registrar saw, so the lobby code
+## (= OID, 6-char Crockford by relay config) reaches this host directly or through the relay.
+func _init_steam() -> void:
+	var script: GDScript = load(STEAM_TRANSPORT)
+	if not script.supported():
+		return
+	var t: Node = script.new()
+	if not t.init_steam():
+		t.free()
+		return
+	_steam = t
+	add_child(t)
+	t.join_requested.connect(join_steam)
+
+
+func _host_steam() -> void:
+	var gen := _gen
+	var peer: MultiplayerPeer = await _steam.host(config.max_players, config.timeout_sec)
+	if gen != _gen:
+		return
+	if peer == null:
+		_fail(&"host_failed")
+		return
+	_install_host(peer)
+
+
+## Called by a Steam invite (overlay or friends list), from anywhere: leaves whatever we were in.
+func join_steam(lobby_id: int) -> void:
+	_reset()
+	transport = Transport.STEAM
+	var gen := _gen
+	var peer: MultiplayerPeer = await _steam.join(lobby_id, config.timeout_sec)
+	if gen != _gen:
+		return
+	if peer == null:
+		_fail(&"join_failed")
+		return
+	_install_client(peer)
+	if get_tree().current_scene == null or get_tree().current_scene.scene_file_path != LOBBY:
+		get_tree().change_scene_to_file(LOBBY)
+
+
 func _host_noray() -> void:
-	session_failed.emit(&"noray_unavailable")
+	var gen := _gen
+	var nc := await _noray_register()
+	if nc == null or gen != _gen:
+		return
+	var peer := ENetMultiplayerPeer.new()
+	if peer.create_server(nc.local_port, config.max_players - 1, config.channel_count) != OK:
+		_fail(&"host_failed")
+		return
+	_noray = nc
+	lobby_code = nc.oid
+	_install_host(peer)
 
 
-func _join_noray(_code: String) -> void:
-	session_failed.emit(&"noray_unavailable")
+func _join_noray(code: String) -> void:
+	var gen := _gen
+	var oid := LobbyCode.normalize(code)
+	if oid == "":
+		session_failed.emit(&"bad_code")
+		return
+	var nc := await _noray_register()
+	if nc == null or gen != _gen:
+		return
+	_noray = nc
+	nc.send("connect " + oid)
+	var target := await nc.wait_command("connect", config.timeout_sec)
+	if gen != _gen:
+		return
+	if target == "":
+		_fail(&"unknown_code")
+		return
+	# Direct first (our outbound packet punches our own NAT); relay when that stays silent.
+	var sep := target.rfind(":")
+	if await _try_client(target.substr(0, sep), int(target.substr(sep + 1)), nc.local_port, config.direct_try_sec, gen):
+		return
+	if gen != _gen:
+		return
+	nc.send("connect-relay " + oid)
+	var relay_port := int(await nc.wait_command("connect-relay", config.timeout_sec))
+	if gen != _gen:
+		return
+	if relay_port == 0:
+		_fail(&"relay_failed")
+		return
+	var peer := ENetMultiplayerPeer.new()
+	if peer.create_client(config.relay_host, relay_port, config.channel_count, 0, 0, nc.local_port) != OK:
+		_fail(&"join_failed")
+		return
+	_install_client(peer)
+
+
+## One ENet client attempt from a fixed local port; true once connected.
+func _try_client(address: String, port: int, local_port: int, timeout: float, gen: int) -> bool:
+	var peer := ENetMultiplayerPeer.new()
+	if peer.create_client(address, port, config.channel_count, 0, 0, local_port) != OK:
+		return false
+	multiplayer.multiplayer_peer = peer  # SceneMultiplayer must see the connect event, so it polls
+	var t0 := Time.get_ticks_msec()
+	while peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTING \
+			and Time.get_ticks_msec() - t0 < timeout * 1000.0 and gen == _gen:
+		await get_tree().process_frame
+	if gen == _gen and peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		return true
+	if gen == _gen:
+		multiplayer.multiplayer_peer = null
+	peer.close()
+	await get_tree().process_frame  # let the socket release local_port before the relay try
+	return false
+
+
+func _noray_register() -> NorayClient:
+	var gen := _gen
+	var nc := NorayClient.new()
+	var ok: bool = await nc.open(config.relay_host, config.relay_tcp_port, config.timeout_sec) \
+		and await nc.register_host(config.timeout_sec) \
+		and await nc.register_remote(config.relay_host, config.relay_udp_port, config.timeout_sec)
+	if gen != _gen:
+		nc.close()
+		return null
+	if not ok:
+		nc.close()
+		session_failed.emit(&"relay_unreachable")
+		return null
+	return nc
 
 
 func _mark_ready(peer_id: int) -> void:
@@ -211,11 +364,18 @@ func _fail(reason: StringName) -> void:
 
 func _end(reason: StringName) -> void:
 	_reset()
+	last_notice = reason
 	session_ended.emit(reason)
 	leave()
 
 
 func _reset() -> void:
+	_gen += 1
+	if _steam != null:
+		_steam.leave()
+	if _noray != null:
+		_noray.close()
+		_noray = null
 	if multiplayer.multiplayer_peer != null:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null

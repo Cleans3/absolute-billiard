@@ -1,0 +1,11 @@
+[Unit]
+Description=Share-link landing page (absolute-billiard)
+After=network.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/noray/join_page.py 8892
+Restart=always
+User=noray
+
+[Install]
+WantedBy=multi-user.target
