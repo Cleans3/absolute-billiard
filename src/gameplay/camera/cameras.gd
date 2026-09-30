@@ -58,6 +58,21 @@ func camera_mult(pocket_id: StringName) -> float:
 	return CameraScorer.camera_mult(win.rig.tier_mult(), win.quality, bonus)
 
 
+## The Player's use-prop for a rig: WorldInteractions validates `move_camera` reach against an Interactable
+## whose target_id is the rig number (08 §5), and the same prop drives the "Grab camera" prompt.
+func _grab_prop(rig_number: int) -> Interactable:
+	var prop := Interactable.new()
+	prop.interaction = FxCatalog.interaction(&"move_camera")
+	prop.target_id = rig_number
+	prop.prompt = "Grab camera"
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = Bar.REACH_ZONE_RADIUS
+	shape.shape = sphere
+	prop.add_child(shape)
+	return prop
+
+
 func _sync_rigs() -> void:
 	var count: int = economy.rig_count() if economy != null else EconomyManager.BASE_RIGS
 	var tier: int = economy.camera_tier() if economy != null else 1
@@ -68,6 +83,7 @@ func _sync_rigs() -> void:
 		rig.position = SPOTS[i][0]
 		rig.rotation.y = SPOTS[i][1]
 		add_child(rig)
+		rig.add_child(_grab_prop(i + 1))
 		rigs.append(rig)
 	for rig in rigs:
 		rig.tier = tier
