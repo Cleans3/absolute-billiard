@@ -1,0 +1,34 @@
+[gd_resource type="Resource" script_class="ShopItem" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/economy/shop_item.gd" id="1_item"]
+[ext_resource type="Script" path="res://src/gameplay/economy/item_delta.gd" id="2_delta"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="3_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="4_mod"]
+
+[sub_resource type="Resource" id="Mod_1"]
+script = ExtResource("4_mod")
+stat = &"pocket_radius_mult"
+op = 0
+value = 0.1
+
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("3_effect")
+id = &"shop_magnetic_pockets"
+source_kind = 2
+target = 2
+stat_modifiers = Array[ExtResource("4_mod")]([SubResource("Mod_1")])
+duration_sec = -1.0
+
+[sub_resource type="Resource" id="Delta_1"]
+script = ExtResource("2_delta")
+effects = Array[ExtResource("3_effect")]([SubResource("Effect_1")])
+
+[resource]
+script = ExtResource("1_item")
+id = &"magnetic_pockets"
+category = &"table"
+cost_cash = 600
+payload = SubResource("Delta_1")
+min_night = 1
+persistent = false
+max_owned = 1
