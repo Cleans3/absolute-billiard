@@ -183,7 +183,7 @@ MainLevel.tscn
 
 | RPC | Node | Dir | mode | sync | transfer | ch |
 |---|---|---|---|---|---|---|
-| `request_shot(intent)` — wire: `_request_shot_rpc(blob 6×f32)`; the public `PhysicsSim.request_shot` is the entry (solo = local call) | PhysicsSim | C→H | `any_peer` | `call_remote` | `reliable` | 1 |
+| `request_shot(intent)` — wire: `_request_shot_rpc(blob 6×f32 + called-pocket index u8)`; the public `PhysicsSim.request_shot` is the entry (solo = local call) | PhysicsSim | C→H | `any_peer` | `call_remote` | `reliable` | 1 |
 | `shot_rejected(reason)` — `_shot_rejected_rpc`, also a local signal | PhysicsSim | H→1 | `authority` | `call_remote` | `reliable` | 1 |
 | `shot_started(shot_id, shooter_id, base_tick)` — `_shot_started_rpc(…, stats: 4×f32)` → signal `shot_started_net` | PhysicsSim | H→A | `authority` | `call_local` | `reliable` | 1 |
 | `push_contact_events(shot_id, base_tick, blob)` — `_push_events_rpc` | PhysicsSim | H→A | `authority` | `call_remote` | `reliable` | 1 |
@@ -191,6 +191,9 @@ MainLevel.tscn
 | `motion_stats(tick, stats)` — `_motion_stats_rpc`, mid-Shot friction/tilt change | PhysicsSim | H→A | `authority` | `call_remote` | `reliable` | 1 |
 | `shot_resolved(shot_id, shooter_id, end_tick, raw_points, trick_ids, foul)` — `_shot_resolved_rpc`, **`call_remote`**: the host already emitted `shot_ended` itself | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `push_rack(round_id, seed, blob)` — `_push_rack_rpc`; blob = `net_id u8, type u8, x f32, z f32` per ball | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `spawn_ball(net_id, type, x, z, tick)` — `_spawn_rpc`: a split's red, applied at `tick` (after the Shot's playback) | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `reroll_ball(net_id, type, tick)` — `_reroll_rpc`: shuffle, in place | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `shot_clock(seconds)` — `_shot_clock_rpc`: the shooter's clock armed | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `set_shooter(peer_id)` — `_set_shooter_rpc` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `round_state(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, end_reason)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `push_shot_settled(shot_id, cash, trick_id, foul)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
