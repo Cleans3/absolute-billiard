@@ -39,7 +39,7 @@ var _controls: TouchControls
 var _target: Interactable
 var _held_rig := 0                   # CameraRig number while CARRY (derived from the mirrored holders)
 var _placing := false
-var _turn_started_msec := 0          # when this peer became shooter (shot-clock readout)
+var _clock_end_msec := 0             # local end of the host's shot clock; 0 = none
 var _jump_queued := false
 var _saved_pos := Vector3.ZERO
 var _saved_yaw := 0.0
@@ -84,7 +84,8 @@ func bind(level: Node) -> void:
 	cue.player = self
 	cue.fired.connect(_on_fired)
 	_rd.shooter_changed.connect(_on_shooter_changed)
-	_rd.rack_ready.connect(func(_seed: int) -> void: _start_turn_clock())
+	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
+	_rd.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: _clock_end_msec = 0)
 	_sim.shot_rejected.connect(func(reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
 	if _world != null:
 		_world.interaction_rejected.connect(func(_k: StringName, reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
@@ -108,7 +109,7 @@ func bind(level: Node) -> void:
 		_controls.elevation.changed.connect(cue.set_elevation)
 		if not _controls.touch:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	_start_turn_clock()
+	_sync_can_shoot()
 	set_physics_process(true)
 	set_process(true)
 	set_process_unhandled_input(true)
@@ -137,6 +138,7 @@ func look(yaw_rad: float, pitch_rad: float) -> void:
 func _process(_delta: float) -> void:
 	if is_local:
 		if _controls != null and mode != Mode.CUE:
+			_controls.set_clock(shot_clock_text())
 			var d := _controls.look.consume()
 			if d != Vector2.ZERO:
 				var k := deg_to_rad(touch_look_deg_per_px)
@@ -277,7 +279,6 @@ func enter_cue() -> bool:
 	_set_mode(Mode.CUE)
 	if _controls != null and not _controls.touch:
 		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
-	cue.turn_started_msec = _turn_started_msec
 	cue.begin(ball, rotation.y)
 	return true
 
@@ -305,7 +306,6 @@ func _on_fired(_intent: ShotIntent) -> void:
 
 
 func _on_shooter_changed(peer_id: int) -> void:
-	_start_turn_clock()
 	if peer_id != multiplayer.get_unique_id():
 		exit_cue()
 	_sync_can_shoot()
@@ -316,12 +316,11 @@ func _sync_can_shoot() -> void:
 		_controls.set_can_shoot(_rd.current_shooter_id == multiplayer.get_unique_id())
 
 
-func _start_turn_clock() -> void:
-	_turn_started_msec = Time.get_ticks_msec()
-	if cue.active:
-		cue.turn_started_msec = _turn_started_msec
-	if _rd != null:
-		_sync_can_shoot()
+## "Shot clock N" while a clock runs and it is my turn (CUE adds it to its own status line); "" otherwise.
+func shot_clock_text() -> String:
+	if _clock_end_msec == 0 or _rd.current_shooter_id != multiplayer.get_unique_id():
+		return ""
+	return "Shot clock %d" % maxi(0, ceili((_clock_end_msec - Time.get_ticks_msec()) / 1000.0))
 
 
 func _cue_ball() -> Ball:

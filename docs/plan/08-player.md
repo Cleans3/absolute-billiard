@@ -48,7 +48,7 @@ One capsule mesh + head sphere tinted by seat colour (`Player.SEAT_COLOURS`, one
 | interact reach | `2.0 m` (same number the host validates in `WorldInteractions`) |
 | enter `CUE` | shooter + all balls resting + within `cue_reach_m` of the cue ball |
 | aim wobble | aim yaw sways `± max(0, cue_aim_wobble_deg − CueSpec.wobble_reduction)` degrees (`wobble_reduction` is degrees, 02 D6) at `0.8 Hz [tune]`; the intent carries the swayed yaw at release (03 §2.2 flag resolved). Stats are re-read at `4 Hz`, not per frame |
-| shot clock | when `shot_clock_sec > 0` a countdown shows in `CUE` from the moment you become shooter; at 0 the **host** records a whiff foul (no strike, shot costs 1, 02's foul viewer drop) |
+| shot clock | the host arms it each Turn (`RoundDirector.shot_clock_started(seconds)`); every peer counts down locally and the shooter sees it in `WALK` and `CUE`; at 0 the **host** records a whiff foul (no strike, shot costs 1, 02's foul viewer drop) |
 | power curve (desktop hold) | existing `charge_time 0.8 s`, `decay_time 1.6 s` |
 | touch power | linear in slider travel, `0..1` |
 

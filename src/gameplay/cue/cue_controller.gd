@@ -43,12 +43,10 @@ var table: Table                # pocket ids for call-pocket, optional
 var controls: TouchControls     # optional: headless probes and puppets have none
 var player: Node                # Player: pinned to the aim line while active
 var ball: Ball
-var turn_started_msec := 0      # when this peer became shooter; drives the shot-clock readout
 
 var _t := 0.0
 var _stat_wait := 0.0
 var _wobble_deg := 0.0
-var _clock_sec := 0.0
 
 @onready var cue_mesh: MeshInstance3D = $CueMesh
 @onready var _cue_len: float = (cue_mesh.mesh as CylinderMesh).height
@@ -94,7 +92,6 @@ func end() -> void:
 
 func refresh_stats() -> void:
 	_wobble_deg = maxf(0.0, _stat(&"cue_aim_wobble_deg", 0.0) - cue_spec.wobble_reduction)
-	_clock_sec = _stat(&"shot_clock_sec", 0.0)
 	call_required = _stat(&"rule_call_pocket", 0.0) > 0.0
 	_stat_wait = STAT_PERIOD
 
@@ -153,8 +150,7 @@ func build_intent(p: float) -> ShotIntent:
 	intent.spin_offset = spin
 	intent.elevation_deg = elevation_deg
 	intent.shooter_id = multiplayer.get_unique_id()
-	if &"called_pocket" in intent:  # ShotIntent field owned by RULES (08 §2.5)
-		intent.set(&"called_pocket", called_pocket)
+	intent.called_pocket = called_pocket
 	return intent
 
 
@@ -245,7 +241,6 @@ func _push_ui() -> void:
 	if not controls.touch:
 		controls.power.set_value(power)
 	var text := "Call a pocket   " if call_required and called_pocket == &"" else ""
-	if _clock_sec > 0.0:
-		var left := _clock_sec - (Time.get_ticks_msec() - turn_started_msec) / 1000.0
-		text += "Shot clock %d" % maxi(0, ceili(left))
+	if player != null:
+		text += player.call(&"shot_clock_text")
 	controls.set_clock(text)
