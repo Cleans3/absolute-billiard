@@ -33,3 +33,6 @@ const SIM_PUSHED: Array[StringName] = [
 
 ## Hooks that cover the whole screen: at most one live (03 §3.8).
 const FULLSCREEN_HOOKS: Array[StringName] = [&"blackout", &"shake"]
+
+## Rail ids as PhysicsSim knows them; an Effect's `target_id` on a rail-scoped TABLE Effect is 1 + index here.
+const RAILS: Array[StringName] = [&"rail_w", &"rail_e", &"rail_n_w", &"rail_n_e", &"rail_s_w", &"rail_s_e"]

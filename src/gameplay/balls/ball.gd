@@ -30,6 +30,9 @@ var spawn_index := 0
 var _pending_rail := Vector3.ZERO  # inward normal of a rail touched this step; consumed next tick
 var _last_good_y := 0.0  # linear_velocity.y as of the end of the last _integrate_forces call
 var _was_touching_wall := false
+var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
+var _base_mass := 0.0
+var _pending_rail_id: StringName
 var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
 
 @onready var radius: float = spec.ball_radius_m * ball_type.radius_multiplier
@@ -37,7 +40,8 @@ var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim
 
 func _ready() -> void:
 	var k := radius / TableSpec.REG_BALL_RADIUS
-	mass = REGULATION_MASS_KG * ball_type.mass_multiplier * k * k * k
+	_base_mass = REGULATION_MASS_KG * ball_type.mass_multiplier * k * k * k
+	mass = _base_mass
 	is_cue_ball = ball_type.behaviour_tags.has(&"cue")
 	continuous_cd = is_cue_ball
 	contact_monitor = true
@@ -59,9 +63,17 @@ func _ready() -> void:
 	body_entered.connect(_on_body_entered)
 
 
+func apply_mass_mult(m: float) -> void:
+	mass = _base_mass * m
+
+
 func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	var aim := intent.aim_dir.normalized()
 	var power := clampf(intent.power, 0.0, 1.0)
+	var spin_radius := cue.spin_offset_radius
+	if sim != null:
+		power *= sim.stat(&"cue_power_mult", intent.shooter_id, 1.0)
+		spin_radius = sim.stat(&"cue_spin_radius_mult", intent.shooter_id, spin_radius)
 	var spin := intent.spin_offset.limit_length(1.0)
 	var elevation := maxf(intent.elevation_deg, 0.0)
 	# locked techniques clamp the cue below their threshold instead of failing the shot
@@ -79,7 +91,7 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	if elevation > 0.0:
 		aim3 = aim3.rotated(right, -deg_to_rad(elevation))
 	var up_c := right.cross(aim3).normalized()  # "top of the ball" as the cue sees it
-	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * cue.spin_offset_radius
+	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * spin_radius
 	sleeping = false
 	_set_resting(false)
 	apply_impulse(aim3 * power * mass * cue.power_cap_speed_mps, offset)
@@ -134,7 +146,8 @@ func _set_resting(v: bool) -> void:
 
 func _on_body_entered(body: Node) -> void:
 	if body.has_meta(&"rail_normal"):
-		_pending_rail = body.get_meta(&"rail_normal")  # signal may fire pre-solve; apply next tick
+		_pending_rail = body.get_meta(&"rail_normal")
+		_pending_rail_id = body.get_meta(&"rail_id", &"")  # signal may fire pre-solve; apply next tick
 		contacted.emit(self, body, &"RAIL")
 	elif body is Ball:
 		contacted.emit(self, body, &"BALL")
@@ -158,6 +171,8 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 		return
 	var e0 := spec.cushion_restitution
 	var e := spec.cushion_restitution_at(vn / e0)
+	if sim != null:
+		e *= sim.rail_restitution_mult(_pending_rail_id)
 	state.linear_velocity += n * vn * (e / e0 - 1.0)
 
 
@@ -202,9 +217,14 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		_last_good_y = state.linear_velocity.y
 		return
 	var up := Vector3.UP
+	var mu := spec.rolling_resistance
+	if sim != null:
+		mu *= sim.cloth_friction_mult
+		if sim.table_tilt_deg != 0.0:
+			var t := deg_to_rad(sim.table_tilt_deg)
+			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(t))
 	var g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
 	var dir := v / speed
-	var mu := spec.rolling_resistance
 	# Coulomb-like: magnitude independent of speed, opposing travel
 	state.apply_central_force(-dir * mass * g * mu)
 	# slow the roll in step with the slide (I = 2/5 m R², α = a/R) so it stays pure rolling

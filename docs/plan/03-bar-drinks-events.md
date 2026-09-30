@@ -229,7 +229,7 @@ Timers live here, not in `PhysicsSim`: `-2` expires on `RoundDirector.shot_ended
 2. The hostile cap stays **2 per Turn**, no per-Round cap; revisit after a 4-player playtest.
 3. `ice_water` refunds **nothing**: it ends the downsides and takes the cleared drinks' `reward_mult` with them.
 
-Still open: `aim_wobble` presentation (needs Player); rail id scheme for `lean_on_rail` (agree with `PhysicsSim`); who prices each pot for `pot_bonus` (ECON).
+Still open: `aim_wobble` presentation (needs Player); who prices each pot for `pot_bonus` (ECON). `lean_on_rail`'s `target_id` is 1 + the index in `Stats.RAILS` (the six `PhysicsSim` rail ids).
 
 ## 7. MVP cut vs later
 | Feature | In MVP (Phase 1) | Post-MVP / Later |

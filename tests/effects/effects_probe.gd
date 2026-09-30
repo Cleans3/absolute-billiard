@@ -24,7 +24,7 @@ class FakeSim:
 	func set_stat(stat: StringName, value: float) -> void:
 		stats[stat] = value
 
-	func set_rail_restitution_mult(rail_id: int, mult: float) -> void:
+	func set_rail_restitution_mult(rail_id: StringName, mult: float) -> void:
 		rails[rail_id] = mult
 
 	func set_tilt_direction(dir: Vector2) -> void:
@@ -311,14 +311,25 @@ func _sim_sink() -> void:
 	_check(is_equal_approx(float(r.sim.stats.get(&"cue_ball_mass_mult", 1.0)), 1.6), "mass returns for the drinker")
 	# per-rail dead cushion, expires with the Shot
 	fx.apply(&"lean_on_rail_dead", 2, 3)
-	_check(is_equal_approx(float(r.sim.rails.get(3, 1.0)), 0.85), "rail 3 restitution pushed")
+	_check(is_equal_approx(float(r.sim.rails.get(&"rail_n_w", 1.0)), 0.85), "rail_n_w restitution pushed")
 	_check(fx.get_stat(&"cushion_restitution_mult", 1, 1.0) == 1.0, "rail effect never leaks into the global stat")
 	r.director.end_shot(0)
 	await process_frame
-	_check(is_equal_approx(float(r.sim.rails.get(3, 0.0)), 1.0), "rail restored after the Shot")
-	# the sim's own stat_source is the manager's resolver
+	_check(is_equal_approx(float(r.sim.rails.get(&"rail_n_w", 0.0)), 1.0), "rail restored after the Shot")
+	# the real PhysicsSim (SYNC's sink): stat_source, set_stat, rail and tilt calls all land
 	var real := _rig()
-	_check(real.sim.stat_source == real.fx.get_stat, "sim.stat_source is EffectManager.get_stat")
+	real.sim.free()
+	var sim := PhysicsSim.new()
+	real.fx.sim = sim
+	_add(sim)
+	real.fx.sim.set(&"stat_source", real.fx.get_stat)
+	real.fx.serve_drink(&"house_special", 1)
+	_check(is_equal_approx(sim.cue_ball_mass_mult, 1.6), "real PhysicsSim: mass pushed")
+	_check(is_equal_approx(sim.stat(&"cue_power_mult", 1, 1.0), 1.15), "real PhysicsSim: stat_source resolves cue_power_mult")
+	real.fx.apply(&"lean_on_rail_dead", 2, 6)
+	_check(is_equal_approx(sim.rail_restitution_mult(&"rail_s_e"), 0.85), "real PhysicsSim: rail mult")
+	real.fx.set_tilt_direction(Vector2(0, -2))
+	_check(sim.tilt_direction.is_equal_approx(Vector2(0, -1)), "real PhysicsSim: tilt direction")
 
 
 func _opportunities() -> void:
@@ -552,7 +563,8 @@ func _world() -> void:
 	# props exist for the catalogue
 	for id in [&"bump_table", &"kick_stool", &"jukebox", &"flick_lights", &"heckle", &"chalk_the_cue", &"throw_drink", &"bar_buy", &"bar_serve"]:
 		_check(wi._prop_for(id, 0) != null, "prop for %s" % id)
-	_check(wi._prop_for(&"lean_on_rail", 3) != null, "rail prop")
+	for rail in 6:
+		_check(wi._prop_for(&"lean_on_rail", rail + 1) != null, "rail prop %d" % (rail + 1))
 	await process_frame
 
 

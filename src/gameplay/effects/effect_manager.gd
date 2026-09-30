@@ -52,7 +52,7 @@ class ActiveEvent:
 	var spent := false  # NEXT_POT: already paid out
 
 
-@export var sim: Node  # PhysicsSim; typed Node until SYNC's stat_source/set_stat land in this tree
+@export var sim: Node  # PhysicsSim; typed Node so probes can stand in
 @export var round_director: Node  # RoundDirector
 @export var game_loop: GameLoop
 
@@ -441,7 +441,7 @@ func set_tilt_direction(dir: Vector2) -> void:
 
 
 func current_shooter() -> int:
-	var id: Variant = round_director.get(&"current_shooter_id") if round_director != null else null
+	var id: Variant = round_director.get(&"current_shooter_id") if round_director != null else null  # SYNC's rotation; null until it lands
 	return int(id) if id != null else multiplayer.get_unique_id()
 
 
@@ -465,7 +465,7 @@ func _refresh_table_stats() -> void:
 		var m := rail_restitution_mult(rail_id)
 		if not is_equal_approx(m, float(_pushed_rails.get(rail_id, 1.0))):
 			_pushed_rails[rail_id] = m
-			sim.call(&"set_rail_restitution_mult", rail_id, m)
+			sim.call(&"set_rail_restitution_mult", Stats.RAILS[rail_id - 1], m)
 
 
 # --- visual hooks (03 §3.8): budget only, consumers pool the visuals ---------------------------
