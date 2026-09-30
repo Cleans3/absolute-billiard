@@ -83,18 +83,25 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
 
 ```json
 {
-  "save_version": 3,
+  "save_version": 2,
   "crew_cash": 1500,
   "current_night": 3,
   "round_index": 2,
   "quota_target": 1350,
-  "unlocked": { "ball_types": ["red","gold","bomb"], "cameras": ["cam_basic"], "cue": ["spin_2"] },
-  "persistent_unlocks": ["drink_whiskey"],
+  "viewers": 640,
+  "hype": 0.4,
+  "unlocked": { "ball_types": ["tier2_rack"], "cameras": ["lens_t2"], "cue": ["heavy_shaft"] },
+  "owned_items": { "tier2_rack": 1, "lens_t2": 1, "heavy_shaft": 1, "fresh_cloth": 1 },
+  "persistent_unlocks": ["tier2_rack", "lens_t2"],
   "seed": 884213
 }
 ```
 
-`save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)`; an unknown newer version refuses and says so rather than silently dropping fields.
+`round_index` = Rounds finished this Night (`0` = Night start); after a passed Night the resume point is the next Night's start. `owned_items` (Shop id → count) is the truth; `unlocked` is a per-category read-only view of it. `viewers = -1` means "start from the Night's `base_viewers`". Built by `GameLoop.build_profile()`, resumed by `GameLoop.resume_from(profile)`.
+
+`save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
+
+Files: `user://checkpoints/<key>.json` where `key` = Noray lobby code, else `solo`, else `lan-<session seed>` (`SaveManager.checkpoint_key`); `user://profile.json` = `persistent_unlocks` only, written on every persistent purchase and read by a new campaign (02 §3.7). The Lobby's "Resume" reads `SaveManager.list_checkpoints()`, sets `SaveManager.pending_resume = SaveManager.load_checkpoint(path)`, then hosts; `main_level.gd` hands it to `GameLoop.resume_from`.
 
 **The whole profile is broadcast to every peer at each `Round` end** (`push_save_checkpoint`). Each client writes it to `user://checkpoints/<lobby>.json`. If the host's phone dies, any friend re-hosts from the last checkpoint and the crew loses one Round, not the campaign. This is not host migration — the session ends, everyone re-lobbies — it just makes that cheap.
 
@@ -171,9 +178,15 @@ MainLevel.tscn
 | `push_contact_events(shot_id, base_tick, blob)` | PhysicsSim | H→A | `authority` | `call_remote` | `reliable` | 1 |
 | `push_heartbeat(tick, blob)` | PhysicsSim | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `shot_resolved(shot_id, shooter_id, end_tick, raw_points, trick_ids, foul)` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `round_state(round_index, phase, time_left)` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `update_cash(absolute_balance)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `update_viewers(count)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `round_state(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, end_reason)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `push_shot_settled(shot_id, cash, trick_id, foul)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `update_cash(absolute_balance, delta, reason)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `quota_result(paid, demand, is_game_over)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `request_purchase(item_id, target_peer_id)` | EconomyManager | C→H | `any_peer` | `call_local` | `reliable` | 3 |
+| `reject_purchase(item_id, reason)` | EconomyManager | H→1 | `authority` | `call_local` | `reliable` | 3 |
+| `update_owned(ids, counts, item_id, buyer_peer_id)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `push_rig_poses(poses)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, end_tick)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `apply_event(event_id, round_index)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `request_world_interaction(kind, target_id, payload)` | MainLevel | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
@@ -182,7 +195,7 @@ MainLevel.tscn
 | `push_save_checkpoint(save_version, blob)` | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
 
-`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently, and the payload is 8 bytes either way. `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number.
+`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it). `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) at 4 Hz, only while a rig moved plus a few repeats at rest. `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 
 ### Free-roam world interaction (P2)
 Non-shooters roam the bar. Every one of those interactions is one RPC pair, and 04 owns only the envelope — the `kind` registry is a black box filled in by 01/02/03 and the Player pass:
