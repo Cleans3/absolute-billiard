@@ -35,6 +35,8 @@ var _world: WorldInteractions
 var _shop: ShopMenu
 var _picker: DrinkPicker
 var _cameras: CameraRigs
+var _net: Node
+var _host_away := false
 var _controls: TouchControls
 var _target: Interactable
 var _held_rig := 0                   # CameraRig number while CARRY (derived from the mirrored holders)
@@ -109,6 +111,12 @@ func bind(level: Node) -> void:
 		_controls.elevation.changed.connect(cue.set_elevation)
 		if not _controls.touch:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_net = get_tree().root.get_node(^"NetManager")
+	_net.host_away_changed.connect(_on_host_away)
+	var loop := level.get_node_or_null("GameLoop")
+	if loop != null:
+		loop.round_ended.connect(func(_r: StringName, _p: int) -> void: _clock_end_msec = 0)
+	_on_host_away(_net.host_away)
 	_sync_can_shoot()
 	set_physics_process(true)
 	set_process(true)
@@ -248,6 +256,15 @@ func _sync_carry() -> void:
 
 # --- CUE mode -------------------------------------------------------------------------------------
 
+## The host's app went to the background: show the banner and leave CUE (no strike could land).
+func _on_host_away(away: bool) -> void:
+	_host_away = away
+	if _controls != null:
+		_controls.set_host_away(away)
+	if away:
+		exit_cue()
+
+
 func toggle_cue() -> void:
 	if mode == Mode.CUE:
 		exit_cue()
@@ -258,6 +275,9 @@ func toggle_cue() -> void:
 ## Shooter + balls at rest + within reach of the cue ball. Returns whether CUE started.
 func enter_cue() -> bool:
 	if mode != Mode.WALK or _rd == null:
+		return false
+	if _host_away:
+		_toast("host away")
 		return false
 	if _rd.current_shooter_id != multiplayer.get_unique_id():
 		_toast("not your turn")
@@ -306,6 +326,8 @@ func _on_fired(_intent: ShotIntent) -> void:
 
 
 func _on_shooter_changed(peer_id: int) -> void:
+	if peer_id != multiplayer.get_unique_id():
+		_clock_end_msec = 0
 	if peer_id != multiplayer.get_unique_id():
 		exit_cue()
 	_sync_can_shoot()

@@ -52,6 +52,7 @@ var _btn_drop: TouchButton
 var _prompt_label: Label
 var _status: Label
 var _toast_timer: Timer
+var _away: Label
 var _right: Array[Control] = []  ## laid out on the right-thumb side, flipped by `mirror`
 var _left: Array[Control] = []
 
@@ -81,6 +82,9 @@ func _ready() -> void:
 		pockets.append(b)
 	_prompt_label = _label(root, 0.5, 1.0, -200, -150, 200, -110)
 	_status = _label(root, 0.5, 0.0, -300, 16, 300, 56)
+	_away = _label(root, 0.5, 0.0, -300, 120, 300, 170)
+	_away.text = "Host away, waiting…"
+	_away.hide()
 	_toast_timer = Timer.new()
 	_toast_timer.one_shot = true
 	_toast_timer.timeout.connect(_on_toast_end)
@@ -102,6 +106,11 @@ func set_can_shoot(v: bool) -> void:
 	if v != _can_shoot:
 		_can_shoot = v
 		_apply()
+
+
+## Presentation only: the host's app is in the background.
+func set_host_away(away: bool) -> void:
+	_away.visible = away
 
 
 func set_prompt(text: String) -> void:
