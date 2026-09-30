@@ -1,53 +1,206 @@
+class_name CueController
 extends Node3D
+## Owns CUE mode (08 §2.2): aim yaw, power, spin, elevation, called pocket, wobble; builds the `ShotIntent`
+## and hands it to `shot_sink` (= PhysicsSim.request_shot — the host validates and strikes).
+## Desktop keys/mouse and the TouchControls widgets write the same state through `turn`, `set_spin`,
+## `set_elevation`, `call_pocket` and `release_power`, so the intent never learns the device (P1).
 
-## Hold `shoot`: power climbs to max, then bleeds down slower, then climbs again.
-## Release strikes the Ball under the crosshair with a ShotIntent (01 §2).
-## Spin cursor (I/J/K/L), elevation (Q/E) and reset (C) live here until the Player module lands.
-## Reach and pullback follow the struck ball's own TableSpec (A1): no metre literal here, so the
-## cue works unmodified at any table scale.
+signal fired(intent: ShotIntent)
 
 @export var cue_spec: CueSpec = preload("res://src/resources/cues/demo_cue.tres")
-@export var charge_time := 0.8   # seconds 0 -> 1
+@export var charge_time := 0.8   # seconds 0 -> 1 (desktop hold)
 @export var decay_time := 1.6    # seconds 1 -> 0, slower than the climb
 @export var spin_rate := 1.5     # unit-disc units per second held
 @export var elevation_rate_deg := 60.0
 @export var max_elevation_deg := 80.0
+@export var mouse_aim_rad_per_px := 0.0025
+@export var touch_aim_deg_per_px := 0.12   # [tune]
+@export var fine_aim_mult := 0.25          # second finger down
 
-const RAY_MAX_M := 20.0      # search radius only, NOT reach — see ball.spec.cue_reach_m below
-const PULLBACK_RADII := 4.0  # cue pulls back this many of the aimed ball's radii at full power
+const WOBBLE_HZ := 0.8         # [tune]
+const STAT_PERIOD := 0.25      # wobble / call-pocket stats re-read this often, not per frame
+const BACK_M := 1.2            # camera distance behind the cue ball along the aim line [tune]
+const LOOK_AHEAD_M := 0.5      # the camera looks at the point this far past the ball
+const CUE_GAP_M := 0.005
+const PULLBACK_RADII := 4.0    # cue pulls back this many ball radii at full power
+const POCKET_ACTIONS: Array[StringName] = [
+	&"call_pocket_1", &"call_pocket_2", &"call_pocket_3", &"call_pocket_4", &"call_pocket_5", &"call_pocket_6",
+]
 
+var active := false
+var aim_yaw := 0.0              # radians, Godot yaw: forward = (−sin, −cos) in (x, z)
 var power := 0.0
 var charging := false
 var rising := true
 var spin := Vector2.ZERO        # unit disc: x = side (right +), y = follow (+) / draw (−)
 var elevation_deg := 0.0
-var _aim_radius := 0.0          # last-aimed ball's radius, drives the pullback visual
-## Where a release goes: `PhysicsSim.request_shot(intent)` — host validates and strikes, clients ask.
-## Installed by MainLevel; invalid = nothing fires.
+var called_pocket: StringName = &""
+var call_required := false
+## Where a release goes: `PhysicsSim.request_shot(intent)`. Installed by MainLevel; invalid = nothing fires.
 var shot_sink: Callable
+var effects: Node               # EffectManager (get_stat), optional
+var table: Table                # pocket ids for call-pocket, optional
+var controls: TouchControls     # optional: headless probes and puppets have none
+var player: Node                # Player: pinned to the aim line while active
+var ball: Ball
+var turn_started_msec := 0      # when this peer became shooter; drives the shot-clock readout
 
-@onready var cue_mesh: Node3D = $CueMesh
-@onready var bar: ProgressBar = $HUD/PowerBar
-@onready var disc: Control = $HUD/SpinDisc
-@onready var _rest_z: float = cue_mesh.position.z
-@onready var _rest_rot: Vector3 = cue_mesh.rotation
+var _t := 0.0
+var _stat_wait := 0.0
+var _wobble_deg := 0.0
+var _clock_sec := 0.0
 
+@onready var cue_mesh: MeshInstance3D = $CueMesh
+@onready var _cue_len: float = (cue_mesh.mesh as CylinderMesh).height
+
+
+func _ready() -> void:
+	cue_mesh.top_level = true
+	cue_mesh.hide()
+	set_process(false)
+	set_process_unhandled_input(false)
+
+
+func begin(cue_ball: Ball, yaw: float) -> void:
+	ball = cue_ball
+	aim_yaw = yaw
+	power = 0.0
+	charging = false
+	called_pocket = &""
+	_t = 0.0
+	refresh_stats()
+	active = true
+	cue_mesh.show()
+	set_process(true)
+	set_process_unhandled_input(true)
+	if controls != null:
+		controls.spin_pad.miscue = cue_spec.miscue_threshold
+		controls.set_call_pockets(call_required)
+		controls.set_called_pocket(-1)
+	_push_ui()
+
+
+func end() -> void:
+	active = false
+	charging = false
+	power = 0.0
+	cue_mesh.hide()
+	set_process(false)
+	set_process_unhandled_input(false)
+	if controls != null:
+		controls.set_clock("")
+		controls.power.set_value(0.0)
+
+
+func refresh_stats() -> void:
+	_wobble_deg = maxf(0.0, _stat(&"cue_aim_wobble_deg", 0.0) - cue_spec.wobble_reduction)
+	_clock_sec = _stat(&"shot_clock_sec", 0.0)
+	call_required = _stat(&"rule_call_pocket", 0.0) > 0.0
+	_stat_wait = STAT_PERIOD
+
+
+func _stat(stat: StringName, base: float) -> float:
+	return effects.call(&"get_stat", stat, multiplayer.get_unique_id(), base) if effects != null else base
+
+
+# --- state writers: the one path desktop and touch share ------------------------------------------
+
+func turn(rad: float) -> void:
+	aim_yaw = wrapf(aim_yaw + rad, -PI, PI)
+
+
+func set_spin(v: Vector2) -> void:
+	spin = v.limit_length(1.0)
+
+
+func set_elevation(deg: float) -> void:
+	elevation_deg = clampf(deg, 0.0, max_elevation_deg)
+
+
+func call_pocket(index: int) -> void:
+	if not call_required or table == null or index < 0 or index >= table.layout.pockets.size():
+		return
+	called_pocket = table.layout.pockets[index].id
+	if controls != null:
+		controls.set_called_pocket(index)
+
+
+## A release (slider let go, or `shoot` released). Refused until a pocket is called when the rule is on.
+func release_power(p: float) -> void:
+	if not active:
+		return
+	if call_required and called_pocket == &"":
+		if controls != null:
+			controls.toast("Call a pocket first")
+		return
+	fire(p)
+
+
+func fire(p: float) -> void:
+	var intent := build_intent(p)
+	end()
+	if shot_sink.is_valid():
+		shot_sink.call(intent)
+	fired.emit(intent)
+
+
+## Aim carries the swayed yaw (03 §2.2): the wobble is part of the shot, not just a visual.
+func build_intent(p: float) -> ShotIntent:
+	var yaw := swayed_yaw()
+	var intent := ShotIntent.new()
+	intent.aim_dir = Vector2(-sin(yaw), -cos(yaw))
+	intent.power = p
+	intent.spin_offset = spin
+	intent.elevation_deg = elevation_deg
+	intent.shooter_id = multiplayer.get_unique_id()
+	if &"called_pocket" in intent:  # ShotIntent field owned by RULES (08 §2.5)
+		intent.set(&"called_pocket", called_pocket)
+	return intent
+
+
+func swayed_yaw() -> float:
+	return aim_yaw + deg_to_rad(_wobble_deg) * sin(TAU * WOBBLE_HZ * _t)
+
+
+# --- desktop input --------------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("shoot"):
+	if event is InputEventMouseMotion:
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			turn(-event.relative.x * mouse_aim_rad_per_px)
+	elif event.is_action_pressed(&"shoot"):
+		if call_required and called_pocket == &"":
+			if controls != null:
+				controls.toast("Call a pocket first (1-6)")
+			return
 		charging = true
 		rising = true
 		power = 0.0
-	elif event.is_action_released("shoot") and charging:
+	elif event.is_action_released(&"shoot") and charging:
 		charging = false
-		_fire()
+		var p := power
 		power = 0.0
-	elif event.is_action_pressed("spin_reset"):
+		release_power(p)
+	elif event.is_action_pressed(&"spin_reset"):
 		spin = Vector2.ZERO
 		elevation_deg = 0.0
+	else:
+		for i in POCKET_ACTIONS.size():
+			if event.is_action_pressed(POCKET_ACTIONS[i]):
+				call_pocket(i)
 
 
 func _process(delta: float) -> void:
+	_t += delta
+	_stat_wait -= delta
+	if _stat_wait <= 0.0:
+		refresh_stats()
+	if controls != null:
+		var d := controls.look.consume()
+		if d != Vector2.ZERO:
+			turn(-d.x * deg_to_rad(touch_aim_deg_per_px) * (fine_aim_mult if controls.look.fine else 1.0))
+		if controls.touch:
+			power = controls.power.value
 	if charging:
 		if rising:
 			power += delta / charge_time
@@ -59,53 +212,40 @@ func _process(delta: float) -> void:
 			if power <= 0.0:
 				power = 0.0
 				rising = true
-	var d := Input.get_vector("spin_left", "spin_right", "spin_down", "spin_up")
-	if d != Vector2.ZERO:
-		spin = (spin + d * spin_rate * delta).limit_length(1.0)
-	var e := Input.get_axis("elevate_down", "elevate_up")
+	var v := Input.get_vector(&"spin_left", &"spin_right", &"spin_down", &"spin_up")
+	if v != Vector2.ZERO:
+		set_spin(spin + v * spin_rate * delta)
+	var e := Input.get_axis(&"elevate_down", &"elevate_up")
 	if e != 0.0:
-		elevation_deg = clampf(elevation_deg + e * elevation_rate_deg * delta, 0.0, max_elevation_deg)
-	var aimed := _find_ball()
-	if aimed:
-		_aim_radius = aimed.radius
-	bar.value = power
-	bar.modulate = Color.RED if power >= 1.0 else Color.WHITE
-	cue_mesh.position.z = _rest_z + power * _aim_radius * PULLBACK_RADII
-	cue_mesh.rotation.x = _rest_rot.x - deg_to_rad(elevation_deg)
-	disc.spin = spin
-	disc.elevation_deg = elevation_deg
-	disc.miscue = cue_spec.miscue_threshold
-	disc.queue_redraw()
+		set_elevation(elevation_deg + e * elevation_rate_deg * delta)
+	_pose_cue()
+	if player != null:
+		player.call(&"pin_to_cue", ball.global_position, aim_yaw)
+	_push_ui()
 
 
-## Raycasts within RAY_MAX_M and keeps the hit only if it lands within the struck ball's own
-## cue_reach_m — a search radius, not a reach, so this works unmodified at any table scale.
-func _find_ball() -> Ball:
-	var cam := get_viewport().get_camera_3d()
-	if cam == null:
-		return null
-	var fwd := -cam.global_basis.z
-	var query := PhysicsRayQueryParameters3D.create(cam.global_position, cam.global_position + fwd * RAY_MAX_M)
-	query.exclude = [owner.get_rid()] if owner is CollisionObject3D else []
-	var hit := get_world_3d().direct_space_state.intersect_ray(query)
-	if hit.is_empty() or not (hit.collider is Ball) or hit.collider.is_pocketed:
-		return null
-	var ball: Ball = hit.collider
-	if cam.global_position.distance_to(hit.position) > ball.spec.cue_reach_m:
-		return null
-	return ball
+## Cue in world space along the (swayed) aim, tip at the ball, butt up by the elevation.
+func _pose_cue() -> void:
+	var yaw := swayed_yaw()
+	var aim3 := Vector3(-sin(yaw), 0.0, -cos(yaw))
+	var right := aim3.cross(Vector3.UP)
+	var d := aim3.rotated(right, -deg_to_rad(elevation_deg))
+	var tip := ball.global_position - d * (ball.radius + CUE_GAP_M + power * ball.radius * PULLBACK_RADII)
+	cue_mesh.global_transform = Transform3D(Basis(right, d, right.cross(d)), tip - d * (_cue_len * 0.5))
 
 
-func _fire() -> void:
-	var ball := _find_ball()
-	if ball == null or not ball.is_cue_ball or not shot_sink.is_valid():
+func _push_ui() -> void:
+	if controls == null:
 		return
-	var cam := get_viewport().get_camera_3d()
-	var fwd := -cam.global_basis.z
-	var intent := ShotIntent.new()
-	intent.aim_dir = Vector2(fwd.x, fwd.z).normalized()
-	intent.power = power
-	intent.spin_offset = spin
-	intent.elevation_deg = elevation_deg
-	intent.shooter_id = multiplayer.get_unique_id()
-	shot_sink.call(intent)
+	controls.spin_pad.set_spin(spin)
+	if controls.spin_pad.elevation_deg != elevation_deg:
+		controls.spin_pad.elevation_deg = elevation_deg
+		controls.spin_pad.queue_redraw()
+	controls.elevation.set_value(elevation_deg)
+	if not controls.touch:
+		controls.power.set_value(power)
+	var text := "Call a pocket   " if call_required and called_pocket == &"" else ""
+	if _clock_sec > 0.0:
+		var left := _clock_sec - (Time.get_ticks_msec() - turn_started_msec) / 1000.0
+		text += "Shot clock %d" % maxi(0, ceili(left))
+	controls.set_clock(text)
