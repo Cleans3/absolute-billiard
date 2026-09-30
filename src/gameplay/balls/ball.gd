@@ -6,6 +6,8 @@ extends RigidBody3D
 
 signal struck(ball: Ball, intent: ShotIntent)
 signal resting_changed(ball: Ball, resting: bool)
+## Lifecycle change PhysicsSim streams to clients; `flag` is a BallEventCodec.Flag.
+signal net_flag(ball: Ball, flag: int)
 ## `kind` is &"RAIL" (cushion or jaw, `other` = the rail body) or &"BALL" (`other` = the ball).
 ## Only fires while PhysicsSim has contact monitoring on, i.e. during a Shot.
 signal contacted(ball: Ball, other: Node, kind: StringName)
@@ -16,6 +18,7 @@ const MISCUE_SCATTER_DEG := 4.0
 const JUMP_MIN_ELEVATION_DEG := 30.0
 const MASSE_MIN_ELEVATION_DEG := 45.0
 const MASSE_MIN_SPIN := 0.60
+const FALL_FLOOR_Y := -100.0  # BallMotion floor for a pocketed ball: free fall until retired
 
 static var _materials: Dictionary = {}  # BallType -> StandardMaterial3D, shared across balls
 
@@ -30,6 +33,9 @@ var spawn_index := 0
 var _pending_rail := Vector3.ZERO  # inward normal of a rail touched this step; consumed next tick
 var _last_good_y := 0.0  # linear_velocity.y as of the end of the last _integrate_forces call
 var _was_touching_wall := false
+var net_id := -1  # stable wire id (< 64), assigned by RoundDirector before PhysicsSim.register
+var motion: BallMotion.Params  # set by PhysicsSim.register
+var retired := false
 var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
 var _base_mass := 0.0
 var _pending_rail_id: StringName
@@ -101,22 +107,30 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 func pocket(pocket_id: StringName) -> void:
 	is_pocketed = true
 	pocketed_in = pocket_id
+	if motion != null:
+		motion.floor_y = FALL_FLOOR_Y  # the model lets it fall through the cloth plane, like Jolt does
+	net_flag.emit(self, BallEventCodec.Flag.POCKETED)
 	get_tree().create_timer(0.4).timeout.connect(retire)  # let it fall into the chute first
 
 
 ## Takes the ball out of play: frozen, hidden, non-colliding, and counted as resting so
 ## PhysicsSim.all_resting can fire once every pot has finished (A1).
 func retire() -> void:
+	retired = true
 	freeze = true
 	visible = false
 	$Shape.disabled = true
 	_set_resting(true)
+	net_flag.emit(self, BallEventCodec.Flag.RETIRED)
 
 
 ## Puts a retired (or stray) ball back in play at world `pos`, stationary; it settles under gravity.
 func restore(pos: Vector3) -> void:
 	is_pocketed = false
 	pocketed_in = &""
+	retired = false
+	if motion != null:
+		motion.floor_y = spec.bed_height_m + radius
 	freeze = true  # teleporting a frozen body is the reliable way to set its transform
 	global_position = pos
 	linear_velocity = Vector3.ZERO
@@ -126,6 +140,33 @@ func restore(pos: Vector3) -> void:
 	freeze = false
 	sleeping = false
 	_set_resting(false)
+	net_flag.emit(self, BallEventCodec.Flag.RESTORED)
+
+
+## Client balls are kinematic puppets of PhysicsSim's replica: no Jolt, no contacts, no interpolation.
+func set_client_mode() -> void:
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	contact_monitor = false
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+
+
+## Applies a streamed lifecycle flag on a client (host already did the real thing).
+func net_apply_flag(flag: int) -> void:
+	match flag:
+		BallEventCodec.Flag.POCKETED:
+			is_pocketed = true
+			motion.floor_y = FALL_FLOOR_Y
+		BallEventCodec.Flag.RETIRED:
+			retired = true
+			visible = false
+			$Shape.disabled = true
+		BallEventCodec.Flag.RESTORED:
+			is_pocketed = false
+			retired = false
+			motion.floor_y = spec.bed_height_m + radius
+			$Shape.disabled = false
+			visible = true
 
 
 ## `sleeping` is Jolt's own call and, for a body still in resting contact, may never flip true
@@ -172,7 +213,7 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 	var e0 := spec.cushion_restitution
 	var e := spec.cushion_restitution_at(vn / e0)
 	if sim != null:
-		e *= sim.rail_restitution_mult(_pending_rail_id)
+		e = minf(e * sim.rail_restitution_mult(_pending_rail_id), 1.0)  # a glass cushion never adds energy
 	state.linear_velocity += n * vn * (e / e0 - 1.0)
 
 

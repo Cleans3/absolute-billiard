@@ -18,6 +18,8 @@
 [ext_resource type="Script" path="res://src/gameplay/bar/bar.gd" id="14_bar"]
 [ext_resource type="PackedScene" path="res://src/ui/EventVote.tscn" id="15_vote"]
 [ext_resource type="PackedScene" path="res://src/ui/ViewOverlay.tscn" id="16_view"]
+[ext_resource type="Script" path="res://src/gameplay/camera/cameras.gd" id="17_cameras"]
+[ext_resource type="PackedScene" path="res://src/ui/ShopMenu.tscn" id="18_shop"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -50,9 +52,11 @@ stream = NodePath("../StreamManager")
 events = NodePath("../EventScheduler")
 hud = NodePath("../UILayer/HUD")
 
-[node name="EconomyManager" type="Node" parent="." node_paths=PackedStringArray("stream")]
+[node name="EconomyManager" type="Node" parent="." node_paths=PackedStringArray("stream", "game_loop", "world")]
 script = ExtResource("8_econ")
 stream = NodePath("../StreamManager")
+game_loop = NodePath("../GameLoop")
+world = NodePath("../WorldInteractions")
 
 [node name="StreamManager" type="Node" parent="."]
 script = ExtResource("9_stream")
@@ -85,6 +89,14 @@ sim = NodePath("../Table/PhysicsSim")
 [node name="Bar" type="Node3D" parent="."]
 script = ExtResource("14_bar")
 
+[node name="Cameras" type="Node3D" parent="." node_paths=PackedStringArray("table", "economy", "world", "round_director", "spawner")]
+script = ExtResource("17_cameras")
+table = NodePath("../Table")
+economy = NodePath("../EconomyManager")
+world = NodePath("../WorldInteractions")
+round_director = NodePath("../RoundDirector")
+spawner = NodePath("../PlayerSpawner")
+
 [node name="UILayer" type="CanvasLayer" parent="."]
 
 [node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy", "stream") instance=ExtResource("10_hud")]
@@ -98,6 +110,10 @@ game_loop = NodePath("../../GameLoop")
 
 [node name="ViewOverlay" parent="UILayer" node_paths=PackedStringArray("effects") instance=ExtResource("16_view")]
 effects = NodePath("../../EffectManager")
+
+[node name="ShopMenu" parent="UILayer" node_paths=PackedStringArray("economy", "game_loop") instance=ExtResource("18_shop")]
+economy = NodePath("../../EconomyManager")
+game_loop = NodePath("../../GameLoop")
 
 [node name="Debug" parent="." instance=ExtResource("4_debug") node_paths=PackedStringArray("table", "rack", "spawner")]
 table = NodePath("../Table")

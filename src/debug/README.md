@@ -20,6 +20,7 @@ panel only calls public gameplay API — `Table.rebuild()`, `DemoRack.spawn_layo
 | `debug_spec` | F4 | Toggle the TableSpec panel — a spinbox per numeric `@export`; edits call `Table.rebuild()` and re-spawn the rack |
 | `debug_console` | F5 | Toggle the shot console — place the cue ball (x, z), set power/spin/elevation, Fire / Replay |
 | `debug_timescale` | F6 | Cycle `Engine.time_scale` through 1.0 → 0.5 → 0.25 → 0.1 → 2.0 → 1.0 |
+| `debug_netgraph` | F8 | Toggle the net readout: ball events/s, bytes/s, per-shot totals, playback lead, last SimDiff error |
 | `debug_rack_next` | F7 | Cycle rack presets: break → straight-in → cut → stun |
 
 `debug_spec` and `debug_console` set `Input.mouse_mode` to `MOUSE_MODE_VISIBLE` while open so
@@ -33,6 +34,7 @@ the panel is clickable; closing both restores `MOUSE_MODE_CAPTURED`.
 - `debug_gizmos.gd` — `DebugGizmos` (`Node3D`, one `ImmediateMesh`).
 - `debug_spec_panel.gd` — `DebugSpecPanel` (`CanvasLayer`).
 - `debug_shot_console.gd` — `DebugShotConsole` (`CanvasLayer`).
+- `net_graph.gd` / `NetGraph.tscn` — `NetGraph` (`CanvasLayer`), fed by `PhysicsSim.net_*` counters.
 - `debug_rack_presets.gd` — `DebugRackPresets` (`RefCounted`, pure data).
 
 Every panel builds its own UI procedurally in `_ready()` (no per-panel `.tscn`) — deviates

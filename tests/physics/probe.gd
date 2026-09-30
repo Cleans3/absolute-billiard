@@ -395,23 +395,19 @@ func _reach_test() -> void:
 
 	var cue: Node3D = CUE_CONTROLLER.instantiate()
 	root.add_child(cue)
+	cue.shot_sink = table.sim.request_shot
 	await physics_frame
 
+	# `_fire` now hands the intent to PhysicsSim (cue ball only); reach lives in `_find_ball`
 	cam.look_at(near_ball.global_position, Vector3.UP)
-	cue.power = 0.3
-	cue._fire()
 	await physics_frame
-	await physics_frame
-	var near_hit := near_ball.linear_velocity.length() > 0.01
+	var near_hit: bool = cue._find_ball() == near_ball
 	print("probe: reach near(2.40m) hit=%s" % near_hit)
 	assert(near_hit, "ball within cue_reach_m must be struck")
 
 	cam.look_at(far_ball.global_position, Vector3.UP)
-	cue.power = 0.3
-	cue._fire()
 	await physics_frame
-	await physics_frame
-	var far_hit := far_ball.linear_velocity.length() > 0.01
+	var far_hit: bool = cue._find_ball() != null
 	print("probe: reach far(%.3fm) hit=%s" % [reach + 0.001, far_hit])
 	assert(not far_hit, "ball 1 mm beyond cue_reach_m must not be struck")
 
