@@ -60,8 +60,8 @@ static func _merge_by_material(parent: Node3D) -> void:
 	var merged: Array[MeshInstance3D] = []
 	for c in parent.get_children():
 		var mi := c as MeshInstance3D
-		if mi == null or not mi.material_override is StandardMaterial3D:
-			continue
+		if mi == null or not mi.material_override is StandardMaterial3D or String(mi.name).begins_with("Liner_"):
+			continue  # liners keep their node: Table slides them with the oscillating pockets
 		var color := (mi.material_override as StandardMaterial3D).albedo_color
 		if not groups.has(color):
 			var st := SurfaceTool.new()

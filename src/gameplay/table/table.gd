@@ -36,6 +36,7 @@ func get_pocket(id: StringName) -> PocketSpec:
 func _ready() -> void:
 	sim.active_changed.connect(_set_pockets_live)
 	set_physics_process(false)
+	set_process(false)  # _process is defined: it would walk every child each frame (~60 us) until oscillation asks for it
 	rebuild()
 
 

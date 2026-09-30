@@ -74,11 +74,11 @@ func _run() -> void:
 	var mine: PlayerSlot = slots.get_node(str(me))
 	assert(mine.is_local(), "own slot must be local")
 	# Marker pose: each peer parks its walker somewhere unique; the other peer must see it.
-	var marker := Vector3(1.0 + me % 5, 0.0, 6.0)  # free floor in BarRoom (a teleport into a prop/wall gets depenetrated)
+	var marker := Vector3(2.0 if me == 1 else 4.5, 0.0, 6.0)  # free floor in BarRoom (a teleport into a prop/wall/other walker gets depenetrated)
 	mine.player.global_position = marker
 	var other_id := 1 if me != 1 else int(nm.get_roster()[1].peer_id)
 	var other: PlayerSlot = slots.get_node(str(other_id))
-	var want := Vector3(1.0 + other_id % 5, 0.0, 6.0)
+	var want := Vector3(2.0 if other_id == 1 else 4.5, 0.0, 6.0)
 	await _until(func() -> bool: return absf(other.player_position().x - want.x) < 0.2 and absf(other.player_position().z - want.z) < 0.2, "pose from peer %d" % other_id)
 	assert(not other.is_local(), "remote slot must not be local")
 	assert(current_scene.get_node("PlayerSpawner").get_player_position(other_id).x > 0.0, "get_player_position")
