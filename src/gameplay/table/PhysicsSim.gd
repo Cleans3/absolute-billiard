@@ -41,7 +41,7 @@ var tilt_direction := Vector2.ZERO
 
 ## Host emits frames for peers; set true by tools (SimDiff) that want them with no peers connected.
 var capture := false
-@export var cue_spec: CueSpec = preload("res://src/resources/cues/demo_cue.tres")
+@export var active_cue: CueSpec = preload("res://src/resources/cues/demo_cue.tres")
 
 var awake := 0
 var _balls: Array[Ball] = []
@@ -253,7 +253,7 @@ func _host_shot(peer_id: int, intent: ShotIntent) -> void:
 		else:
 			_shot_rejected_rpc.rpc_id(peer_id, reason)
 		return
-	cue_ball.strike(intent, cue_spec)
+	cue_ball.strike(intent, active_cue)
 
 
 @rpc("authority", "call_remote", "reliable", 1)

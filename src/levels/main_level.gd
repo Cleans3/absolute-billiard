@@ -25,4 +25,3 @@ func _ready() -> void:
 func _on_local_player(player: CharacterBody3D) -> void:
 	var cue := player.get_node("Head/CueController")
 	cue.set(&"shot_sink", round_director.table.sim.request_shot)
-	round_director.table.sim.cue_spec = cue.get(&"cue_spec")  # host strikes with the spec the wielder aims with
