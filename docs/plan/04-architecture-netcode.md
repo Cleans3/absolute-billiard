@@ -104,7 +104,9 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
 
 `save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
 
-Files: `user://checkpoints/<key>.json` where `key` = Noray lobby code, else `solo`, else `lan-<session seed>` (`SaveManager.checkpoint_key`); `user://profile.json` = `persistent_unlocks` only, written on every persistent purchase and read by a new campaign (02 §3.7). The Lobby's "Resume" reads `SaveManager.list_checkpoints()`, sets `SaveManager.pending_resume = SaveManager.load_checkpoint(path)`, then hosts; `main_level.gd` hands it to `GameLoop.resume_from`.
+**Rules (implemented).** One file per session key, overwritten at every Round end; a finished run (game over or campaign won) deletes it on the host and, through an empty-blob `push_save_checkpoint`, on every client; only the newest `SaveManager.KEEP_CHECKPOINTS` (10) files are kept. Checkpoints are JSON only, never `bytes_to_var`. Resuming reads the picked file and leaves it in place; the resumed session writes under its own new key (a fresh Noray code / LAN seed) at its first Round end, so the old file just ages out. **Any peer can re-host** from its own copy: the crew size need not match `crew_size` (informational) — nobody is seat-locked, seats are reassigned by join order, and the checkpoint carries the shared purse, not per-player state.
+
+Files: `user://checkpoints/<key>.json` where `key` = Noray lobby code, else `solo`, else `lan-<session seed>` (`SaveManager.checkpoint_key`); `user://profile.json` = `persistent_unlocks` only, written on every persistent purchase and read by a new campaign (02 §3.7). The Lobby's "Resume" (a sub-screen, hidden when there are no files) lists `SaveManager.list_checkpoints()` newest first (Night · Round done · Cash · crew · date); picking a row sets `SaveManager.pending_resume = SaveManager.load_checkpoint(path)` then hosts — `solo` files via `host_solo()`, others by relay, or LAN when "Advanced" is open; `Leave` / a failed host drops the pick; `main_level.gd` hands it to `GameLoop.resume_from`.
 
 **The whole profile is broadcast to every peer at each `Round` end** (`push_save_checkpoint`). Each client writes it to `user://checkpoints/<lobby>.json`. If the host's phone dies, any friend re-hosts from the last checkpoint and the crew loses one Round, not the campaign. This is not host migration — the session ends, everyone re-lobbies — it just makes that cheap.
 
@@ -190,11 +192,13 @@ MainLevel.tscn
 | `update_owned(ids, counts, item_id, buyer_peer_id)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `push_rig_poses(poses)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
-| `apply_effect(effect_id, owner_peer_id, target_id, end_tick)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `apply_event(event_id, round_index)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `request_world_interaction(kind, target_id, payload)` | MainLevel | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
-| `world_interaction_applied(peer_id, kind, target_id, payload)` | MainLevel | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `world_interaction_rejected(kind, reason)` | MainLevel | H→1 | `authority` | `call_remote` | `reliable` | 3 |
+| `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `apply_event(event_id, round_index, pocket_id)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `event_offer(round_index, tier, event_ids)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `submit_event_vote(event_id)` | EventScheduler | C→H | `any_peer` | `call_local` | `reliable` | 3 |
+| `request_world_interaction(kind, target_id, payload)` | MainLevel/WorldInteractions | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
+| `world_interaction_applied(peer_id, kind, target_id, payload)` | MainLevel/WorldInteractions | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `world_interaction_rejected(kind, reason)` | MainLevel/WorldInteractions | H→1 | `authority` | `call_remote` | `reliable` | 3 |
 | `push_save_checkpoint(save_version, blob)` | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `peer_ready()` | NetManager | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
 | `start_session(seed)` | NetManager | H→A | `authority` | `call_local` | `reliable` | 3 |
