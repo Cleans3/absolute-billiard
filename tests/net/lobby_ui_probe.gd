@@ -14,6 +14,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	var ui: Control = lobby.get_node("LobbyUI")
+	assert(nm.steam_available() or not ui.get_node("%Steam").visible, "Steam button must be hidden without Steam")
 	ui.get_node("%HostLan").pressed.emit()
 	await process_frame
 	assert(ui.get_node("%Roster").visible and not ui.get_node("%Solo").visible, "room state")

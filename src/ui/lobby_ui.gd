@@ -24,6 +24,7 @@ func _ready() -> void:
 	%Join.pressed.connect(func() -> void: _busy(NetManager.join_code.bind(%Code.text)))
 	%JoinIP.pressed.connect(_on_join_ip)
 	%HostLan.pressed.connect(_busy.bind(NetManager.host.bind(NetManager.Transport.ENET_DIRECT)))
+	%Steam.pressed.connect(_busy.bind(NetManager.host.bind(NetManager.Transport.STEAM)))
 	%Solo.pressed.connect(_busy.bind(NetManager.host_solo))
 	%AdvancedToggle.toggled.connect(func(on: bool) -> void: %AdvancedRow.visible = on)
 	%Share.pressed.connect(_on_share)
@@ -51,7 +52,7 @@ func _notification(what: int) -> void:
 
 func _busy(action: Callable) -> void:
 	_status.text = "Connecting…"
-	for b: BaseButton in [%Host, %Join, %JoinIP, %HostLan, %Solo]:
+	for b: BaseButton in [%Host, %Steam, %Join, %JoinIP, %HostLan, %Solo]:
 		b.disabled = true
 	action.call()
 
@@ -70,16 +71,17 @@ func _on_failed(reason: StringName) -> void:
 func _set_home(on: bool) -> void:
 	for c in _home:
 		c.visible = on
+	%Steam.visible = on and NetManager.steam_available()  # PC + addon + Steam client only
 	for c in _room:
 		c.visible = not on
-	for b: BaseButton in [%Host, %Join, %JoinIP, %HostLan, %Solo]:
+	for b: BaseButton in [%Host, %Steam, %Join, %JoinIP, %HostLan, %Solo]:
 		b.disabled = false
 
 
 func _show_room() -> void:
 	_status.text = ""
 	_set_home(false)
-	%Share.visible = NetManager.lobby_code != ""
+	%Share.visible = NetManager.lobby_code != "" or NetManager.transport == NetManager.Transport.STEAM
 	%Start.visible = NetManager.is_host()
 	%Leave.grab_focus()
 	_refresh_room()
@@ -88,7 +90,8 @@ func _show_room() -> void:
 func _refresh_room() -> void:
 	if not %Roster.visible:
 		return
-	%RoomCode.text = NetManager.lobby_code if NetManager.lobby_code != "" else "LAN"
+	%RoomCode.text = NetManager.lobby_code if NetManager.lobby_code != "" \
+		else ("STEAM" if NetManager.transport == NetManager.Transport.STEAM else "LAN")
 	var me := multiplayer.get_unique_id()
 	var lines := PackedStringArray()
 	for e in NetManager.get_roster():
@@ -99,5 +102,8 @@ func _refresh_room() -> void:
 
 
 func _on_share() -> void:
+	if NetManager.transport == NetManager.Transport.STEAM:
+		NetManager.steam_invite()
+		return
 	if not DeepLink.share(NetManager.share_link()):
 		_status.text = "Invite link copied."
