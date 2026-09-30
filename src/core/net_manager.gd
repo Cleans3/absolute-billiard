@@ -223,3 +223,9 @@ func _reset() -> void:
 	_level_ready.clear()
 	lobby_code = ""
 	in_session = false
+
+
+## Host → every client at each Round end (04 §2.6): each peer keeps its own copy for a re-host.
+@rpc("authority", "call_remote", "reliable", 3)
+func push_save_checkpoint(save_version: int, blob: PackedByteArray) -> void:
+	SaveManager.receive_checkpoint(lobby_code, _roster.size(), session_seed, save_version, blob)

@@ -38,11 +38,11 @@ static func encode(p: SaveProfile) -> PackedByteArray:
 ## Null (and `last_error`) when the blob is unreadable or from a newer build; older versions are migrated.
 static func decode(blob: PackedByteArray) -> SaveProfile:
 	last_error = &""
-	var parsed: Variant = JSON.parse_string(blob.get_string_from_utf8())
-	if not parsed is Dictionary:
+	var json := JSON.new()
+	if json.parse(blob.get_string_from_utf8()) != OK or not json.data is Dictionary:
 		last_error = &"corrupt"
 		return null
-	var d: Dictionary = parsed
+	var d: Dictionary = json.data
 	if int(d.get("save_version", 0)) > SAVE_VERSION:
 		last_error = &"newer_version"
 		push_warning("SaveManager: save_version %s is newer than %d; refusing" % [d.get("save_version"), SAVE_VERSION])
