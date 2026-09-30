@@ -18,6 +18,8 @@ signal nudged(direction: Vector2, strength: float, source_peer_id: int)
 ## Host: a frame of ball events / heartbeat was flushed (also emitted with no peers when `capture`).
 signal frame_flushed(frame: PackedByteArray)
 signal heartbeat_flushed(frame: PackedByteArray)
+## Client: the app returned from the background; the stream was ignored meanwhile, so ask the host for full state.
+signal blind_ended
 
 const LIVE_TICK := 120
 const REST_TICK := 60
@@ -73,6 +75,9 @@ var _t0_usec := 0
 var _client_base := 0
 var _waiting: Array = []  # [tick, Callable], oldest first
 var _rail_mult: Dictionary = {}  # rail_id -> float, absent = 1.0
+var _blind := false  # client: backgrounded, event/heartbeat frames are dropped until a snapshot lands
+var _pk_ref_t := 0.0  # client: host pocket clock at `_pk_ref_usec`
+var _pk_ref_usec := 0
 
 
 ## Resolved value of a per-shot stat (`cue_power_mult`, `cue_spin_radius_mult`) for `peer_id`.
@@ -157,6 +162,10 @@ func _scale_bed_friction(mult: float) -> void:
 
 func _ready() -> void:
 	Performance.add_custom_monitor("Game/AwakeBalls", _get_awake)
+	var nm := get_node_or_null(^"/root/NetManager")  # absent in `-s` probes
+	if nm != null:
+		nm.app_paused.connect(_on_app_paused)
+		nm.app_resumed.connect(_on_app_resumed)
 	Engine.physics_ticks_per_second = REST_TICK
 	set_physics_process(false)
 	set_process(false)
@@ -258,26 +267,31 @@ func request_shot(intent: ShotIntent) -> void:
 	if _is_host():
 		_host_shot(multiplayer.get_unique_id(), intent)
 		return
+	if _blind:
+		return  # a backgrounded phone sends nothing (04 §6)
 	var b := PackedByteArray()
-	b.resize(24)
+	b.resize(25)
 	b.encode_float(0, intent.aim_dir.x)
 	b.encode_float(4, intent.aim_dir.y)
 	b.encode_float(8, intent.power)
 	b.encode_float(12, intent.spin_offset.x)
 	b.encode_float(16, intent.spin_offset.y)
 	b.encode_float(20, intent.elevation_deg)
+	b[24] = _pocket_ids().find(intent.called_pocket) + 1  # 0 = none
 	_request_shot_rpc.rpc_id(1, b)
 
 
 @rpc("any_peer", "call_remote", "reliable", 1)
 func _request_shot_rpc(b: PackedByteArray) -> void:
-	if not _is_host() or b.size() != 24:
+	if not _is_host() or b.size() != 25:
 		return
 	var intent := ShotIntent.new()
 	intent.aim_dir = Vector2(b.decode_float(0), b.decode_float(4))
 	intent.power = b.decode_float(8)
 	intent.spin_offset = Vector2(b.decode_float(12), b.decode_float(16))
 	intent.elevation_deg = b.decode_float(20)
+	var ids := _pocket_ids()
+	intent.called_pocket = ids[b[24] - 1] if b[24] >= 1 and b[24] <= ids.size() else &""
 	_host_shot(multiplayer.get_remote_sender_id(), intent)
 
 
@@ -303,6 +317,16 @@ func _host_shot(peer_id: int, intent: ShotIntent) -> void:
 @rpc("authority", "call_remote", "reliable", 1)
 func _shot_rejected_rpc(reason: StringName) -> void:
 	shot_rejected.emit(reason)
+
+
+## Pocket ids in layout order, identical on every peer: the wire index for `called_pocket`.
+func _pocket_ids() -> Array:
+	return (get_parent() as Table).pockets.keys()
+
+
+## Tick just past the last Shot's stream: what clients queue post-shot spawns / re-rolls against.
+func after_shot_tick() -> int:
+	return _base_tick + _last_end_off + 1
 
 
 func _find_cue_ball() -> Ball:
@@ -332,14 +356,15 @@ func _begin_shot_stream(shooter_id: int) -> void:
 	_dirty.fill(0)
 	BallEventCodec.begin(_frame, shot_id, _base_tick)
 	set_physics_process(_peers_listening())
-	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats())
+	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats(), pocket_time())
 
 
 @rpc("authority", "call_local", "reliable", 1)
-func _shot_started_rpc(id: int, shooter_id: int, base_tick: int, stats: PackedFloat32Array) -> void:
+func _shot_started_rpc(id: int, shooter_id: int, base_tick: int, stats: PackedFloat32Array, host_pocket_t: float) -> void:
 	if not _is_host():
 		_apply_motion_stats(stats)
 		_rebase_client(base_tick)
+		sync_pocket_clock(host_pocket_t)
 	shot_started_net.emit(id, shooter_id, base_tick)
 
 
@@ -458,13 +483,16 @@ func _on_net_flag(ball: Ball, flag: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 1)
 func _push_events_rpc(_id: int, _base: int, frame: PackedByteArray) -> void:
-	apply_frame(frame)
+	if not _blind:
+		apply_frame(frame)
 
 
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
 func _push_heartbeat_rpc(tick: int, frame: PackedByteArray) -> void:
 	# Corrective only: the host's predictions assume the clients follow the event stream, so a
 	# heartbeat state is adopted just when the client is provably off (lost packet, late join).
+	if _blind:
+		return
 	var o := origin()
 	for i in BallEventCodec.count(frame):
 		var id := BallEventCodec.ball_id(frame, i)
@@ -474,6 +502,74 @@ func _push_heartbeat_rpc(tick: int, frame: PackedByteArray) -> void:
 		BallEventCodec.read_state(frame, i, o, _hb_state)
 		if not _replica.sample(id, tick, b.motion, _scratch) or _scratch.pos.distance_to(_hb_state.pos) > HEARTBEAT_SNAP_M:
 			_replica.insert(id, tick, _hb_state)
+
+
+# ---------------------------------------------------------------- pocket clock
+
+## Seconds on the pocket-oscillation clock (`Table.pocket_offset` input). Host: its own monotonic clock,
+## the one its drop-chute Areas capture against. Client: that clock as of the last sync, minus the playback
+## delay, so a pocket is drawn where it was when the host's Jolt would have captured a ball you now see.
+func pocket_time() -> float:
+	if _is_host():
+		return Time.get_ticks_usec() / 1e6
+	return _pk_ref_t + (Time.get_ticks_usec() - _pk_ref_usec) / 1e6 - INTERP_DELAY_SEC
+
+
+## Client: adopt the host's clock (sent with every shot start and full state; zero packets in between).
+func sync_pocket_clock(host_t: float) -> void:
+	_pk_ref_t = host_t
+	_pk_ref_usec = Time.get_ticks_usec()
+
+
+# ---------------------------------------------------------------- background / full state (04 §6)
+
+func _on_app_paused() -> void:
+	if not _is_host():
+		_blind = true
+
+
+func _on_app_resumed() -> void:
+	if _blind:
+		blind_ended.emit()  # stays blind until the snapshot arrives: old stream frames must not land on it
+
+
+## Host: every ball's state right now as one codec frame (`tick` = this host tick, every event at offset 0).
+## Lifecycle flags ride the event flags, so pocketed/retired balls need no second format.
+func snapshot_frame() -> PackedByteArray:
+	var f := PackedByteArray()
+	BallEventCodec.begin(f, shot_id, Engine.get_physics_frames())
+	for b in _balls:
+		if not b.is_inside_tree():
+			continue
+		_scratch.pos = b.global_position
+		var still := b.is_resting or b.freeze
+		_scratch.lin = Vector3.ZERO if still else b.linear_velocity
+		_scratch.ang = Vector3.ZERO if still else b.angular_velocity
+		var flag := BallEventCodec.Flag.RETIRED if b.retired else (BallEventCodec.Flag.POCKETED if b.is_pocketed else BallEventCodec.Flag.NONE)
+		BallEventCodec.append(f, b.net_id, flag, 0, _scratch, origin())
+	return f
+
+
+## Client: replace every ball's history with the snapshot and put the playback clock on it.
+## Balls must already exist (RoundDirector respawned them from the rack blob).
+func apply_snapshot(frame: PackedByteArray, host_pocket_t: float) -> void:
+	_waiting.clear()
+	var tick := BallEventCodec.base_tick(frame)
+	_client_base = tick
+	_t0_usec = Time.get_ticks_usec() - int(INTERP_DELAY_SEC * 1e6)  # playback = `tick` right now
+	sync_pocket_clock(host_pocket_t)
+	for i in BallEventCodec.count(frame):
+		var id := BallEventCodec.ball_id(frame, i)
+		var b := _by_id[id] if id < _by_id.size() else null
+		if b == null:
+			continue
+		BallEventCodec.read_state(frame, i, origin(), _scratch)
+		_replica.anchor(id, tick, _scratch)
+		var flag := BallEventCodec.flag(frame, i)
+		if flag != BallEventCodec.Flag.NONE:
+			_apply_flag(b, flag)
+		b.global_position = _scratch.pos
+	_blind = false
 
 
 # ---------------------------------------------------------------- client

@@ -39,11 +39,7 @@ static func detect(log: ContactLog, cue: Ball, shot_id: String) -> Array[TrickSh
 
 	var out: Array[TrickShot] = []
 	for id in TrickShot.sort_desc(ids):
-		var t := TrickShot.new()
-		t.id = id
-		t.multiplier = TrickShot.multiplier_for(id)
-		t.shot_id = shot_id
-		out.append(t)
+		out.append(TrickShot.make(id, shot_id))
 	return out
 
 

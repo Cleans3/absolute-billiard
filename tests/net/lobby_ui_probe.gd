@@ -10,7 +10,7 @@ func _init() -> void:
 func _run() -> void:
 	var nm := root.get_node("NetManager")
 	nm.config.direct_port = 27000 + randi() % 5000
-	SaveManager.root = "user://test_lobby_ui"
+	SaveManager.root = "user://test_lobby_ui_%d" % OS.get_process_id()
 	DirAccess.make_dir_recursive_absolute(SaveManager.checkpoint_dir())
 	var lobby: Node = load("res://src/levels/Lobby.tscn").instantiate()
 	root.add_child(lobby)

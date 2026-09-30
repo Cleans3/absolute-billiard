@@ -13,3 +13,8 @@ extends Resource
 @export var channel_count := 8
 ## How long a joiner tries the punched direct path before falling back to the relay.
 @export var direct_try_sec := 3.0
+## ENet peer timeouts (04 §6): a phone that backgrounds for up to ~30 s must not be dropped. ENet only
+## disconnects after `timeout_min_ms` without an ack (and never waits past `timeout_max_ms`).
+@export var peer_timeout_limit := 32
+@export var peer_timeout_min_ms := 45000
+@export var peer_timeout_max_ms := 60000

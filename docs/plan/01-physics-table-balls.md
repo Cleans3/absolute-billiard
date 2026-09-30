@@ -134,6 +134,10 @@ Values are **100 / 250 / 500** — three tiers wide enough to read mid-aim, unli
 | `split_ball` | 250 | `gimmick`, `splitter` | shop unlock; on pot, spawns one `red_basic` at its last rest position |
 | `joker_ball` | 250 | `gimmick`, `wild` | shop unlock; `×2` on the highest-value ball potted in the same `Shot` |
 
+**Gimmick behaviour (built, `RoundDirector`).** `bomb_ball`: a contact whose relative pre-impact speed is ≥ `3.0 m/s [tune]` sets it off — every ball within `14` radii gets a horizontal kick of `3.0 m/s [tune]` × linear falloff, the bomb retires itself (no score, not a pot, ignored by the clear test). `split_ball`: after the Shot resolves, each potted split spawns one `red_basic` at its rest spot (nearest clear spot otherwise), respecting the 12-ball cap; clients spawn it at the Shot's playback end (`_spawn_rpc`). `joker_ball`: `wild` — see Scoring. `stone_ball`: 3× mass, never scored; when it is in a Night's pool one is placed per rack (`STONES_PER_RACK`) and it counts toward the 12 cap (`RackDropper.rack_size`). Each unlocked gimmick appears once per rack.
+
+**Authored racks.** `NightConfig.authored_racks: Array[RackLayout]` (index = Round − 1; missing = seeded drop). A `RackLayout` is `type_ids` + `positions`, fractions of the playfield interior's half-extents in [-1, 1] so it survives any `TableSpec.scale`. Night 1 and Night 5 ship three each (`src/resources/racks/`); `tests/round/rules_probe.gd` checks exact positions, spacing and pocket clearance.
+
 **Shop overrides (P3).** The gimmicks are not unlocked on a schedule — the player buys the order from the Bartender shop that 02 owns. Ball purchases are `BallTypeOverride { ball_type_id, unlocked: bool, base_value_override: int }` resources; 02 hands `RoundDirector` the active override set at `Round` setup and 01 resolves `value(ball_type) = override.base_value_override if set else ball_type.base_value`. Nothing in 01 mutates a `BallType` resource in place, so a tier-value upgrade is one row of save data, not a migration.
 
 ### CueSpec (Resource) and the cue API
@@ -207,7 +211,7 @@ Mechanically: the rail material is `absorbent` with `bounce = ball_restitution �
 **A legal `Shot` must produce at least one `BALL` contact between the cue ball and any non-cue ball.** Without this rule the dominant strategy is tapping the nearest ball forever; with it, a whiff costs a shot. A foul is: no object-ball contact, *or* the cue ball entering a drop plane (the old scratch), *or* any ball leaving the table. Consequences: the `Shot` scores nothing, one shot is deducted from the `Round` budget, 02 applies its viewer drop, and the cue ball respawns in the kitchen — the quarter of the table behind `kitchen_line_x`, at the first Poisson-disk candidate that clears every other ball. No ball-in-hand, no spotting, no other standard pool rules.
 
 ### Scoring
-`raw_points` for a `Shot` is the sum over potted balls of `value(ball_type)`, then tag modifiers: `high_value` `+25%`, `wild` applies `×2` to the single highest-value ball potted this shot, `penalty` stays negative and rides the same multiplier stack the positive balls do. `raw_points` **excludes** trick multipliers; 02 applies the winning trick multiplier and converts to `Cash`.
+`raw_points` for a `Shot` is the sum over potted balls of `value(ball_type)` (`RoundDirector.value_of`, shop overrides applied; with `rule_call_pocket` only balls potted in the called pocket count), then tag modifiers: `high_value` `+25%`, `wild` applies `×2` to the single highest-value ball potted this shot, `penalty` stays negative and rides the same multiplier stack the positive balls do. `raw_points` **excludes** trick multipliers; 02 applies the winning trick multiplier and converts to `Cash`.
 
 ### TrickShot detection — five tricks, disjoint
 All five are counters over the ordered contact log, evaluated once at shot end. Flat bonuses are gone: a `+50` flat was `+50%` on a red and `+10%` on a gold, so tricks were only worth doing on cheap balls.
@@ -220,7 +224,7 @@ All five are counters over the ordered contact log, evaluated once at shot end. 
 | `Carom` | the cue ball contacts ≥2 distinct object balls before the first `POCKET` event | `1.35` |
 | `RailRunner` | a potted object ball has ≥3 `RAIL` contacts before its `POCKET` event | `1.60` |
 
-**Disjointness: a `Shot` pays exactly one trick multiplier — the highest that fired.** `trick_ids` is emitted sorted by multiplier descending, and 02 multiplies by the first entry only. Everything detected is still emitted, so 03's Effects can react to a `KickShot` that lost to a `RailRunner`. `TrickShot { id: StringName, multiplier: float, shot_id: String, tags: Array[StringName] }` — no `bonus_points` field, because there are no flat bonuses.
+**Disjointness: a `Shot` pays exactly one trick multiplier — the highest that fired.** `trick_ids` is emitted sorted by multiplier descending, and 02 multiplies by the first entry only. Everything detected is still emitted, so 03's Effects can react to a `KickShot` that lost to a `RailRunner`. `TrickShot { id: StringName, multiplier: float, shot_id: String, tags: Array[StringName] }` — `multiplier` and `tags` are pure functions of `id` (`TrickShot.make`, `TrickShot.TAGS`), so a client rebuilds the same object from the wire id — no `bonus_points` field, because there are no flat bonuses.
 
 Cut and not coming back: `MasséCurve` (curve-radius fitting is noise), `DoubleCushionExit` (fires on nearly every rail), `ScratchEscape` (undefinable), `SplitChain` and `BombCascade` (they described balls that did not exist yet).
 

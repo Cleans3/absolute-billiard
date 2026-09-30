@@ -10,7 +10,7 @@ const GRAB_REACH := 3.0
 const POCKET_LIFT := 0.15  # aim the ray a little above the cloth so it does not start inside it
 ## Floor position + yaw per rig; rigs 1–2 are the MVP pair, 3–4 the spare tripods. [tune]
 const SPOTS: Array = [
-	[Vector3(0.0, 0.0, -0.3), 0.0],
+	[Vector3(-2.6, 0.0, -0.3), 0.0],  # ≥ 1 m from every bar prop, so a prompt never has two candidates
 	[Vector3(0.0, 0.0, -6.7), PI],
 	[Vector3(-5.2, 0.0, -3.5), -PI / 2.0],
 	[Vector3(5.2, 0.0, -3.5), PI / 2.0],
@@ -26,9 +26,13 @@ var rigs: Array[CameraRig] = []
 var last_rig := &""  # the rig that won the latest score
 var last_quality := 0.0
 
+## Any rig's holder changed (host: a grab/place; client: a pose packet). The Player derives CARRY from it.
+signal holders_changed
+
 var _accum := 0.0
 var _settle := 0
 var _sent: PackedFloat32Array
+var _sent_holders: PackedInt32Array
 
 
 func _ready() -> void:
@@ -58,6 +62,21 @@ func camera_mult(pocket_id: StringName) -> float:
 	return CameraScorer.camera_mult(win.rig.tier_mult(), win.quality, bonus)
 
 
+## The Player's use-prop for a rig: WorldInteractions validates `move_camera` reach against an Interactable
+## whose target_id is the rig number (08 §5), and the same prop drives the "Grab camera" prompt.
+func _grab_prop(rig_number: int) -> Interactable:
+	var prop := Interactable.new()
+	prop.interaction = FxCatalog.interaction(&"move_camera")
+	prop.target_id = rig_number
+	prop.prompt = "Grab camera"
+	var shape := CollisionShape3D.new()
+	var sphere := SphereShape3D.new()
+	sphere.radius = Bar.REACH_ZONE_RADIUS
+	shape.shape = sphere
+	prop.add_child(shape)
+	return prop
+
+
 func _sync_rigs() -> void:
 	var count: int = economy.rig_count() if economy != null else EconomyManager.BASE_RIGS
 	var tier: int = economy.camera_tier() if economy != null else 1
@@ -68,6 +87,7 @@ func _sync_rigs() -> void:
 		rig.position = SPOTS[i][0]
 		rig.rotation.y = SPOTS[i][1]
 		add_child(rig)
+		rig.add_child(_grab_prop(i + 1))
 		rigs.append(rig)
 	for rig in rigs:
 		rig.tier = tier
@@ -94,6 +114,7 @@ func _on_move_requested(peer_id: int, target_id: int, payload: Dictionary) -> vo
 				other.held_by = 0  # one rig per pair of hands
 		rig.held_by = peer_id
 	_settle = SETTLE_SENDS
+	holders_changed.emit()
 
 
 func _nearest(pos: Vector3) -> CameraRig:
@@ -124,12 +145,14 @@ func _physics_process(delta: float) -> void:
 		return
 	_accum = 0.0
 	var poses := _poses()
-	if poses != _sent:
+	var holders := _holders()
+	if poses != _sent or holders != _sent_holders:
 		_sent = poses
+		_sent_holders = holders
 		_settle = SETTLE_SENDS
 	if _settle > 0:
 		_settle -= 1
-		push_rig_poses.rpc(poses)
+		push_rig_poses.rpc(poses, holders)
 
 
 func _poses() -> PackedFloat32Array:
@@ -139,8 +162,22 @@ func _poses() -> PackedFloat32Array:
 	return out
 
 
+func _holders() -> PackedInt32Array:
+	var out := PackedInt32Array()
+	for rig in rigs:
+		out.append(rig.held_by)
+	return out
+
+
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func push_rig_poses(poses: PackedFloat32Array) -> void:
+func push_rig_poses(poses: PackedFloat32Array, holders: PackedInt32Array) -> void:
+	var moved := false
 	for i in mini(rigs.size(), poses.size() / 4):
 		rigs[i].position = Vector3(poses[i * 4], poses[i * 4 + 1], poses[i * 4 + 2])
 		rigs[i].rotation.y = poses[i * 4 + 3]
+	for i in mini(rigs.size(), holders.size()):
+		if rigs[i].held_by != holders[i]:
+			rigs[i].held_by = holders[i]
+			moved = true
+	if moved:
+		holders_changed.emit()

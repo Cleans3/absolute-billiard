@@ -34,7 +34,7 @@ func _frames(n: int) -> void:
 func _run() -> void:
 	await process_frame
 	_math()
-	SaveManager.root = "user://test_camera"
+	SaveManager.root = "user://test_camera_%d" % OS.get_process_id()
 	DirAccess.make_dir_recursive_absolute(SaveManager.root)
 	var lobby: Node = load("res://src/levels/Lobby.tscn").instantiate()
 	root.add_child(lobby)
@@ -128,4 +128,4 @@ func _scene() -> void:
 	eco.owned[&"spare_tripod"] = 2
 	eco.owned_changed.emit()
 	_check(cams.rigs.size() == 4 and cams.rigs[3].tier == 3, "4 rigs after two spare tripods")
-	DirAccess.remove_absolute("user://test_camera")
+	DirAccess.remove_absolute("user://test_camera_%d" % OS.get_process_id())
