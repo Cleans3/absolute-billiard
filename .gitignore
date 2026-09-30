@@ -1,3 +1,8 @@
 .godot/
 *.tmp
 build/
+android/
+icon.svg.import
+addons/godotsteam/
+addons/steam-multiplayer-peer/
+steam_appid.txt
