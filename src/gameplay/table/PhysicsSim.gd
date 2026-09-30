@@ -48,6 +48,7 @@ var _balls: Array[Ball] = []
 var _by_id: Array[Ball] = []
 var shot_id := 0
 var _shot_live := false
+var _last_end_off := 0  # tick offset at which the last Shot's stream ended
 var _base_tick := 0
 var _pred: Array[BallMotion.State] = []  # host: state the clients will have reconstructed
 var _dirty := PackedByteArray()
@@ -58,6 +59,12 @@ var _hb_state := BallMotion.State.new()
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
 var _hb_every := LIVE_TICK / HEARTBEAT_HZ
 var _emitted_events := 0
+# NetGraph counters: frames sent (host) or received (client)
+var net_events := 0
+var net_bytes := 0
+var net_events_shot := 0
+var net_bytes_shot := 0
+var _last_event_tick := 0
 # client
 var _replica := BallReplica.new()
 var _t0_usec := 0
@@ -311,6 +318,8 @@ func _begin_shot_stream(shooter_id: int) -> void:
 	_base_tick = Engine.get_physics_frames()
 	_shot_live = true
 	_emitted_events = 0
+	net_events_shot = 0
+	net_bytes_shot = 0
 	for b in _balls:
 		_seed_pred(b)
 	_dirty.fill(0)
@@ -382,6 +391,7 @@ func _flush() -> void:
 		return
 	if not multiplayer.get_peers().is_empty():
 		_push_events_rpc.rpc(shot_id, BallEventCodec.base_tick(_frame), _frame)
+	_count_frame(_frame)
 	frame_flushed.emit(_frame)
 	BallEventCodec.begin(_frame, shot_id, BallEventCodec.base_tick(_frame))
 
@@ -411,6 +421,7 @@ func _end_shot_stream() -> void:
 		if pred.pos.distance_squared_to(b.global_position) > DIVERGE_M * DIVERGE_M or not BallMotion.is_at_rest(pred):
 			_emit_event(b, BallEventCodec.Flag.NONE, off)
 	_flush()
+	_last_end_off = off
 	_shot_live = false
 	set_physics_process(false)
 
@@ -431,8 +442,10 @@ func _on_net_flag(ball: Ball, flag: int) -> void:
 	if _shot_live:
 		_emit_event(ball, flag, Engine.get_physics_frames() - _base_tick)
 		return
-	BallEventCodec.begin(_frame, shot_id, Engine.get_physics_frames())
-	_emit_event(ball, flag, BallReplica.NOW)
+	# Right after a shot (kitchen respawn, off-table restore): stamped just past the shot's last tick so
+	# the client orders it after the pot/retire flags it may still have queued at playback.
+	BallEventCodec.begin(_frame, shot_id, _base_tick)
+	_emit_event(ball, flag, _last_end_off + 1)
 	_flush()
 
 
@@ -481,11 +494,28 @@ func at_playback(tick: int, fn: Callable) -> void:
 	_waiting.insert(i, [tick, fn])
 
 
+func _count_frame(frame: PackedByteArray) -> void:
+	net_events += BallEventCodec.count(frame)
+	net_bytes += frame.size()
+	net_events_shot += BallEventCodec.count(frame)
+	net_bytes_shot += frame.size()
+
+
+## Client: how far past the playback clock the newest received event lies.
+func event_lead_ms() -> float:
+	return (_last_event_tick - playback_tick_f()) * 1000.0 / LIVE_TICK
+
+
 func apply_frame(frame: PackedByteArray) -> void:
+	_count_frame(frame)
+	if BallEventCodec.count(frame) > 0:
+		_last_event_tick = maxi(_last_event_tick, BallEventCodec.base_tick(frame) + BallEventCodec.tick_offset(frame, BallEventCodec.count(frame) - 1))
 	_replica.apply_frame(frame, origin(), playback_tick(), _on_replica_flag)
 
 
 func _rebase_client(base_tick: int) -> void:
+	net_events_shot = 0
+	net_bytes_shot = 0
 	var now := playback_tick_f()
 	for b in _balls:  # freeze every ball where it is on screen; the shot's events anchor from there
 		if _replica.sample(b.net_id, now, b.motion, _scratch):

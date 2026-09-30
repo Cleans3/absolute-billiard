@@ -259,7 +259,7 @@ func _on_net_flag_applied(ball: Ball, flag: int) -> void:
 	var best := &""
 	var best_d := INF
 	for id in table.pockets:
-		var d := ball.global_position.distance_squared_to(table.pockets[id].position)
+		var d := ball.global_position.distance_squared_to(table.to_global(table.pockets[id].position))
 		if d < best_d:
 			best_d = d
 			best = id

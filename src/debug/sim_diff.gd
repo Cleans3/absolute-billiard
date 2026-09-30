@@ -32,6 +32,7 @@ var _retired: Dictionary = {}
 
 func attach(p_sim: PhysicsSim) -> void:
 	sim = p_sim
+	add_to_group(&"sim_diff")
 	sim.capture = true
 	sim.frame_flushed.connect(_on_frame)
 	sim.heartbeat_flushed.connect(func(f: PackedByteArray) -> void: heartbeat_bytes += f.size())

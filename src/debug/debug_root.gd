@@ -22,6 +22,7 @@ var _freecam: DebugFreeCamera
 var _gizmos: DebugGizmos
 var _spec_panel: DebugSpecPanel
 var _shot_console: DebugShotConsole
+var _net_graph: NetGraph
 var _rack_presets := DebugRackPresets.new()
 var _timescale_index := 0
 
@@ -50,6 +51,10 @@ func _ready() -> void:
 	_spec_panel.visible = false
 	add_child(_spec_panel)
 
+	_net_graph = preload("res://src/debug/NetGraph.tscn").instantiate()
+	_net_graph.table = table
+	add_child(_net_graph)
+
 	_shot_console = DebugShotConsole.new()
 	_shot_console.table = table
 	_shot_console.visible = false
@@ -66,6 +71,8 @@ func _unhandled_input(event: InputEvent) -> void:
 			return
 		_freecam.toggle()
 		_refresh_mouse_mode()
+	elif event.is_action_pressed("debug_netgraph"):
+		_net_graph.visible = not _net_graph.visible
 	elif event.is_action_pressed("debug_gizmos"):
 		_gizmos.visible = not _gizmos.visible
 	elif event.is_action_pressed("debug_spec"):

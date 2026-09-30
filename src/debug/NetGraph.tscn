@@ -1,0 +1,7 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/debug/net_graph.gd" id="1_graph"]
+
+[node name="NetGraph" type="CanvasLayer"]
+visible = false
+script = ExtResource("1_graph")
