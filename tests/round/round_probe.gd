@@ -46,7 +46,6 @@ func _init() -> void:
 	cam.current = true
 	director = RoundDirector.new()
 	director.table = table
-	director.cue = cue_node
 	root.add_child(director)
 	director.shot_started.connect(_on_started)
 	director.ball_potted.connect(_on_potted)
@@ -59,6 +58,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await physics_frame
+	cue_node.shot_sink = table.sim.request_shot
 	r = table.spec.ball_radius_m
 	print("probe: C2 rack")
 	_rack()
@@ -143,7 +143,7 @@ func _rack() -> void:
 func _gate() -> void:
 	await _place(Vector2(-1.4, 0.0), [Vector2(0.4, 0.0)])
 	_check(director.can_strike(cue_ball) and not director.can_strike(objs[0]), "only the cue ball may be struck")
-	_check(cue_node.gate.is_valid(), "RoundDirector installs CueController.gate")
+	_check(table.sim.shot_validator.is_valid(), "RoundDirector installs PhysicsSim.shot_validator")
 	cue_ball.struck.connect(_on_struck)
 	_strikes = 0
 	var cue_pos := cue_ball.global_position

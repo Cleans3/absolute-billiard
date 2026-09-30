@@ -14,17 +14,29 @@ signal shot_ended(shot_id: String, shooter_id: int, raw_points: int, trick_ids: 
 signal table_cleared(round_id: String)
 ## reason: &"scratch" | &"wedged" | &"off_table" — the cue ball was put back in the kitchen.
 signal cue_respawned(reason: StringName)
+## Host and clients: whose Turn it is (04 §5 `set_shooter`).
+signal shooter_changed(peer_id: int)
 
 const CUE_TYPE := preload("res://src/resources/ball_types/cue.tres")
+## Wire ids for `push_rack`: the index. Append new BallTypes at the end, never reorder.
+const BALL_TYPES: Array[BallType] = [
+	CUE_TYPE,
+	preload("res://src/resources/ball_types/red_basic.tres"),
+	preload("res://src/resources/ball_types/blue_mid.tres"),
+	preload("res://src/resources/ball_types/gold_prize.tres"),
+	preload("res://src/resources/ball_types/black_penalty.tres"),
+]
+const RACK_ENTRY_SIZE := 10  # net_id u8 | type u8 | x f32 | z f32 (table-local)
 const SHOT_CEILING_SEC := 12.0  # 01 §3: past this every ball is stilled and the shot resolves anyway
 const WEDGE_DIRECTIONS := 16
 const OFF_TABLE_RADII := 2.0    # past the nose rectangle by this many radii = off the table (A3)
 
 @export var table: Table
-@export var cue: Node  # CueController — gets `gate` installed
 @export var ball_scene: PackedScene = preload("res://src/gameplay/balls/Ball.tscn")
 
 var shot_in_progress := false
+## Peer whose Turn it is; rotates by NetManager.seat_order() after every shot_ended.
+var current_shooter_id := 1
 
 var _round_id := ""
 var _seed := 0
@@ -47,14 +59,51 @@ func _ready() -> void:
 		await table.ready
 	table.sim.shot_started.connect(_on_sim_shot_started)
 	table.sim.all_resting.connect(_on_all_resting)
+	table.sim.shot_started_net.connect(_on_net_shot_started)
+	table.sim.ball_flag_applied.connect(_on_net_flag_applied)
+	table.sim.nudged.connect(_on_nudged)
+	table.sim.shot_validator = _validate_shot
 	table.ball_dropped.connect(_on_ball_dropped)
-	if cue != null:
-		cue.set(&"gate", can_strike)
 
 
 ## A strike is legal on the cue ball only, and only between shots.
 func can_strike(ball: Ball) -> bool:
 	return _round_active and not shot_in_progress and _balls.has(ball) and ball.is_cue_ball
+
+
+## PhysicsSim.shot_validator: `&""` = ok. Host-side; is the sender the current shooter, is a Round live.
+func _validate_shot(peer_id: int, intent: ShotIntent) -> StringName:
+	if not _round_active:
+		return &"no_round"
+	if shot_in_progress:
+		return &"balls_moving"
+	if peer_id != current_shooter_id:
+		return &"not_your_turn"
+	if not (intent.power >= 0.0 and intent.power <= 1.001):
+		return &"bad_power"
+	if not intent.aim_dir.is_finite() or intent.aim_dir.length_squared() < 0.000001:
+		return &"bad_aim"
+	return &""
+
+
+## Peer ids by seat; empty when no NetManager session exists (headless probes, tools).
+func _seat_order() -> PackedInt32Array:
+	var net := get_tree().root.get_node_or_null(^"NetManager")
+	return net.call(&"seat_order") if net != null and net.has_method(&"seat_order") else PackedInt32Array()
+
+
+func _rotate_shooter() -> void:
+	var order := _seat_order()
+	if order.is_empty():
+		return
+	var i := order.find(current_shooter_id)
+	_set_shooter_rpc.rpc(order[(i + 1) % order.size()])
+
+
+@rpc("authority", "call_local", "reliable", 3)
+func _set_shooter_rpc(peer_id: int) -> void:
+	current_shooter_id = peer_id
+	shooter_changed.emit(peer_id)
 
 
 func get_balls() -> Array[Ball]:
@@ -73,6 +122,40 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 	for entry in RackDropper.drop(table.spec, table.layout, config, seed):
 		_spawn(entry.type, entry.pos, i)
 		i += 1
+	_round_active = true
+	var order := _seat_order()
+	if not order.is_empty() and not order.has(current_shooter_id):
+		_set_shooter_rpc.rpc(order[0])
+	if not multiplayer.get_peers().is_empty():
+		_push_rack_rpc.rpc(_round_id, seed, _rack_blob())
+	rack_ready.emit(seed)
+
+
+func _rack_blob() -> PackedByteArray:
+	var blob := PackedByteArray()
+	blob.resize(_balls.size() * RACK_ENTRY_SIZE)
+	for i in _balls.size():
+		var b := _balls[i]
+		var p := _local(b)
+		var o := i * RACK_ENTRY_SIZE
+		blob[o] = b.net_id
+		blob[o + 1] = BALL_TYPES.find(b.ball_type)
+		blob.encode_float(o + 2, p.x)
+		blob.encode_float(o + 6, p.y)
+	return blob
+
+
+## Clients spawn the host's rack as kinematic puppets (PhysicsSim.register flips them to client mode).
+@rpc("authority", "call_remote", "reliable", 3)
+func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray) -> void:
+	_clear_balls()
+	_round_id = round_id
+	_seed = seed
+	_shot_index = 0
+	for o in range(0, blob.size(), RACK_ENTRY_SIZE):
+		var ball := _spawn(BALL_TYPES[blob[o + 1]], Vector2(blob.decode_float(o + 2), blob.decode_float(o + 6)), blob[o])
+		if ball.is_cue_ball:
+			_cue_ball = ball
 	_round_active = true
 	rack_ready.emit(seed)
 
@@ -111,6 +194,7 @@ func _spawn(type: BallType, pos: Vector2, index: int) -> Ball:
 	b.ball_type = type
 	b.spec = table.spec
 	b.spawn_index = index
+	b.net_id = index  # wire id: cue 0, rack balls 1.. in spawn order, identical on every peer
 	b.id = "%s_%d" % [type.id, index]
 	add_child(b)
 	b.global_position = _world(pos, b)
@@ -156,6 +240,45 @@ func _on_sim_shot_started(_ball: Ball, intent: ShotIntent) -> void:
 			_rest_pos[b] = _local(b)
 	set_physics_process(true)
 	shot_started.emit(_shot_id, _shooter_id)
+
+
+## Clients: the network-level shot start (host already ran `_on_sim_shot_started`).
+func _on_net_shot_started(_id: int, shooter_id: int, _base_tick: int) -> void:
+	if multiplayer.is_server():
+		return
+	shot_in_progress = true
+	_shot_index += 1
+	_shot_id = "%s-s%d" % [_round_id, _shot_index]
+	shot_started.emit(_shot_id, shooter_id)
+
+
+## Clients: a streamed pot lands at playback time, so the popup follows the ball into the pocket.
+func _on_net_flag_applied(ball: Ball, flag: int) -> void:
+	if flag != BallEventCodec.Flag.POCKETED or ball.is_cue_ball:
+		return
+	var best := &""
+	var best_d := INF
+	for id in table.pockets:
+		var d := ball.global_position.distance_squared_to(table.pockets[id].position)
+		if d < best_d:
+			best_d = d
+			best = id
+	ball_potted.emit(ball, _shot_id, best)
+
+
+@rpc("authority", "call_remote", "reliable", 3)
+func _shot_resolved_rpc(shot_id: String, shooter_id: int, end_tick: int, raw_points: int, trick_ids: PackedStringArray, foul: bool) -> void:
+	var ids: Array[StringName] = []
+	for t in trick_ids:
+		ids.append(StringName(t))
+	table.sim.at_playback(end_tick, func() -> void:
+		shot_in_progress = false
+		shot_ended.emit(shot_id, shooter_id, raw_points, ids, foul))
+
+
+func _on_nudged(_direction: Vector2, _strength: float, source_peer_id: int) -> void:
+	if shot_in_progress:
+		_log.add_nudge(source_peer_id)
 
 
 func _on_contacted(ball: Ball, other: Node, kind: StringName) -> void:
@@ -233,9 +356,12 @@ func _on_all_resting() -> void:
 	var shooter_id := _shooter_id
 	shot_in_progress = false
 	set_physics_process(false)
+	if not multiplayer.get_peers().is_empty():
+		_shot_resolved_rpc.rpc(shot_id, shooter_id, Engine.get_physics_frames(), raw_points, PackedStringArray(trick_ids), foul)
 	shot_ended.emit(shot_id, shooter_id, raw_points, trick_ids, foul)
 	if cleared:
 		table_cleared.emit(round_id)
+	_rotate_shooter()
 
 
 ## No ball that counts for clear and is worth points is still on the table (01 §3).

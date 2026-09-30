@@ -22,11 +22,10 @@ func _ready() -> void:
 	NetManager.main_level_ready()
 
 
-## The walker's cue talks to this peer's RoundDirector (SYNC replaces `gate` with the shot route).
+## The walker's cue asks this peer's PhysicsSim for a shot; the host validates it (RoundDirector).
 func _on_local_player(player: CharacterBody3D) -> void:
 	var cue := player.get_node("Head/CueController")
-	round_director.cue = cue
-	cue.set(&"gate", round_director.can_strike)
+	cue.set(&"shot_sink", round_director.table.sim.request_shot)
 	cue.set(&"cue_spec", $EconomyManager.build_cue_spec())
 
 
