@@ -80,16 +80,45 @@ func set_stat(stat_name: StringName, value: float) -> void:
 					b.apply_mass_mult(value)
 		&"cloth_friction_mult":
 			cloth_friction_mult = value
-			for b in _balls:
-				b.motion.friction_mult = value
+			_sync_motion_params()
 			_scale_bed_friction(value)
 		&"cushion_restitution_mult": cushion_restitution_mult = value
-		&"table_tilt_deg": table_tilt_deg = value
+		&"table_tilt_deg":
+			table_tilt_deg = value
+			_sync_motion_params()
 		_: push_error("PhysicsSim.set_stat: unknown stat %s" % stat_name)
 
 
 func set_tilt_direction(dir: Vector2) -> void:
 	tilt_direction = dir.normalized()
+	_sync_motion_params()
+
+
+## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and — while a
+## Shot is live — to clients at this tick, so both sides predict from the same model (04 §2.4).
+func _sync_motion_params() -> void:
+	var tilt := tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
+	for b in _balls:
+		b.motion.friction_mult = cloth_friction_mult
+		b.motion.tilt = tilt
+	if _shot_live and _is_host() and not multiplayer.get_peers().is_empty():
+		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
+
+
+func _motion_stats() -> PackedFloat32Array:
+	return PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
+
+
+@rpc("authority", "call_remote", "reliable", 1)
+func _motion_stats_rpc(tick: int, stats: PackedFloat32Array) -> void:
+	at_playback(tick, _apply_motion_stats.bind(stats))
+
+
+func _apply_motion_stats(stats: PackedFloat32Array) -> void:
+	cloth_friction_mult = stats[0]
+	table_tilt_deg = stats[1]
+	tilt_direction = Vector2(stats[2], stats[3])
+	_sync_motion_params()
 
 
 func set_rail_restitution_mult(rail_id: StringName, mult: float) -> void:
@@ -149,6 +178,7 @@ func register(ball: Ball) -> void:
 	assert(ball.net_id < BallEventCodec.MAX_BALLS, "Ball.net_id must be < 64")
 	ball.motion = BallMotion.make_params(ball.spec, ball.radius)
 	ball.motion.friction_mult = cloth_friction_mult
+	ball.motion.tilt = tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
 	while _by_id.size() <= ball.net_id:
 		_by_id.append(null)
 		_pred.append(BallMotion.State.new())
@@ -286,12 +316,13 @@ func _begin_shot_stream(shooter_id: int) -> void:
 	_dirty.fill(0)
 	BallEventCodec.begin(_frame, shot_id, _base_tick)
 	set_physics_process(_peers_listening())
-	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick)
+	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats())
 
 
 @rpc("authority", "call_local", "reliable", 1)
-func _shot_started_rpc(id: int, shooter_id: int, base_tick: int) -> void:
+func _shot_started_rpc(id: int, shooter_id: int, base_tick: int, stats: PackedFloat32Array) -> void:
 	if not _is_host():
+		_apply_motion_stats(stats)
 		_rebase_client(base_tick)
 	shot_started_net.emit(id, shooter_id, base_tick)
 

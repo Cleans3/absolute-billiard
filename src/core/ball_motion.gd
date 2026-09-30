@@ -11,7 +11,7 @@ const SLIP_EPS := 0.005  # m/s of contact-point slip below which the ball counts
 const AIR_TOL := 0.003  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne; below = micro-hop noise
 const AIR_VY := 0.25
 const REST_ANG := 0.15  # rad/s, same as Ball._integrate_forces
-const MAX_PHASES := 80
+const MAX_PHASES := 600
 const SLIDE_STEP := 1.0 / 60.0  # slide drag is first-order per step; short steps keep long dt honest
 
 
@@ -39,6 +39,7 @@ class Params extends RefCounted:
 	var damp := 0.1  # 1/s: rolling ball's effective (lin + 0.4·ang) / 1.4 Jolt damping
 	var ang_damp := 0.1
 	var friction_mult := 1.0
+	var tilt := Vector2.ZERO  # m/s² along the table plane (x, z) on moving balls; = g·sin(table_tilt_deg)·dir
 
 
 static func make_params(spec: TableSpec, radius: float) -> Params:
@@ -62,8 +63,11 @@ static func advance(s: State, dt: float, p: Params) -> void:
 		phases += 1
 		if s.pos.y > p.floor_y + AIR_TOL or s.lin.y > AIR_VY:
 			t = _fly(s, t, p)
-		else:
+		elif p.tilt == Vector2.ZERO:
 			t = _ground(s, t, p)
+		else:  # tilt is folded in per short step: first-order, like the slide drag
+			var step := minf(t, SLIDE_STEP)
+			t -= step - _ground(s, step, p)
 	if s.lin.length() < p.rest_speed and s.ang.length() < REST_ANG:
 		s.lin = Vector3.ZERO
 		s.ang = Vector3.ZERO
@@ -110,8 +114,8 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		var uhz := uz / slip
 		var dhx := vx / speed if speed > 0.001 else 0.0
 		var dhz := vz / speed if speed > 0.001 else 0.0
-		var ax := -mu * uhx - a_roll * dhx - p.damp * vx
-		var az := -mu * uhz - a_roll * dhz - p.damp * vz
+		var ax := -mu * uhx - a_roll * dhx - p.damp * vx + p.tilt.x
+		var az := -mu * uhz - a_roll * dhz - p.damp * vz + p.tilt.y
 		s.pos += Vector3(vx * t1 + 0.5 * ax * t1 * t1, 0.0, vz * t1 + 0.5 * az * t1 * t1)
 		s.lin.x = vx + ax * t1
 		s.lin.z = vz + az * t1
@@ -135,6 +139,13 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		var sp := maxf((speed + q) * e - q, 0.0)
 		s.lin.x = dx * sp
 		s.lin.z = dz * sp
+		s.ang.x = s.lin.z / r
+		s.ang.z = -s.lin.x / r
+	if p.tilt != Vector2.ZERO and speed > 0.0:  # host applies tilt to moving balls only
+		var tt := t2
+		s.pos += Vector3(0.5 * p.tilt.x * tt * tt, 0.0, 0.5 * p.tilt.y * tt * tt)
+		s.lin.x += p.tilt.x * tt
+		s.lin.z += p.tilt.y * tt
 		s.ang.x = s.lin.z / r
 		s.ang.z = -s.lin.x / r
 	s.ang.y *= decay

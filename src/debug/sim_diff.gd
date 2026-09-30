@@ -104,7 +104,10 @@ func report() -> String:
 func _p(id: int) -> BallMotion.Params:
 	if not _params.has(id):
 		var b := sim._by_id[id]
-		_params[id] = BallMotion.make_params(b.spec, b.radius)
+		var pp := BallMotion.make_params(b.spec, b.radius)
+		pp.friction_mult = sim.cloth_friction_mult  # the client mirrors these at shot start (04 §5)
+		pp.tilt = b.motion.tilt
+		_params[id] = pp
 	return _params[id]
 
 
