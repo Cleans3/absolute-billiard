@@ -1,7 +1,7 @@
 class_name NorayClient
 extends RefCounted
 ## Minimal client for foxssake/noray (MIT): line-based TCP control (`name text\n`) plus the UDP
-## remote registrar. Every wait is wall-clock bounded and awaits process frames.
+## remote registrar. The tunnel relay (deploy/noray/tunnel.py) speaks the same framing and reuses it. Every wait is wall-clock bounded and awaits process frames.
 
 var oid := ""
 var pid := ""
@@ -45,31 +45,31 @@ func register_host(timeout_sec: float) -> bool:
 	return oid != "" and pid != ""
 
 
-## Tells the UDP registrar which address we appear from. Binds a fresh socket, spams the pid until
-## the registrar answers `OK`, records the local port, then closes the socket so ENet can take it.
+## Tells the UDP registrar which address we appear from; ENet then binds the same `local_port`.
 func register_remote(host: String, udp_port: int, timeout_sec: float) -> bool:
-	var ip := IP.resolve_hostname(host, IP.TYPE_IPV4)
-	if ip == "":
-		return false
+	local_port = await knock(IP.resolve_hostname(host, IP.TYPE_IPV4), udp_port, pid.to_utf8_buffer(), timeout_sec)
+	return local_port != 0
+
+
+## Sends `payload` from a fresh UDP socket until the far side answers `OK`. Returns the local port it
+## used (0 = no answer) and closes the socket, so ENet can bind that port and inherit the NAT mapping.
+static func knock(ip: String, port: int, payload: PackedByteArray, timeout_sec: float) -> int:
 	var udp := PacketPeerUDP.new()
-	if udp.bind(0) != OK:
-		return false
-	udp.set_dest_address(ip, udp_port)
+	if ip == "" or udp.bind(0) != OK:
+		return 0
+	udp.set_dest_address(ip, port)
+	var local := 0
 	var t0 := _now()
 	var last_send := -1000
-	while _now() - t0 < timeout_sec * 1000.0:
+	while local == 0 and _now() - t0 < timeout_sec * 1000.0:
 		if _now() - last_send >= 250:
-			udp.put_packet(pid.to_utf8_buffer())
+			udp.put_packet(payload)
 			last_send = _now()
-		if udp.get_available_packet_count() > 0:
-			var ok := udp.get_packet().get_string_from_utf8() == "OK"
-			if ok:
-				local_port = udp.get_local_port()
-			udp.close()
-			return ok
+		if udp.get_available_packet_count() > 0 and udp.get_packet().get_string_from_utf8() == "OK":
+			local = udp.get_local_port()
 		await _frame()
 	udp.close()
-	return false
+	return local
 
 
 func send(line: String) -> void:

@@ -19,13 +19,12 @@ for p in $(find tests -name '*_probe.gd' -o -name probe.gd | sort); do
   fi
   rm -f "$log"
 done
+for p in $(find tests -name '*pair_probe.gd' | sort); do
+  [[ -n $filter && $p != tests/$filter/* ]] && continue
+  bash tests/net/pair.sh "$p" || fail=1
+done
 if [[ -z $filter || $filter == net ]]; then
-  for p in tests/net/pair_probe.gd tests/net/session_pair_probe.gd tests/net/resume_pair_probe.gd; do
-    bash tests/net/pair.sh $p || fail=1
-  done
-fi
-if [[ -z $filter || $filter == sync ]]; then
-  for p in tests/sync/shot_pair_probe.gd tests/sync/foul_pair_probe.gd; do bash tests/net/pair.sh $p || fail=1; done
+  python3 deploy/noray/tunnel.py --selftest || fail=1
 fi
 [ $fail = 0 ] && echo "ALL PROBES OK"
 exit $fail

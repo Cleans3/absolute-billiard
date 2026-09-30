@@ -150,12 +150,12 @@ func _gate() -> void:
 	cam.global_position = cue_pos + Vector3(-0.3, 0.0, 0.0)
 	cam.look_at(cue_pos, Vector3.UP)
 	_reset_records()
-	cue_node.power = 0.3
-	cue_node._fire()
+	cue_node.begin(cue_ball, -PI / 2.0)  # aim +x, at the object ball
+	cue_node.fire(0.3)
 	_check(director.shot_in_progress and _strikes == 1, "first strike goes through")
-	cue_node._fire()  # same frame, ball not moved yet: the ray still hits the cue ball
+	cue_node.fire(0.3)  # same frame: the host validator must refuse it
 	await physics_frame
-	cue_node._fire()
+	cue_node.fire(0.3)
 	_check(_strikes == 1, "a strike while the shot is live is ignored (Ball.strike not called)")
 	await _wait_shot()
 	cue_ball.struck.disconnect(_on_struck)

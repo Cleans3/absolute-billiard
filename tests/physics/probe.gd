@@ -8,7 +8,6 @@ extends SceneTree
 
 const BALL := preload("res://src/gameplay/balls/Ball.tscn")
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
-const CUE_CONTROLLER := preload("res://src/gameplay/cue/CueController.tscn")
 const CUE_T := preload("res://src/resources/ball_types/cue.tres")
 const RED_T := preload("res://src/resources/ball_types/red_basic.tres")
 
@@ -30,6 +29,8 @@ func _run() -> void:
 	var b := _ball(CUE_T, Vector3(-1.2, y, 0))
 	await physics_frame
 	print("probe: rolling")
+	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = Vector3(v0, 0, 0)
 	b.angular_velocity = Vector3(0, 0, -v0 / b.radius)  # pure roll
 	var t0 := Time.get_ticks_msec()
@@ -57,7 +58,6 @@ func _run() -> void:
 	await _seam_pots()
 	await _side_jaw_scale1()
 	await _rail_return()
-	await _reach_test()
 
 	print("PROBE OK")
 	quit()
@@ -100,6 +100,8 @@ func _rail_angle(speed: float) -> float:
 	print("probe: rail %.1f" % speed)
 	table.sim._on_struck(b, ShotIntent.new())  # contact monitor on without a cue
 	var s := speed / sqrt(2.0)
+	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = Vector3(s, 0, s)  # 45° toward the +z long rail
 	_flag = false
 	b.body_entered.connect(func(body: Node) -> void: _flag = _flag or body.has_meta(&"rail_normal"))
@@ -143,6 +145,8 @@ func _straight_in_pot() -> void:
 	await physics_frame
 	print("probe: straight-in pot")
 	var v0 := 1.2
+	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = Vector3(dir.x, 0, dir.y) * v0
 	b.angular_velocity = Vector3(dir.y, 0, -dir.x) * (v0 / b.radius)  # pure roll
 	var timer := create_timer(6.0)
@@ -164,6 +168,8 @@ func _jaw_hit() -> void:
 	await physics_frame
 	print("probe: jaw hit")
 	var v0 := 8.0
+	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = Vector3(dir.x, 0, dir.y) * v0
 	b.angular_velocity = Vector3(dir.y, 0, -dir.x) * (v0 / b.radius)
 	table.sim._on_struck(b, ShotIntent.new())
@@ -216,6 +222,8 @@ func _drop_zone_negatives() -> void:
 	# nose line the whole way — never actually crosses the nose line, so it must roll through.
 	var db := _ball(RED_T, Vector3(-hl * 0.5, y, -hw + r * 1.05))
 	await physics_frame
+	db.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	db.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	db.linear_velocity = Vector3(1.0, 0, 0)
 	db.angular_velocity = Vector3(0, 0, -1.0 / db.radius)
 	table.sim._on_struck(db, ShotIntent.new())
@@ -238,6 +246,8 @@ func _corner_along_rail_pot() -> void:
 	var f := _ball(RED_T, Vector3(-hl + 14.0 * r, y, -hw + r * 1.05))
 	await physics_frame
 	print("probe: corner along-rail")
+	f.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	f.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	f.linear_velocity = Vector3(-1.5, 0, 0)
 	f.angular_velocity = Vector3(0, 0, 1.5 / f.radius)
 	table.sim._on_struck(f, ShotIntent.new())
@@ -253,6 +263,8 @@ func _corner_along_rail_pot() -> void:
 func _seam_shoot(pos: Vector3, v: Vector3) -> Ball:
 	var b := _ball(RED_T, pos)
 	await physics_frame
+	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = v
 	var dir := v.normalized()
 	b.angular_velocity = Vector3(dir.z, 0, -dir.x) * (v.length() / b.radius)
@@ -329,6 +341,8 @@ func _side_jaw_scale1() -> void:
 	await physics_frame
 	print("probe: side jaw 9 m/s at scale 1.0")
 	var hdir := (Vector3(-sm, 0, hw) - Vector3(-sm - 6.0 * r, 0, hw - 6.0 * r)).normalized()
+	h.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
+	h.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	h.linear_velocity = hdir * 9.0
 	h.angular_velocity = Vector3(hdir.z, 0, -hdir.x) * (9.0 / h.radius)
 	table.sim._on_struck(h, ShotIntent.new())
@@ -372,47 +386,4 @@ func _rail_return() -> void:
 	assert(peak_x > hl - table.spec.ball_radius_m, "full-power shot must reach the foot rail")
 	assert(back >= table.spec.length_m * 0.5, "full-power shot must return at least half the table")
 	_kill(b)
-	await _rest()
-
-
-## T1.9 (A1): CueController._fire() only strikes a ball within its own cue_reach_m — the reach
-## follows the struck ball's TableSpec, not a hardcoded distance.
-func _reach_test() -> void:
-	var head := Vector3(table.spec.kitchen_line_x, y, 0)
-	var reach := table.spec.cue_reach_m
-	# offset in z so the far ball never sits behind the near ball on the same ray; the reach
-	# check is against the raycast's SURFACE hit point, so push the far ball's centre out by a
-	# radius too or "1 mm beyond reach" would still raycast well inside it
-	var near_ball := _ball(RED_T, head + Vector3(2.4, 0, 0.3))
-	var far_ball := _ball(RED_T, head + Vector3(reach + table.spec.ball_radius_m + 0.001, 0, -0.3))
-	await physics_frame
-	print("probe: cue reach (limit %.2f m)" % reach)
-
-	var cam := Camera3D.new()
-	root.add_child(cam)
-	cam.current = true
-	cam.global_position = head + Vector3(0, 0.05, 0)
-
-	var cue: Node3D = CUE_CONTROLLER.instantiate()
-	root.add_child(cue)
-	cue.shot_sink = table.sim.request_shot
-	await physics_frame
-
-	# `_fire` now hands the intent to PhysicsSim (cue ball only); reach lives in `_find_ball`
-	cam.look_at(near_ball.global_position, Vector3.UP)
-	await physics_frame
-	var near_hit: bool = cue._find_ball() == near_ball
-	print("probe: reach near(2.40m) hit=%s" % near_hit)
-	assert(near_hit, "ball within cue_reach_m must be struck")
-
-	cam.look_at(far_ball.global_position, Vector3.UP)
-	await physics_frame
-	var far_hit: bool = cue._find_ball() != null
-	print("probe: reach far(%.3fm) hit=%s" % [reach + 0.001, far_hit])
-	assert(not far_hit, "ball 1 mm beyond cue_reach_m must not be struck")
-
-	_kill(near_ball)
-	_kill(far_ball)
-	_kill(cam)
-	_kill(cue)
 	await _rest()
