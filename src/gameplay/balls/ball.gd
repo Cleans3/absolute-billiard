@@ -36,6 +36,7 @@ var _was_touching_wall := false
 var net_id := -1  # stable wire id (< 64), assigned by RoundDirector before PhysicsSim.register
 var motion: BallMotion.Params  # set by PhysicsSim.register
 var retired := false
+var pre_solve_velocity := Vector3.ZERO  # linear velocity at the start of the current step: the pre-impact one when a contact signal fires
 var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
 var _base_mass := 0.0
 var _pending_rail_id: StringName
@@ -67,6 +68,12 @@ func _ready() -> void:
 	mesh.material = _materials[ball_type]
 	$Mesh.mesh = mesh
 	body_entered.connect(_on_body_entered)
+
+
+## Puts a settled ball back in the awake set (a blast or a shove reached it).
+func wake() -> void:
+	sleeping = false
+	_set_resting(false)
 
 
 func apply_mass_mult(m: float) -> void:
@@ -218,6 +225,7 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	pre_solve_velocity = state.linear_velocity
 	if _pending_rail != Vector3.ZERO:
 		_rail_rebound(state, _pending_rail)
 		_pending_rail = Vector3.ZERO

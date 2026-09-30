@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="BallType" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/gameplay/balls/BallType.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+id = "split_ball"
+display_name = "Split"
+color = Color(0.2, 0.75, 0.35, 1)
+base_value = 250
+behaviour_tags = Array[StringName]([&"gimmick", &"splitter"])
+mass_multiplier = 1.0
+counts_for_clear = true

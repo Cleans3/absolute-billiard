@@ -252,25 +252,28 @@ func request_shot(intent: ShotIntent) -> void:
 		_host_shot(multiplayer.get_unique_id(), intent)
 		return
 	var b := PackedByteArray()
-	b.resize(24)
+	b.resize(25)
 	b.encode_float(0, intent.aim_dir.x)
 	b.encode_float(4, intent.aim_dir.y)
 	b.encode_float(8, intent.power)
 	b.encode_float(12, intent.spin_offset.x)
 	b.encode_float(16, intent.spin_offset.y)
 	b.encode_float(20, intent.elevation_deg)
+	b[24] = _pocket_ids().find(intent.called_pocket) + 1  # 0 = none
 	_request_shot_rpc.rpc_id(1, b)
 
 
 @rpc("any_peer", "call_remote", "reliable", 1)
 func _request_shot_rpc(b: PackedByteArray) -> void:
-	if not _is_host() or b.size() != 24:
+	if not _is_host() or b.size() != 25:
 		return
 	var intent := ShotIntent.new()
 	intent.aim_dir = Vector2(b.decode_float(0), b.decode_float(4))
 	intent.power = b.decode_float(8)
 	intent.spin_offset = Vector2(b.decode_float(12), b.decode_float(16))
 	intent.elevation_deg = b.decode_float(20)
+	var ids := _pocket_ids()
+	intent.called_pocket = ids[b[24] - 1] if b[24] >= 1 and b[24] <= ids.size() else &""
 	_host_shot(multiplayer.get_remote_sender_id(), intent)
 
 
@@ -296,6 +299,16 @@ func _host_shot(peer_id: int, intent: ShotIntent) -> void:
 @rpc("authority", "call_remote", "reliable", 1)
 func _shot_rejected_rpc(reason: StringName) -> void:
 	shot_rejected.emit(reason)
+
+
+## Pocket ids in layout order, identical on every peer: the wire index for `called_pocket`.
+func _pocket_ids() -> Array:
+	return (get_parent() as Table).pockets.keys()
+
+
+## Tick just past the last Shot's stream: what clients queue post-shot spawns / re-rolls against.
+func after_shot_tick() -> int:
+	return _base_tick + _last_end_off + 1
 
 
 func _find_cue_ball() -> Ball:

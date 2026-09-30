@@ -1,6 +1,10 @@
-[gd_resource type="Resource" script_class="NightConfig" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="NightConfig" load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/economy/night_config.gd" id="1"]
+[ext_resource type="Script" path="res://src/resources/racks/rack_layout.gd" id="rl"]
+[ext_resource type="Resource" path="res://src/resources/racks/n1_r1.tres" id="r2"]
+[ext_resource type="Resource" path="res://src/resources/racks/n1_r2.tres" id="r3"]
+[ext_resource type="Resource" path="res://src/resources/racks/n1_r3.tres" id="r4"]
 
 [resource]
 script = ExtResource("1")
@@ -13,3 +17,4 @@ object_ball_count = 10
 base_viewers = 100
 hazard_tiers = Array[int]([0, 1, 2])
 unlocked_ball_types = Array[StringName]([&"red_basic", &"black_penalty"])
+authored_racks = Array[ExtResource("rl")]([ExtResource("r2"), ExtResource("r3"), ExtResource("r4")])
