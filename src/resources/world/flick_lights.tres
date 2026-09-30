@@ -1,0 +1,41 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="1_0230r"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="2_cyakp"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="3_gkmvo"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="4_yacpi"]
+
+[sub_resource type="Resource" id="Resource_sa25q"]
+script = ExtResource("1_0230r")
+amount = 30.0
+
+[sub_resource type="Resource" id="Resource_72twk"]
+script = ExtResource("3_gkmvo")
+stat = &"player_view_light_level"
+op = 1
+value = 0.4
+
+[sub_resource type="Resource" id="Resource_fluav"]
+script = ExtResource("2_cyakp")
+id = &"flick_lights_dark"
+source_kind = 2
+target = 5
+stat_modifiers = Array[ExtResource("3_gkmvo")]([SubResource("Resource_72twk")])
+duration_sec = -2.0
+exclusive_group = &"blind"
+
+[sub_resource type="Resource" id="Resource_f2sr1"]
+script = ExtResource("1_0230r")
+amount = 90.0
+condition = &"shot_potted"
+
+[resource]
+script = ExtResource("4_yacpi")
+id = &"flick_lights"
+prop = &"lights"
+hostile = true
+cost = SubResource("Resource_sa25q")
+payoffs = Array[ExtResource("1_0230r")]([SubResource("Resource_f2sr1")])
+effect = SubResource("Resource_fluav")
+cooldown_sec = 25.0
+requires_live_shot = true

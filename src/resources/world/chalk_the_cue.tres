@@ -1,0 +1,33 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="1_lkjdy"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="2_xsplm"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="3_87lhi"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="4_vsgqq"]
+
+[sub_resource type="Resource" id="Resource_yxa3o"]
+script = ExtResource("1_lkjdy")
+kind = 2
+amount = 10.0
+
+[sub_resource type="Resource" id="Resource_jjt88"]
+script = ExtResource("3_87lhi")
+stat = &"cue_spin_radius_mult"
+op = 1
+value = 1.1
+
+[sub_resource type="Resource" id="Resource_7md33"]
+script = ExtResource("2_xsplm")
+id = &"chalk_spin"
+source_kind = 2
+target = 1
+stat_modifiers = Array[ExtResource("3_87lhi")]([SubResource("Resource_jjt88")])
+duration_sec = -2.0
+
+[resource]
+script = ExtResource("4_vsgqq")
+id = &"chalk_the_cue"
+prop = &"table"
+cost = SubResource("Resource_yxa3o")
+effect = SubResource("Resource_7md33")
+cooldown_sec = 20.0

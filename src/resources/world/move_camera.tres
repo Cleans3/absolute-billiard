@@ -1,0 +1,10 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="1_xmomv"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="2_gdeh1"]
+
+[resource]
+script = ExtResource("2_gdeh1")
+id = &"move_camera"
+prop = &"camera"
+cooldown_sec = 5.0

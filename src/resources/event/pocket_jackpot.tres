@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_50et7"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="2_15pdo"]
+
+[resource]
+script = ExtResource("2_15pdo")
+id = &"pocket_jackpot"
+display_name = "Pocket Jackpot"
+tier = 2
+min_night = 2
+opportunity = 2
+opportunity_mult = 3.0

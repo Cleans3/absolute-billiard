@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="WorldInteraction" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/pool_delta.gd" id="1_u11lb"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="2_ootjf"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="3_w5sb8"]
+[ext_resource type="Script" path="res://src/resources/effect/world_interaction.gd" id="4_5vcjr"]
+
+[sub_resource type="Resource" id="Resource_ti6qv"]
+script = ExtResource("1_u11lb")
+kind = 0
+amount = 0.05
+
+[sub_resource type="Resource" id="Resource_vwu62"]
+script = ExtResource("3_w5sb8")
+stat = &"shot_clock_sec"
+value = 6.0
+
+[sub_resource type="Resource" id="Resource_p1r6i"]
+script = ExtResource("2_ootjf")
+id = &"kick_stool_clock"
+source_kind = 2
+target = 1
+stat_modifiers = Array[ExtResource("3_w5sb8")]([SubResource("Resource_vwu62")])
+duration_sec = -2.0
+exclusive_group = &"bump"
+
+[sub_resource type="Resource" id="Resource_kyrl2"]
+script = ExtResource("1_u11lb")
+amount = 40.0
+
+[resource]
+script = ExtResource("4_5vcjr")
+id = &"kick_stool"
+prop = &"stool"
+hostile = true
+cost = SubResource("Resource_ti6qv")
+payoffs = Array[ExtResource("1_u11lb")]([SubResource("Resource_kyrl2")])
+effect = SubResource("Resource_p1r6i")
+cooldown_sec = 30.0
+requires_live_shot = true

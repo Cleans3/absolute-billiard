@@ -1,0 +1,35 @@
+class_name Stats
+extends RefCounted
+## The const stat list (docs/plan/03 §2.2). StatMod asserts against ALL at resource load.
+
+const ALL: Array[StringName] = [
+	&"cue_power_mult", &"cue_spin_radius_mult", &"cue_aim_wobble_deg", &"shot_clock_sec",
+	&"cue_ball_mass_mult", &"cloth_friction_mult", &"cushion_restitution_mult", &"table_tilt_deg",
+	&"pocket_radius_mult", &"pocket_oscillation_m", &"ball_type_shuffle_count",
+	&"rule_call_pocket",
+	&"player_view_light_level", &"player_view_fog_density", &"player_view_shake_amp",
+	&"stream_camera_bonus_mult", &"stream_viewer_gain_mult", &"stream_hype_gain_mult",
+	&"round_time_add_sec",
+]
+
+## Value of a stat with no live modifier.
+const BASE := {
+	&"cue_power_mult": 1.0, &"cue_spin_radius_mult": 1.0, &"cue_aim_wobble_deg": 0.0, &"shot_clock_sec": 0.0,
+	&"cue_ball_mass_mult": 1.0, &"cloth_friction_mult": 1.0, &"cushion_restitution_mult": 1.0, &"table_tilt_deg": 0.0,
+	&"pocket_radius_mult": 1.0, &"pocket_oscillation_m": 0.0, &"ball_type_shuffle_count": 0.0,
+	&"rule_call_pocket": 0.0,
+	&"player_view_light_level": 1.0, &"player_view_fog_density": 0.0, &"player_view_shake_amp": 0.0,
+	&"stream_camera_bonus_mult": 1.0, &"stream_viewer_gain_mult": 1.0, &"stream_hype_gain_mult": 1.0,
+	&"round_time_add_sec": 0.0,
+}
+
+## Post-resolution floors, applied only when at least one modifier touched the stat.
+const FLOORS := {&"cue_aim_wobble_deg": 0.0, &"shot_clock_sec": 4.0}
+
+## Pushed to PhysicsSim.set_stat for the current shooter whenever they change (03 §5, contract §5).
+const SIM_PUSHED: Array[StringName] = [
+	&"cue_ball_mass_mult", &"cloth_friction_mult", &"cushion_restitution_mult", &"table_tilt_deg",
+]
+
+## Hooks that cover the whole screen: at most one live (03 §3.8).
+const FULLSCREEN_HOOKS: Array[StringName] = [&"blackout", &"shake"]

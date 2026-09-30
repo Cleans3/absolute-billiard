@@ -42,6 +42,17 @@ func set_live(live: bool) -> void:
 	set_process(live)
 
 
+## Crew-pool moves from WorldInteractions (03 §3.4): viewers floor at 0, hype clamps to 0–1.
+func add_viewers(n: int) -> void:
+	viewers = maxi(viewers + n, 0)
+	viewers_changed.emit(viewers, hype)
+
+
+func add_hype(x: float) -> void:
+	hype = clampf(hype + x, 0.0, 1.0)
+	viewers_changed.emit(viewers, hype)
+
+
 func viewer_scalar() -> float:
 	return 1.0 + (viewers / SCALAR_REF_VIEWERS) * (0.5 + 0.5 * hype)
 

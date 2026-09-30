@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_c7vo7"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_po32d"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_3ynbp"]
+
+[sub_resource type="Resource" id="Resource_11r58"]
+script = ExtResource("2_po32d")
+stat = &"shot_clock_sec"
+value = 6.0
+
+[sub_resource type="Resource" id="Resource_tluqj"]
+script = ExtResource("1_c7vo7")
+id = &"bouncer_clock"
+source_kind = 1
+target = 1
+stat_modifiers = Array[ExtResource("2_po32d")]([SubResource("Resource_11r58")])
+duration_sec = -2.0
+
+[resource]
+script = ExtResource("3_3ynbp")
+id = &"bouncer"
+display_name = "Bouncer"
+effects = Array[ExtResource("1_c7vo7")]([SubResource("Resource_tluqj")])
+reward_mult = 1.2
+min_night = 2
+scripted_first = true
