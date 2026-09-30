@@ -8,7 +8,7 @@ extends Resource
 @export var direct_port := 7777
 @export var max_players := 4
 ## Where the share-link landing page lives: `<share_base_url>/j/<CODE>`.
-@export var share_base_url := "http://160.191.243.188:8891"
+@export var share_base_url := "http://160.191.243.188:8892"  ## join_page.py port (8891 = Noray metrics, localhost only)
 @export var timeout_sec := 10.0
 @export var channel_count := 8
 ## How long a joiner tries the punched direct path before falling back to the relay.

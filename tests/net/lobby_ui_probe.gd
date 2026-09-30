@@ -28,6 +28,8 @@ func _run() -> void:
 	assert(DeepLink.code_from_url("absolutebilliard://j/ab3k7q") == "AB3K7Q", "scheme link")
 	assert(DeepLink.code_from_url("http://1.2.3.4:8892/j/AB3K7Q") == "AB3K7Q", "share link")
 	assert(DeepLink.code_from_url("http://1.2.3.4/x/AB3K7Q") == "", "not an invite")
+	var page_port := FileAccess.get_file_as_string("res://deploy/noray/vps/join.service").get_slice("join_page.py ", 1).strip_edges().get_slice("\n", 0)
+	assert(NetConfig.new().share_base_url.ends_with(":" + page_port), "share link must hit the deployed join page port")
 	ui.get_node("%Leave").pressed.emit()
 	await process_frame
 	await process_frame
