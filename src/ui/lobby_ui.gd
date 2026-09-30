@@ -15,11 +15,15 @@ const REASONS := {
 }
 
 @onready var _home: Array[Control] = [%Host, $Center/Menu/JoinRow, %AdvancedToggle, %Solo]
+@onready var _resume_screen: Array[Control] = [%ResumeScroll, %ResumeBack]
 @onready var _room: Array[Control] = [%RoomCode, %Share, %Roster, %Start, %Leave]
 @onready var _status: Label = %Status
 
 
 func _ready() -> void:
+	SaveManager.pending_resume = null  # a stale pick from an earlier visit must not resume this lobby
+	%Resume.pressed.connect(_show_resume)
+	%ResumeBack.pressed.connect(_set_home.bind(true))
 	%Host.pressed.connect(_busy.bind(NetManager.host))
 	%Join.pressed.connect(func() -> void: _busy(NetManager.join_code.bind(%Code.text)))
 	%JoinIP.pressed.connect(_on_join_ip)
@@ -33,6 +37,7 @@ func _ready() -> void:
 	NetManager.session_started.connect(func(_h: bool) -> void: _show_room())
 	NetManager.roster_changed.connect(_refresh_room)
 	NetManager.session_failed.connect(_on_failed)
+	%Leave.pressed.connect(func() -> void: SaveManager.pending_resume = null)
 	_status.text = REASONS.get(NetManager.take_notice(), "")
 	_set_home(true)
 	%Host.grab_focus()
@@ -64,6 +69,7 @@ func _on_join_ip() -> void:
 
 
 func _on_failed(reason: StringName) -> void:
+	SaveManager.pending_resume = null
 	_status.text = REASONS.get(reason, "Failed: %s" % reason)
 	_set_home(true)
 
@@ -74,8 +80,55 @@ func _set_home(on: bool) -> void:
 	%Steam.visible = on and NetManager.steam_available()  # PC + addon + Steam client only
 	for c in _room:
 		c.visible = not on
+	for c in _resume_screen:
+		c.visible = false
+	%Resume.visible = on and not SaveManager.list_checkpoints().is_empty()
 	for b: BaseButton in [%Host, %Steam, %Join, %JoinIP, %HostLan, %Solo]:
 		b.disabled = false
+
+
+## The Resume sub-screen: every checkpoint this device holds, newest first (any key, any past crew size).
+func _show_resume() -> void:
+	for c in %ResumeList.get_children():
+		c.queue_free()
+	for e in SaveManager.list_checkpoints():
+		var row := Button.new()
+		row.custom_minimum_size = Vector2(0, 72)
+		row.add_theme_font_size_override(&"font_size", 24)
+		row.text = resume_label(e)
+		row.pressed.connect(_on_resume_pick.bind(e))
+		%ResumeList.add_child(row)
+	for c in _home:
+		c.visible = false
+	%Resume.visible = false
+	%Steam.visible = false
+	for c in _resume_screen:
+		c.visible = true
+	%ResumeBack.grab_focus()
+
+
+## "Night 3 · Round 2 done · $1,500 · 3 crew · 2026-09-30 14:05"
+static func resume_label(e: Dictionary) -> String:
+	var when := Time.get_datetime_string_from_unix_time(int(e.modified) + int(Time.get_time_zone_from_system().bias) * 60, true)
+	var crew := " · %d crew" % e.crew if int(e.crew) > 0 else ""
+	return "Night %d · Round %d done · $%d%s · %s" % [e.night, e.round_index, e.cash, crew, when.substr(0, 16)]
+
+
+## Host from the checkpoint: solo files stay solo; others use LAN when Advanced is open, else the relay.
+## Whoever joins next starts from it; the head-count need not match the old crew (no seat lock).
+func _on_resume_pick(e: Dictionary) -> void:
+	var p := SaveManager.load_checkpoint(e.path)
+	if p == null:
+		_status.text = "That save can't be read (%s)." % SaveManager.last_error
+		return
+	SaveManager.pending_resume = p
+	_set_home(true)
+	if e.key == "solo":
+		_busy(NetManager.host_solo)
+	elif %AdvancedToggle.button_pressed:
+		_busy(NetManager.host.bind(NetManager.Transport.ENET_DIRECT))
+	else:
+		_busy(NetManager.host)
 
 
 func _show_room() -> void:
@@ -83,6 +136,8 @@ func _show_room() -> void:
 	_set_home(false)
 	%Share.visible = NetManager.lobby_code != "" or NetManager.transport == NetManager.Transport.STEAM
 	%Start.visible = NetManager.is_host()
+	if SaveManager.pending_resume != null:
+		_status.text = "Resuming Night %d, after Round %d." % [SaveManager.pending_resume.current_night, SaveManager.pending_resume.round_index]
 	%Leave.grab_focus()
 	_refresh_room()
 

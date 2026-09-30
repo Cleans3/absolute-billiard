@@ -96,7 +96,14 @@ func _files() -> void:
 	_check(SaveManager.load_checkpoint(list[0].path).crew_cash == 1500, "load_checkpoint")
 	SaveManager.save_persistent([&"lens_t3"] as Array[StringName])
 	_check(SaveManager.load_persistent() == ([&"lens_t3"] as Array[StringName]), "persistent file round-trip")
-	SaveManager.receive_checkpoint("", 2, 9, SaveManager.SAVE_VERSION + 1, PackedByteArray())
+	SaveManager.receive_checkpoint("", 2, 9, SaveManager.SAVE_VERSION, SaveManager.encode(_profile()))
+	_check(FileAccess.file_exists(SaveManager.checkpoint_path("lan-9")), "a client stores the pushed checkpoint")
+	SaveManager.receive_checkpoint("", 2, 9, SaveManager.SAVE_VERSION, PackedByteArray())
+	_check(not FileAccess.file_exists(SaveManager.checkpoint_path("lan-9")), "an empty blob (run over) deletes it")
+	for i in SaveManager.KEEP_CHECKPOINTS + 3:
+		SaveManager.write_checkpoint("bulk%d" % i, SaveManager.encode(_profile()))
+	_check(DirAccess.get_files_at(SaveManager.checkpoint_dir()).size() <= SaveManager.KEEP_CHECKPOINTS, "only the newest %d checkpoints are kept" % SaveManager.KEEP_CHECKPOINTS)
+	SaveManager.receive_checkpoint("", 2, 9, SaveManager.SAVE_VERSION + 1, PackedByteArray([1]))
 	_check(not FileAccess.file_exists(SaveManager.checkpoint_path("lan-9")), "a newer-version checkpoint is not stored")
 
 

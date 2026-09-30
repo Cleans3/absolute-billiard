@@ -12,6 +12,7 @@ var hype := 0.0
 var owned_items: Dictionary = {}  # item id -> count
 var persistent_unlocks: Array[StringName] = []
 var campaign_seed := 0
+var crew_size := 0  # peers in the lobby when it was written (0 = unknown); informational, resume never seat-locks
 
 
 func to_dict() -> Dictionary:
@@ -44,6 +45,7 @@ func to_dict() -> Dictionary:
 		"owned_items": owned,
 		"persistent_unlocks": persistent,
 		"seed": campaign_seed,
+		"crew_size": crew_size,
 	}
 
 
@@ -61,4 +63,5 @@ static func from_dict(d: Dictionary) -> SaveProfile:
 	for id: String in d.get("persistent_unlocks", []):
 		p.persistent_unlocks.append(StringName(id))
 	p.campaign_seed = int(d.get("seed", 0))
+	p.crew_size = int(d.get("crew_size", 0))
 	return p
