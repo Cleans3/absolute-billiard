@@ -13,6 +13,7 @@ signal all_peers_ready()  ## host only; main_level.gd starts the campaign on it
 const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
 const HOST_ID := 1
+const STEAM_TRANSPORT := "res://src/core/transport_steam.gd"  # loaded by path: phone builds must not parse it
 
 var config: NetConfig = preload("res://src/resources/net_config.tres")
 var transport := Transport.ENET_DIRECT
@@ -25,11 +26,13 @@ var last_notice := &""  ## why the last session ended; the Lobby shows it once v
 var _roster: Array[Dictionary] = []  # {peer_id, name, seat, ready}; host writes, clients mirror
 var _level_ready: Dictionary = {}  # peer_id -> true, host only, this session
 var _timeout: SceneTreeTimer
+var _steam: Node  # SteamTransport instance, PC + addon + Steam running only
 var _noray: NorayClient  # keeps the host's control connection (= its lobby registration) alive
 var _gen := 0  # bumped by _reset(); an async join/host from an older generation must stand down
 
 
 func _ready() -> void:
+	_init_steam()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
@@ -43,6 +46,9 @@ func host(p_transport := Transport.ENET_NORAY) -> void:
 	transport = p_transport
 	if transport == Transport.ENET_NORAY:
 		_host_noray()
+		return
+	if transport == Transport.STEAM:
+		_host_steam()
 		return
 	var peer := ENetMultiplayerPeer.new()
 	var err := peer.create_server(config.direct_port, config.max_players - 1, config.channel_count)
@@ -77,6 +83,17 @@ func join_code(code: String) -> void:
 	_reset()
 	transport = Transport.ENET_NORAY
 	_join_noray(code)
+
+
+## True when the Steam button may show: PC build, addons present, Steam client running.
+func steam_available() -> bool:
+	return _steam != null
+
+
+## Overlay friend picker for the current Steam lobby.
+func steam_invite() -> void:
+	if _steam != null:
+		_steam.invite_overlay()
 
 
 func leave() -> void:
@@ -138,6 +155,8 @@ func start_session(p_seed: int) -> void:
 	_level_ready.clear()
 	if is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
 		multiplayer.multiplayer_peer.refuse_new_connections = true
+	if is_host() and _steam != null:
+		_steam.lock()
 	get_tree().change_scene_to_file(MAIN_LEVEL)
 
 
@@ -166,6 +185,46 @@ func _install_client(peer: MultiplayerPeer) -> void:
 
 ## Registers with Noray, then serves ENet from the very port the registrar saw, so the lobby code
 ## (= OID, 6-char Crockford by relay config) reaches this host directly or through the relay.
+func _init_steam() -> void:
+	var script: GDScript = load(STEAM_TRANSPORT)
+	if not script.supported():
+		return
+	var t: Node = script.new()
+	if not t.init_steam():
+		t.free()
+		return
+	_steam = t
+	add_child(t)
+	t.join_requested.connect(join_steam)
+
+
+func _host_steam() -> void:
+	var gen := _gen
+	var peer: MultiplayerPeer = await _steam.host(config.max_players, config.timeout_sec)
+	if gen != _gen:
+		return
+	if peer == null:
+		_fail(&"host_failed")
+		return
+	_install_host(peer)
+
+
+## Called by a Steam invite (overlay or friends list), from anywhere: leaves whatever we were in.
+func join_steam(lobby_id: int) -> void:
+	_reset()
+	transport = Transport.STEAM
+	var gen := _gen
+	var peer: MultiplayerPeer = await _steam.join(lobby_id, config.timeout_sec)
+	if gen != _gen:
+		return
+	if peer == null:
+		_fail(&"join_failed")
+		return
+	_install_client(peer)
+	if get_tree().current_scene == null or get_tree().current_scene.scene_file_path != LOBBY:
+		get_tree().change_scene_to_file(LOBBY)
+
+
 func _host_noray() -> void:
 	var gen := _gen
 	var nc := await _noray_register()
@@ -312,6 +371,8 @@ func _end(reason: StringName) -> void:
 
 func _reset() -> void:
 	_gen += 1
+	if _steam != null:
+		_steam.leave()
 	if _noray != null:
 		_noray.close()
 		_noray = null
@@ -322,3 +383,9 @@ func _reset() -> void:
 	_level_ready.clear()
 	lobby_code = ""
 	in_session = false
+
+
+## Host → every client at each Round end (04 §2.6): each peer keeps its own copy for a re-host.
+@rpc("authority", "call_remote", "reliable", 3)
+func push_save_checkpoint(save_version: int, blob: PackedByteArray) -> void:
+	SaveManager.receive_checkpoint(lobby_code, _roster.size(), session_seed, save_version, blob)

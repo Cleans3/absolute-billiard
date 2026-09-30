@@ -16,7 +16,7 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 | `object_ball_count` | `int` | `10 [tune]` — 11 bodies with the cue ball, inside P1's `≤ 12` phone budget |
 | `base_viewers` | `int` | Stream starts here every Night (§3.3) |
 | `hazard_tiers` | `Array[int]` | `[0, 1, 2]` — one entry per Round, the tier the crew may pick from |
-| `unlocked_ball_types` | `Array[StringName]` | drop pool; grows via `ShopItem`, not by Night number |
+| `unlocked_ball_types` | `Array[StringName]` | the Night's own drop pool (the five .tres: `red_basic` + `black_penalty`); `EconomyManager.round_config()` adds what the Shop unlocked, not the Night number |
 
 ### `RoundState` (`RefCounted`)
 `round_index: int`, `time_remaining: float`, `shots_taken: int`, `balls_remaining: int` (positive-value only), `round_points: int`, `active_event_id: StringName`.
@@ -24,11 +24,11 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 ### `StreamState` (`RefCounted`)
 `viewers: int`, `hype: float` `[0,1]`, `total_tips: int`. **No `viewer_multiplier` field** — there is exactly one `Viewer_Scalar`, the formula in §3.2, computed on demand. Nothing else in the project may define a second one.
 
-### `CameraRig` (`Node3D`) + `CameraSpec` (`Resource`)
-`camera_id: StringName`, `tier: int` (1–3), `tier_mult: float` (`1.0 / 1.25 / 1.5 [tune]`). Rigs are physical props: any player can walk up and drag one (P2). No `view_angle_tag` — the angle is wherever the friend left it, and it is scored at pot time (§3.2).
+### `CameraRig` (`Node3D`)
+`camera_id: StringName`, `tier: int` (1–3), `tier_mult()` = `1.0 / 1.25 / 1.5 [tune]` (a const table on the rig — a separate `CameraSpec` resource would hold nothing else), `held_by: int`. Rigs are physical props: any player can walk up and drag one (P2). No `view_angle_tag` — the angle is wherever the friend left it, and it is scored at pot time (§3.2). Greybox tripod, static meshes; the view is scored by math, never rendered (07).
 
 ### `CueSpec` (`Resource`) — upgrade target, not a player design
-`power_cap_mult: float`, `spin_offset_radius_mult: float` (english reach on the cue ball face), `jump_unlocked: bool`, `masse_unlocked: bool`, `wobble_reduction_deg: float`. 01 reads it; the Player module (deferred) decides how a phone gesture drives it.
+01's fields: `power_cap_speed_mps`, `spin_offset_radius`, `jump_unlocked`, `masse_unlocked`, `wobble_reduction`. `EconomyManager.build_cue_spec()` folds the owned cue items over the defaults (power `×(1+Σ)`, spin `×(1+Σ)`) and sets `PhysicsSim.active_cue`; the Player module decides how a phone gesture drives it.
 
 ### `ShopItem` (`Resource`) — one catalog, owned by 02
 | field | type | note |
@@ -40,7 +40,9 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 | `min_night` | `int` | gate |
 | `one_per_night` | `bool` | |
 | `persistent` | `bool` | survives a wipe into the next run (§3.7) |
+| `max_owned` | `int` | copies one run may hold; `1` for upgrades, `2` for `spare_tripod` (2 base + 2 = the 4-rig cap), `0` = repeatable (drinks) |
 
+Non-drink `payload` is an `ItemDelta` (`src/gameplay/economy/item_delta.gd`): cue / ball-pool / ball-value / camera / table-`Effect` / stream deltas, folded over everything owned. The 16 rows below are `.tres` under `src/resources/shop/`; each Drink is a `ShopItem` synthesised from the 03 catalog by `ShopCatalog` (price = `Drink.cost_cash`).
 ### `EconomyState` (`RefCounted`) + `SaveProfile` (04)
 `shared_cash: int`, `quota_remaining: int`, `nights_survived: int`, `owned_items: Array[StringName]`, `persistent_unlocks: Array[StringName]`.
 
@@ -94,7 +96,7 @@ Shot_Cash = (Raw_Points × Trick_Mult) × Camera_Mult × Event_Mult × Viewer_Sc
 ```
 - `Raw_Points` — sum of `BallType.base_value` for balls potted this shot, emitted by `PhysicsSim` (01). Penalty balls carry it negative.
 - `Trick_Mult` — the **single highest** trick multiplier detected on this shot (D5, never a sum). Mean over a Night ≈ `1.15 [tune]`.
-- `Camera_Mult` — `1.0 + (tier_mult - 1.0) × view_quality`, where the winning rig is the one with the **best auto-scored view of the pocket the ball dropped into** (P2): `view_quality = clamp(occlusion_clear × distance_falloff × facing_dot, 0, 1)`, best score across all rigs wins. Cameras matter because friends move them, not because a menu says so.
+- `Camera_Mult` — `(1.0 + (tier_mult - 1.0) × view_quality) × stream_camera_bonus_mult`, where the winning rig is the one with the **best auto-scored view of the pocket the ball dropped into** (P2): `view_quality = clamp(occlusion_clear × distance_falloff × facing_dot, 0, 1)`, best score across all rigs wins. Cameras matter because friends move them, not because a menu says so. Implementation (`camera_scorer.gd`): the ray runs eye → pocket (+15 cm) and **ignores the balls' bodies** (walls, props and players are cover); `distance_falloff` = 1 inside 3 m, linear to 0 at 12 m `[tune]`; `facing_dot` = rig forward · direction to the pocket, floored at 0. The scored pocket is the one the Shot's highest-value ball fell in (`GameLoop` tracks it; a foul scores none → 1.0).
 - `Event_Mult` — 03's `Reward = Drink_Mult × Event_Mult`, caps `2.0 / 3.0`.
 - `Viewer_Scalar` — **the one definition**: `1.0 + (viewers / 500.0) × (0.5 + 0.5 × hype)`.
 - `Point_To_Cash_Rate` — `0.3 [tune]` ($3 per 10 points). This is the single knob that moves every Night's ratio together; tune the curve with §3.4's table, not with this.
@@ -120,7 +122,7 @@ Quota is `×1.5` per Night, sized to ~60% of modelled income (§3.5).
 - **Night 5 demand = the Buyout = `1.5 × Quota_5` = $4,500.** It replaces Quota_5 rather than adding to it, so there is one number on screen. Night 5's own income models at $4,304 (§3.5), which means the last night is the only one the bank must not be empty for — every Intermission purchase from Night 1 onward is a bet against that $200-ish gap. Bank after Night 4 at baseline is ~$2,734, so the buyout is comfortably reachable and comfortably spendable away.
 - **Miss the demand and the run ends. There is no interest band.** D4 allowed either `≤10%` interest or a hard fail; hard fail wins because the 70% band was a delayed loss dressed as mercy (miss by 30% on Night 1, need 143% on Night 2), because a debt spiral is a group punishment four players can no longer act on, and because §3.7's persistent unlocks already carry the run's value forward. A 45-minute run that ends cleanly is better than one that is dead ten minutes before it stops.
 - Overpay is kept: leftover Cash banks into the next Night.
-- **Endless (Night 6+):** quota `×1.6` per Night — strictly above the campaign's `×1.5`, because endless must never be an easier tutorial. `base_viewers` continues at `+300/Night`, hazard tiers become `1 / 2 / 3`, and the drop pool keeps every gimmick ball the crew ever bought.
+- **Endless (Night 6+):** quota `×1.6` per Night — strictly above the campaign's `×1.5`, because endless must never be an easier tutorial. `base_viewers` continues at `+300/Night`, hazard tiers become `1 / 2 / 3`, and the drop pool keeps every gimmick ball the crew ever bought. Built by `NightConfig.endless(night5, n)` (quota = Night 5's `3000 × 1.6^k`, so Night 6 = $4,800 — not the $4,500 Buyout) and cached in `GameLoop.night_at()`; the host enters it with **Endless** on the won-campaign screen (`advance()` from `CAMPAIGN_WON`). No Buyout after Night 5.
 
 ### 3.5 Income sheet (P5)
 Assumptions, held flat across the campaign so the curve is the only variable: 3 Rounds × 10 shots = 30 shots/Night, **60% of shots pot** → **18 pots/Night**; `Trick_Mult` mean `1.15` (≈25% of pots are tricks); `hype` mean `0.6`; mean viewers = `base_viewers + 300` (18 pots grow the count ~+590 over a Night, so the mean sits ~halfway); mean ball value rises only as the crew buys ball upgrades; camera and event means rise as tiers are bought and hazards escalate. **No drinks are counted** — drinks are the upside on top of every row below.
@@ -164,12 +166,15 @@ Every Cash sink in the game is a `ShopItem` in one catalog, sold by the Bartende
 | `spare_tripod` | camera | $500 | one more `CameraRig` to place (max 4) |
 | `magnetic_pockets` | table | $600 | `pocket_radius_mult +0.10` |
 | `stream_overlay` | table | $500 | `base_viewers +150`, tip roll frequency ×1.5 |
-| `fresh_cloth` | table | $350 | `cloth_friction_mod −0.02` |
+| `fresh_cloth` | table | $350 | `cloth_friction_mult ADD −0.02` |
 
+**Purchase rules** (`EconomyManager.can_buy` / `try_purchase`, host-authoritative, refusal reasons `closed | locked | owned | once_per_night | cant_afford | unknown_item`): open for everything in Intermission, drinks only during a live Round; `min_night` gates the gimmick balls; `max_owned` caps copies. A Drink is served first (`EffectManager.serve_drink`), so 03's refusals — night limit, drink cap — cost nothing. `bar_buy` / `bar_serve` reach it through `WorldInteractions.bar_purchase_requested`; the ShopMenu asks through `request_purchase` (rows grey out from mirrored state, the host decides).
+
+**What each row does at Round start:** cue rows → `build_cue_spec()`; ball rows → `unlocked_ball_types()` / `ball_overrides()`, handed to the rack as a `round_config()` copy of the Night (a gimmick id with no `BallType` resource yet is skipped until RULES ships it; `ball_overrides()` is for RULES to apply); `lens_*` / `spare_tripod` → rig tier / count on `Cameras`; `magnetic_pockets` / `fresh_cloth` → table `Effect`s re-applied every Round at duration `-1` through `EffectManager.apply_local` (each peer runs it off mirrored `owned`, EffectManager expires them at Round end); `stream_overlay` → `StreamManager.apply_upgrades`. `stream_viewer_gain_mult` / `stream_hype_gain_mult` scale a Shot's viewer/hype **gains** only; crew-pool moves (`add_viewers` / `add_hype`) are raw.
 The income sheet's assumed path is `polish_the_set + tier2_rack + lens_t2 + lens_t3` = $1,850 of the $4,037 surplus. Everything else is genuinely optional, which is what makes the Night 5 bank decision a decision.
 
 ### 3.7 Persistence across runs
-A wipe keeps `persistent == true` items: unlocked `BallType`s, unlocked drinks, camera tiers already bought. Cash, quota progress and cue/table mods reset. Five Nights is ~45 minutes; a wipe that returns zero is the reason nobody replays.
+A wipe keeps `persistent == true` items: the ball rows (`polish_the_set`, tier racks, gimmick balls) and the camera tiers (`lens_t2/t3`) — drinks are consumables and `spare_tripod` is a per-run prop, so neither persists. Cash, quota progress and cue/table mods reset. Stored in `user://profile.json` (04 §2.6) on every persistent purchase; `start_campaign()` calls `EconomyManager.wipe()`, which re-seeds `owned` from it. Five Nights is ~45 minutes; a wipe that returns zero is the reason nobody replays.
 
 ---
 
@@ -181,29 +186,33 @@ src/
 │   ├── net_manager.gd          # the ONLY autoload (04)
 │   └── save_manager.gd         # static class, no node
 ├── gameplay/
-│   ├── game_loop.gd            # MainLevel child: Night/Round/Shot state machine (§3.1)
+│   ├── game_loop.gd            # MainLevel child: Night/Round/Shot state machine (§3.1), round_state mirror, checkpoints
 │   ├── economy_manager.gd      # MainLevel child: Cash ledger, reckoning, Shop purchases
 │   ├── stream_manager.gd       # MainLevel child: viewers, hype, tips, Viewer_Scalar
 │   ├── camera/
-│   │   ├── camera_rig.gd       # grabbable Node3D + CameraSpec
-│   │   └── camera_scorer.gd    # pocket-view auto-score (§3.2)
+│   │   ├── camera_rig.gd       # grabbable tripod Node3D
+│   │   ├── camera_scorer.gd    # pocket-view auto-score (§3.2)
+│   │   └── cameras.gd          # MainLevel/Cameras: rigs, Camera_Mult, movement, 4 Hz poses
 │   └── economy/
-│       ├── night_config.gd     # Resource
+│       ├── night_config.gd     # Resource (+ endless())
 │       ├── shop_item.gd        # Resource
-│       └── cue_spec.gd         # Resource
-└── ui/ShopMenu.tscn            # Bartender NPC interaction
+│       ├── item_delta.gd       # ShopItem payload
+│       ├── ball_type_override.gd
+│       └── shop_catalog.gd     # 16 .tres rows + 03 drinks
+└── ui/ShopMenu.tscn            # touch Shop list (corner button; open() for the bar prop / Player)
 ```
 `GameLoop`, `EconomyManager`, `StreamManager` are **children of `MainLevel`**, not autoloads — "new campaign" is a scene reload, which is also the cheapest possible state reset. There is no global signal bus; nodes connect directly. `PhysicsSim` lives in the `Table` scene (01).
 
 ## 5. Interfaces to other modules
 
 **`GameLoop` emits** — `night_started(night_number: int, quota: int)`, `round_started(round_index: int, time_limit: float, hazard_tier: int)`, `round_ended(reason: StringName, round_points: int)` (`reason` ∈ `timer | cleared | shots` — `stuck` retired: only-penalty-balls-left is `table_cleared`, a wedged cue ball respawns free per 01 §3), `night_ended(success: bool, demand: int)`, `intermission_started()`.
-**`EconomyManager` emits** — `cash_changed(new_balance: int, delta: int, reason: StringName)` (absolute balance, per D2), `quota_evaluated(paid: int, demand: int, is_game_over: bool)`, `item_purchased(item_id: StringName, buyer_peer_id: int)`.
+**`EconomyManager` emits** — `cash_changed(new_balance: int, delta: int, reason: StringName)` (absolute balance, per D2), `quota_evaluated(paid: int, demand: int, is_game_over: bool)`, `item_purchased(item_id: StringName, buyer_peer_id: int)`, `purchase_rejected(item_id, reason)` (requester only), `owned_changed()`, `cue_spec_changed(spec)`. Every one fires on every peer (clients from the mirror RPCs, 04 §5).
 **`StreamManager` emits** — `viewers_changed(viewers: int, hype: float)`, `tip_received(amount: int)`.
 
 **Called by others**
 - `EconomyManager.award_shot_reward(raw_points: int, trick_ids: Array[StringName], pocket_id: StringName) -> int` — 01 calls it on `shot_ended`; 02 resolves the best trick multiplier, asks `camera_scorer` for the winning rig on `pocket_id`, asks 03 for `Drink_Mult × Event_Mult`, asks `StreamManager` for `Viewer_Scalar`.
-- `EconomyManager.try_purchase(item_id: StringName, buyer_peer_id: int) -> bool` — host-authoritative; the only path Cash leaves the account.
+- `EconomyManager.try_purchase(item_id: StringName, buyer_peer_id: int, target_peer_id := 0) -> bool` — host-authoritative; the only path Cash leaves the account for the Shop (`try_spend_cash` is 03's world-interaction path). Getters for the rack: `unlocked_ball_types(base)`, `ball_overrides()`, `round_config(night)`; for the Player: `build_cue_spec()`.
+- `GameLoop.resume_from(profile: SaveProfile)` — host; rebuilds a checkpoint (04 §2.6). `GameLoop.build_profile()` is what every Round end broadcasts.
 - `StreamManager.on_ball_potted(ball, shot_id, pocket_id)` buffers pots during the `Shot`; `StreamManager.on_shot_ended(raw_points, trick_ids, foul)` applies them after `EconomyManager` has read `Viewer_Scalar`. A foul discards the buffer — the Shot scores nothing, viewers included (01 §3).
 - `GameLoop.advance() -> void` — host only; the untimed Intermission gate, and Reckoning → next Night.
 - **From 03:** `EventScheduler.offer_tier(tier) -> Array[Event]` for the crew's pre-Round pick; `EffectManager.get_reward_multiplier() -> float`.
@@ -211,6 +220,7 @@ src/
 - **Amended (M1):** `round_ended` `reason` ∈ `timer | cleared | shots` — `shots` when the Round's shot budget hits 0 (every `shot_ended`, foul included, costs one); `stuck` is retired, "only penalty balls left" *is* `table_cleared` (01 §3).
 
 ## 6. Open questions
+*Defaults taken while building M5 (2026-09-30), flag if wrong:* (a) `stream_camera_bonus_mult` multiplies the whole Camera_Mult, so it pays even at tier 1; (b) Endless Round 3 is hazard tier 3 but 03 has no tier-3 Events yet, so it offers none until 03 adds them; (c) `polish_the_set` raises `red_basic` (the only tier-1 type) to 130 through `ball_overrides()` — RULES must apply it when it builds the rack, until then the payout is still 100; (d) the Shop opens from the corner button / `ShopMenu.open()`, the bar prop only routes drinks — the Player pass decides how a walk-up opens the menu.
 *Ruled 2026-09-30 (06 P8):* fouls cost the shot and the viewers, never Cash directly; griefing keeps 03's 2-hostile-per-Turn cap with no extra per-Round cap.
 2. *(retired — P2: non-shooters free-roam the bar; there are no idle-player roles to design.)*
 

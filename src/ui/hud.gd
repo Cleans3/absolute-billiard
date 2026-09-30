@@ -1,6 +1,7 @@
 extends Control
-## M1 HUD (docs/plan/02 §3.1): a stat row, a payout/notice feed, one overlay for Intermission,
-## Reckoning and the two end states. Clock and viewers are pulled each frame; the rest arrives by signal.
+## HUD (docs/plan/02 §3.1): a stat row, a payout/notice feed, one overlay for Intermission,
+## Reckoning and the two end states. Signals only (07 §5): the clock label is rewritten once a second,
+## everything else when its own signal fires. Reads the same mirrored state on every peer.
 
 const FEED_SECS := 4.0
 
@@ -13,6 +14,7 @@ var _demand := 0
 var _body := ""  # Intermission text: the Night's ask, then the last Round's result
 var _reckoning := ""
 var _tweens := {}  # Label -> Tween, so a new line restarts its own fade
+var _shown_secs := -1
 
 @onready var _night: Label = %Night
 @onready var _round: Label = %Round
@@ -37,35 +39,65 @@ func _ready() -> void:
 		game_loop.round_ended.connect(_on_round_ended)
 		game_loop.phase_changed.connect(_on_phase_changed)
 		game_loop.shot_settled.connect(_on_shot_settled)
+		game_loop.state_changed.connect(_refresh_round)
 		game_loop.cue_respawned.connect(func(reason: StringName) -> void:
 			_flash(_notice, "Cue ball reset (%s)" % reason))
 	if economy != null:
 		economy.cash_changed.connect(_on_cash_changed)
 		economy.quota_evaluated.connect(_on_quota_evaluated)
-	_refresh()
+		economy.item_purchased.connect(_on_item_purchased)
+		economy.purchase_rejected.connect(_on_purchase_rejected)
+	if stream != null:
+		stream.viewers_changed.connect(_on_viewers_changed)
+	_refresh_round()
+	_refresh_cash()
+	_refresh_time()
 
 
 func _process(_delta: float) -> void:
-	_refresh()
+	_refresh_time()
 
 
-func _refresh() -> void:
-	_night.text = "Night %d" % _night_number
-	_cash.text = "$%d / $%d" % [economy.cash if economy != null else 0, _demand]
-	if game_loop != null:
-		var secs := ceili(game_loop.time_left)
+func _refresh_time() -> void:
+	if game_loop == null:
+		return
+	var secs := ceili(game_loop.time_left)
+	if secs != _shown_secs:
+		_shown_secs = secs
 		_time.text = "%d:%02d" % [floori(secs / 60.0), secs % 60]
+
+
+func _refresh_round() -> void:
+	_night.text = "Night %d" % _night_number
+	if game_loop != null:
 		_shots.text = "Shots %d" % game_loop.shots_left
 		_round.text = "Round %d/%d" % [game_loop.round_index, game_loop.current_night().rounds_count if not game_loop.nights.is_empty() else 0]
 		_seed.text = "Seed %d" % game_loop.round_seed
-	if stream != null:
-		_viewers.text = "Viewers %d  Hype %d%%" % [stream.viewers, roundi(stream.hype * 100.0)]
+
+
+func _refresh_cash() -> void:
+	_cash.text = "$%d / $%d" % [economy.cash if economy != null else 0, _demand]
+
+
+func _on_viewers_changed(viewers: int, hype: float) -> void:
+	_viewers.text = "Viewers %d  Hype %d%%" % [viewers, roundi(hype * 100.0)]
+
+
+func _on_item_purchased(item_id: StringName, _buyer_peer_id: int) -> void:
+	if item_id != &"":
+		_flash(_notice, "Bought %s" % item_id)
+
+
+func _on_purchase_rejected(item_id: StringName, reason: StringName) -> void:
+	_flash(_notice, "Can't buy %s (%s)" % [item_id, reason])
 
 
 func _on_night_started(night_number: int, quota: int) -> void:
 	_night_number = night_number
 	_demand = quota
 	_body = "Owe $%d by the end of the Night." % quota
+	_refresh_round()
+	_refresh_cash()
 
 
 func _on_round_started(_round_index: int, _time_limit: float, _hazard_tier: int) -> void:
@@ -87,7 +119,7 @@ func _on_phase_changed(phase: GameLoop.Phase) -> void:
 		GameLoop.Phase.GAME_OVER:
 			_show("Game over", _reckoning, "", false)
 		GameLoop.Phase.CAMPAIGN_WON:
-			_show("Campaign won", _reckoning, "", false)
+			_show("Campaign won", _reckoning, "Endless", host)
 		_:
 			_overlay.hide()
 
@@ -103,6 +135,7 @@ func _on_shot_settled(_shot_id: String, cash: int, trick_id: StringName, foul: b
 
 
 func _on_cash_changed(_balance: int, delta: int, reason: StringName) -> void:
+	_refresh_cash()
 	if reason == &"tip":
 		_flash(_notice, "Tip +$%d" % delta)
 

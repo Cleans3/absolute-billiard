@@ -41,7 +41,7 @@ Checked against 4.7's renderer comparison: Mobile has **no** SDFGI, VoxelGI, SSI
 |---|---|---|
 | `enet_direct` | `ENetMultiplayerPeer.create_server/create_client` | LAN, dev, two instances on one machine, "advanced" IP entry. |
 | `enet_noray` | Same peer, socket pre-punched via a Noray handshake | **Primary path.** Every internet game, mobile and PC. |
-| `steam` | GodotSteam `SteamMultiplayerPeer` | **Optional, PC only.** Steam invites and overlay for people who bought it there. |
+| `steam` | `SteamMultiplayerPeer` (Steam Sockets) | **Optional, PC only.** Friends-only Steam lobby, overlay invites; the same roster / session-start path as ENet. |
 
 Cross-play is mobile↔PC over `enet_noray`; the `steam` peer is a convenience path between two Steam clients, never a requirement. The Steam extension is loaded conditionally (`OS.has_feature("pc")` and the addon present), so a phone build never references it.
 
@@ -50,8 +50,8 @@ Cross-play is mobile↔PC over `enet_noray`; the `steam` peer is a convenience p
 **Invites.** No platform friend graph is assumed, because there isn't one on mobile.
 - The relay is configured with `NORAY_OID_LENGTH=6` and the Crockford alphabet (no I/L/O/U), so the host's OID **is** the **6-character lobby code**: ~1.07 billion codes, readable aloud, typeable on a phone keyboard. `LobbyCode.normalize` makes typing forgiving (case-insensitive, `I`/`L`→1, `O`→0).
 - The same code is wrapped in a **share link** `http://<relay-host>:8892/j/AB3K7Q` (a stdlib page in `deploy/noray/join_page.py`: code + "Open in game" button + "type the code" text) and the scheme link `absolutebilliard://j/AB3K7Q`. Android's Share button opens the system share sheet (`DeepLink.share`); elsewhere it copies the link.
-- Deep-link plumbing: Android `<intent-filter>`s come from the `addons/deeplink` export plugin (custom gradle build needed: *Project → Install Android Build Template*, then enable *Use Gradle Build* in the preset); iOS URL scheme / Universal Link goes in the plist. **Readback (resolved for Android, 4.7):** `Engine.get_singleton("AndroidRuntime").getActivity().getIntent().getDataString()` — `GodotActivity.onNewIntent` replaces the activity intent, so a warm start reads the same way; the Lobby re-reads it on `NOTIFICATION_APPLICATION_RESUMED`. Desktop launches pass the URL as a command-line argument. iOS readback is unverified.
-- Steam invites remain a fourth entry point on PC and resolve to the same lobby code.
+- Deep-link plumbing: Android `<intent-filter>`s come from the `addons/deeplink` export plugin (the Android preset uses the gradle build; `src/tools/android_export.sh` installs the build template on first run — `android/` is Godot-generated, ~1 GB and gitignored, nothing in it is committed; verified: the exported APK manifest carries both filters, `aapt2 dump xmltree`); iOS URL scheme / Universal Link goes in the plist. **Readback (resolved for Android, 4.7):** `Engine.get_singleton("AndroidRuntime").getActivity().getIntent().getDataString()` — `GodotActivity.onNewIntent` replaces the activity intent, so a warm start reads the same way; the Lobby re-reads it on `NOTIFICATION_APPLICATION_RESUMED`. Desktop launches pass the URL as a command-line argument. iOS readback is unverified.
+- **Steam (M7, PC only).** Two GDExtensions, fetched by `src/tools/fetch_godotsteam.sh` into gitignored `addons/` (GodotSteam GDExtension 4.22.1 + expressobits Steam Multiplayer Peer 0.2.5, Linux/Windows 64-bit, `steam_appid.txt` = 480 dev id; the publisher key never enters the repo). `NetManager` loads `src/core/transport_steam.gd` **by path** and only calls it when `OS.has_feature("pc")`, the `Steam` singleton and `SteamMultiplayerPeer` exist and the Steam client answered `steamInit`; every Steam call in that script is dynamic, so no scene or script parses a Steam identifier and the Android preset excludes both addon folders (07 size, P1). Host: friends-only lobby + `create_host(0)`; invite: `activateGameOverlayInviteDialog`; joiner: overlay/friends-list invite fires `join_requested` → `NetManager.join_steam(lobby_id)` → `create_client(lobby owner)`. Lobby shows a "Host on Steam" button only when `steam_available()`. The peer has no channel support (its README), so RPC `transfer_channel` 1–3 collapse onto one — harmless for correctness, only priority is lost. A two-account invite test cannot run on one machine (one Steam client per PC): **waived**, `tests/net/steam_probe.gd` proves init only (`STEAM OK`, or `STEAM SKIP: <reason>`).
 
 ### Session start and roster
 `NetManager` (autoload) API: `host(transport)` opens a lobby and stays in Lobby, `host_solo()` goes straight to MainLevel with `OfflineMultiplayerPeer`, `join_direct(address, port)`, `join_code(code)`, `leave()`, `get_roster()` (`[{peer_id, name, seat, ready}]`, host seat 0 then join order), `seat_order()`, `start_game()`, `main_level_ready()`. The host owns the roster and pushes it on every join/leave; late joiners are refused once `start_session` ran. `start_session(seed)` loads MainLevel on every peer; each peer then calls `main_level_ready()`, clients answer `peer_ready` to the host, and the host emits `all_peers_ready` once every roster peer reported (solo: immediately). That signal starts the campaign and makes `PlayerSpawner` spawn one `PlayerSlot` per roster peer, so a client never receives a spawn before its own MainLevel exists. Joins fail with `session_failed(reason)` after `timeout_sec`; a vanished host ends the session (`session_ended(&"host_left")`) and everyone returns to Lobby. Player poses: each slot's authority sends `push_player_pose` at 10 Hz (16 B: 3×f32 position, u16 yaw, s16 pitch); other peers smooth the walker toward it.
@@ -94,18 +94,25 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
 
 ```json
 {
-  "save_version": 3,
+  "save_version": 2,
   "crew_cash": 1500,
   "current_night": 3,
   "round_index": 2,
   "quota_target": 1350,
-  "unlocked": { "ball_types": ["red","gold","bomb"], "cameras": ["cam_basic"], "cue": ["spin_2"] },
-  "persistent_unlocks": ["drink_whiskey"],
+  "viewers": 640,
+  "hype": 0.4,
+  "unlocked": { "ball_types": ["tier2_rack"], "cameras": ["lens_t2"], "cue": ["heavy_shaft"] },
+  "owned_items": { "tier2_rack": 1, "lens_t2": 1, "heavy_shaft": 1, "fresh_cloth": 1 },
+  "persistent_unlocks": ["tier2_rack", "lens_t2"],
   "seed": 884213
 }
 ```
 
-`save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)`; an unknown newer version refuses and says so rather than silently dropping fields.
+`round_index` = Rounds finished this Night (`0` = Night start); after a passed Night the resume point is the next Night's start. `owned_items` (Shop id → count) is the truth; `unlocked` is a per-category read-only view of it. `viewers = -1` means "start from the Night's `base_viewers`". Built by `GameLoop.build_profile()`, resumed by `GameLoop.resume_from(profile)`.
+
+`save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
+
+Files: `user://checkpoints/<key>.json` where `key` = Noray lobby code, else `solo`, else `lan-<session seed>` (`SaveManager.checkpoint_key`); `user://profile.json` = `persistent_unlocks` only, written on every persistent purchase and read by a new campaign (02 §3.7). The Lobby's "Resume" reads `SaveManager.list_checkpoints()`, sets `SaveManager.pending_resume = SaveManager.load_checkpoint(path)`, then hosts; `main_level.gd` hands it to `GameLoop.resume_from`.
 
 **The whole profile is broadcast to every peer at each `Round` end** (`push_save_checkpoint`). Each client writes it to `user://checkpoints/<lobby>.json`. If the host's phone dies, any friend re-hosts from the last checkpoint and the crew loses one Round, not the campaign. This is not host migration — the session ends, everyone re-lobbies — it just makes that cheap.
 
@@ -184,9 +191,15 @@ MainLevel.tscn
 | `shot_resolved(shot_id, shooter_id, end_tick, raw_points, trick_ids, foul)` — `_shot_resolved_rpc`, **`call_remote`**: the host already emitted `shot_ended` itself | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `push_rack(round_id, seed, blob)` — `_push_rack_rpc`; blob = `net_id u8, type u8, x f32, z f32` per ball | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `set_shooter(peer_id)` — `_set_shooter_rpc` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `round_state(round_index, phase, time_left)` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `update_cash(absolute_balance)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `update_viewers(count)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `round_state(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, end_reason)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `push_shot_settled(shot_id, cash, trick_id, foul)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `update_cash(absolute_balance, delta, reason)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `quota_result(paid, demand, is_game_over)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `request_purchase(item_id, target_peer_id)` | EconomyManager | C→H | `any_peer` | `call_local` | `reliable` | 3 |
+| `reject_purchase(item_id, reason)` | EconomyManager | H→1 | `authority` | `call_local` | `reliable` | 3 |
+| `update_owned(ids, counts, item_id, buyer_peer_id)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
+| `push_rig_poses(poses)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, end_tick)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `apply_event(event_id, round_index)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `request_world_interaction(kind, target_id, payload)` | MainLevel | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
@@ -197,7 +210,7 @@ MainLevel.tscn
 | `start_session(seed)` | NetManager | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
 
-`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently, and the payload is 8 bytes either way. `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number.
+`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it). `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) at 4 Hz, only while a rig moved plus a few repeats at rest. `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 
 ### Free-roam world interaction (P2)
 Non-shooters roam the bar. Every one of those interactions is one RPC pair, and 04 owns only the envelope — the `kind` registry is a black box filled in by 01/02/03 and the Player pass:
@@ -267,7 +280,7 @@ sequenceDiagram
 - **M4 — `enet_noray`.** Self-hosted relay, 6-char lobby code, share link, deep link. Cross-play test is the acceptance criterion: an Android phone on mobile data and a Windows PC in the same lobby. *Built 2026-09-30 minus the phone test: `pair.sh … --noray` joins by code through the relay; Android build untried.*
 - **M5 — Session state.** Economy RPCs, Effects, `SaveProfile` broadcast, `save_version` migration, re-host-from-checkpoint drill.
 - **M6 — Free roam.** `request_world_interaction` wired to 03's Effects and 02's camera scoring and shop.
-- **M7 — GodotSteam (last).** Optional PC peer, invites, overlay. D2 wanted the externally-failable dependency first; P1 made it optional, so a late failure now costs one convenience feature instead of the project — which is exactly why it can be last.
+- **M7 — GodotSteam (last).** Optional PC peer, invites, overlay. D2 wanted the externally-failable dependency first; P1 made it optional, so a late failure now costs one convenience feature instead of the project — which is exactly why it can be last. **Built:** transport, Lobby button, fetch script, init probe (see §2.3); invite round-trip waived (single Steam client).
 - **Later:** reconnect mid-Round, spectators, rich presence. **Never:** host migration.
 
 ### Open-source repo notes
