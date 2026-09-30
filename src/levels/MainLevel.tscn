@@ -20,6 +20,7 @@
 [ext_resource type="Script" path="res://src/gameplay/camera/cameras.gd" id="17_cameras"]
 [ext_resource type="PackedScene" path="res://src/ui/ShopMenu.tscn" id="18_shop"]
 [ext_resource type="PackedScene" path="res://src/ui/TouchControls.tscn" id="19_touch"]
+[ext_resource type="PackedScene" path="res://src/ui/DrinkPicker.tscn" id="20_picker"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_main"]
 
@@ -157,6 +158,10 @@ game_loop = NodePath("../../GameLoop")
 effects = NodePath("../../EffectManager")
 
 [node name="ShopMenu" parent="UILayer" node_paths=PackedStringArray("economy", "game_loop") instance=ExtResource("18_shop")]
+economy = NodePath("../../EconomyManager")
+game_loop = NodePath("../../GameLoop")
+
+[node name="DrinkPicker" parent="UILayer" node_paths=PackedStringArray("economy", "game_loop") instance=ExtResource("20_picker")]
 economy = NodePath("../../EconomyManager")
 game_loop = NodePath("../../GameLoop")
 

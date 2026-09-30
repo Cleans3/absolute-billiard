@@ -53,7 +53,7 @@ One capsule mesh + head sphere tinted by seat colour (`Player.SEAT_COLOURS`, one
 | touch power | linear in slider travel, `0..1` |
 
 ## 4. Godot implementation sketch
-- `src/gameplay/player/Player.tscn` + `player.gd` — body, `Head/Camera3D`, mode state machine, interaction probe (`ShapeCast3D` sphere `2.0 m`, mask = `Interactable.LAYER`, read once per `_physics_process`). The sphere is only the broad phase: the prompt goes to the nearest `Interactable` whose feet-to-origin distance is `≤ 2.0 m`, the host's own test. `bar_serve` and `throw_drink` are skipped until a drink picker exists.
+- `src/gameplay/player/Player.tscn` + `player.gd` — body, `Head/Camera3D`, mode state machine, interaction probe (`ShapeCast3D` sphere `2.0 m`, mask = `Interactable.LAYER`, read once per `_physics_process`). The sphere is only the broad phase: the prompt goes to the nearest `Interactable` whose feet-to-origin distance is `≤ 2.0 m`, the host's own test. The counter's three props (`bar_buy`, `bar_serve`, `throw_drink`) share one prompt, *Bar counter*; **Interact** opens `DrinkPicker` (Serve / Throw / Shop, a crew-target row for Serve, ≥ 72 px drink rows greyed from mirrored Cash, Round phase and night limits). A pick sends `WorldInteractions.request(kind, 0, {drink_id, target_peer})` and the host validates; walking away closes it. A rig someone carries is not offered. No two other `Interactable`s sit within 1 m of each other (probe-checked).
 - `src/gameplay/cue/cue_controller.gd` — owns `CUE`: aim line, cue mesh, pullback, reads input from `TouchControls` or mouse/keys, builds the `ShotIntent`, calls `table.sim.request_shot(intent)`. The `gate` export is gone (host validates via `PhysicsSim.shot_validator`).
 - `src/ui/TouchControls.tscn` + `virtual_stick.gd`, `look_pad.gd`, `power_slider.gd`, `spin_pad.gd` — each a `Control` handling `InputEventScreenTouch/Drag` by finger index in `_gui_input`; they expose values, they never call gameplay.
 - Input actions added to `project.godot`: `interact`, `cue_mode`, `call_pocket_1..6` (existing `move_*`, `jump`, `shoot`, `spin_*`, `elevate_*`, `spin_reset` stay).
@@ -63,14 +63,9 @@ One capsule mesh + head sphere tinted by seat colour (`Player.SEAT_COLOURS`, one
 - **NET (04)**: `PlayerSlot.peer_id`, `is_local()`, pose blob in/out (`Player.pack_pose() -> PackedByteArray`, `apply_pose(blob)`); `PlayerSpawner.get_player_position(peer_id)`.
 - **01/SYNC**: `RoundDirector.current_shooter_id` + `shooter_changed(peer_id)`; `PhysicsSim.request_shot(intent)`; `shot_rejected(reason)` shows a toast.
 - **03/FX**: `Interactable.try_use(payload)`, `Interactable.prompt: String`; `EffectManager.get_stat(stat, peer_id, base)` for `cue_aim_wobble_deg`, `shot_clock_sec`, `rule_call_pocket`, `cue_power_mult` (display only — the host applies it).
-- **02/ECON**: `bar_buy` opens `ShopMenu` locally (the host prices every purchase). Camera grab and place are one toggle, the `move_camera` interaction (04 §5's `camera_grab`/`camera_place` rows are that): each `CameraRig` carries an `Interactable` (`Cameras._grab_prop`, `target_id` = rig number, prompt *Grab camera*); the Player enters `CARRY` on `interaction_applied(me, move_camera)` and **Place**/**Drop** send it again with `place_at` (ahead of you / at your feet), subject to the 5 s cooldown.
+- **02/ECON**: `bar_buy` opens `ShopMenu` locally (the host prices every purchase). Camera grab and place are one toggle, the `move_camera` interaction (04 §5's `camera_grab`/`camera_place` rows are that): each `CameraRig` carries an `Interactable` (`Cameras._grab_prop`, `target_id` = rig number, prompt *Grab camera*); `CARRY` is derived from the holders `Cameras` mirrors in `push_rig_poses(poses, holders)` (`holders_changed`): held by me → `CARRY`, not mine any more → `WALK` with a *camera taken* toast, so a grab the host ignored can never desync. **Place**/**Drop** send it again with `place_at` (ahead of you / at your feet), subject to the 5 s cooldown.
 
 ## 6. Open questions
-- Drink picker for `bar_serve` / `throw_drink` (they need `drink_id`; the Player skips them). Owner: 03/02.
-- `CARRY` is inferred from the applied broadcast; the host's `held_by` is not mirrored, so a grab the host silently ignores (rig held by someone else) leaves that client in `CARRY`. Fix = mirror `held_by` in `push_rig_poses`.
-- Shot clock: the countdown shows, but the whiff foul at 0 is the host's (RoundDirector, RULES) and is not built yet.
-- `request_shot`'s 24 B wire blob carries no `called_pocket`; SYNC/RULES extend it with the `ShotIntent` field.
-- Rig 1's spot (0, 0, −0.3) sits 0.3 m from the stool prop, so the nearest-prop prompt there says *Kick the stool*.
 - Gamepad layout (PC/Steam Deck) — later.
 - Camera comfort: should `CUE` fade in over `0.2 s` instead of snapping? Playtest.
 - Cosmetics (seat colours are the whole v1 identity).

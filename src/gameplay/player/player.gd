@@ -15,7 +15,7 @@ const PITCH_LIMIT := deg_to_rad(89.0)
 const EYE_M := 1.6
 const REACH_M := 2.0                 # same number WorldInteractions validates
 const PLACE_AHEAD_M := 1.5
-const NEEDS_DRINK_PICKER: Array[StringName] = [&"bar_serve", &"throw_drink"]  # no picker in v1
+const BAR_KINDS: Array[StringName] = [&"bar_buy", &"bar_serve", &"throw_drink"]  # one counter, one menu
 const SEAT_COLOURS: Array[Color] = [
 	Color("e0534a"), Color("4a90e0"), Color("e0c14a"), Color("5ab86a"),
 ]
@@ -33,9 +33,12 @@ var _rd: Node                        # RoundDirector
 var _sim: PhysicsSim
 var _world: WorldInteractions
 var _shop: ShopMenu
+var _picker: DrinkPicker
+var _cameras: CameraRigs
 var _controls: TouchControls
 var _target: Interactable
-var _held_rig := 0                   # CameraRig number while CARRY
+var _held_rig := 0                   # CameraRig number while CARRY (derived from the mirrored holders)
+var _placing := false
 var _turn_started_msec := 0          # when this peer became shooter (shot-clock readout)
 var _jump_queued := false
 var _saved_pos := Vector3.ZERO
@@ -72,6 +75,8 @@ func bind(level: Node) -> void:
 	_sim = table.sim
 	_world = level.get_node_or_null("WorldInteractions")
 	_shop = level.get_node_or_null("UILayer/ShopMenu")
+	_picker = level.get_node_or_null("UILayer/DrinkPicker")
+	_cameras = level.get_node_or_null("Cameras")
 	_controls = level.get_node_or_null("UILayer/TouchControls")
 	cue.table = table
 	cue.effects = level.get_node_or_null("EffectManager")
@@ -82,8 +87,14 @@ func bind(level: Node) -> void:
 	_rd.rack_ready.connect(func(_seed: int) -> void: _start_turn_clock())
 	_sim.shot_rejected.connect(func(reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
 	if _world != null:
-		_world.interaction_applied.connect(_on_interaction_applied)
 		_world.interaction_rejected.connect(func(_k: StringName, reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
+	if _cameras != null:
+		_cameras.holders_changed.connect(_sync_carry)
+	if _picker != null:
+		_picker.picked.connect(_on_picked)
+		_picker.shop_requested.connect(func() -> void:
+			if _shop != null:
+				_shop.open())
 	if _controls != null:
 		_controls.interact_pressed.connect(interact)
 		_controls.shoot_pressed.connect(toggle_cue)
@@ -161,7 +172,10 @@ func _scan() -> void:
 	var best_d := REACH_M
 	for i in _probe.get_collision_count():
 		var it := _probe.get_collider(i) as Interactable
-		if it == null or it.effective_kind() in NEEDS_DRINK_PICKER:
+		if it == null:
+			continue
+		var rig := it.get_parent() as CameraRig
+		if rig != null and rig.held_by != 0:  # someone is carrying it
 			continue
 		var d := global_position.distance_to(it.global_position)
 		if d <= best_d:
@@ -169,6 +183,10 @@ func _scan() -> void:
 			best_d = d
 	_target = best
 	var text := best.prompt if best != null else ""
+	if best != null and best.effective_kind() in BAR_KINDS:
+		text = "Bar counter"
+	elif _picker != null and _picker.is_open():
+		_picker.close()  # walked away
 	if mode == Mode.CARRY:
 		text = "Place the camera"
 	if text != prompt:
@@ -185,9 +203,9 @@ func interact() -> void:
 		return
 	if _target == null:
 		return
-	if _target.effective_kind() == &"bar_buy":  # the Shop is local UI; the host prices every purchase itself
-		if _shop != null:
-			_shop.open()
+	if _target.effective_kind() in BAR_KINDS:  # the counter menu: serve / throw here, or on to the Shop
+		if _picker != null:
+			_picker.open(&"bar_serve")
 		return
 	if not _target.try_use({}):
 		_toast("wait")
@@ -198,18 +216,32 @@ func place_camera(at_feet: bool) -> void:
 		return
 	var fwd := -global_basis.z
 	var spot := global_position + (Vector3.ZERO if at_feet else Vector3(fwd.x, 0.0, fwd.z).normalized() * PLACE_AHEAD_M)
+	_placing = true
 	_world.request(&"move_camera", _held_rig, {&"place_at": Vector3(spot.x, 0.0, spot.z)})
 
 
-func _on_interaction_applied(peer_id: int, kind: StringName, target_id: int, _payload: Dictionary) -> void:
-	if kind != &"move_camera" or peer_id != multiplayer.get_unique_id():
-		return
-	if mode == Mode.WALK:
-		_held_rig = target_id
+## The bar counter menu's pick: the host validates reach, cooldown, Cash and the hostile caps (03 §3.4).
+func _on_picked(kind: StringName, drink_id: StringName, target_peer: int) -> void:
+	if _world != null:
+		_world.request(kind, 0, {&"drink_id": drink_id, &"target_peer": target_peer})
+
+
+## CARRY follows the host's mirrored `held_by`, never our own request: a grab the host ignored (rig already
+## held) leaves us walking, and losing the rig to someone else ends CARRY.
+func _sync_carry() -> void:
+	var mine := 0
+	for i in _cameras.rigs.size():
+		if _cameras.rigs[i].held_by == multiplayer.get_unique_id():
+			mine = i + 1
+	if mine != 0 and mode == Mode.WALK:
+		_held_rig = mine
 		_set_mode(Mode.CARRY)
-	elif mode == Mode.CARRY:
+	elif mine == 0 and mode == Mode.CARRY:
+		if not _placing:
+			_toast("camera taken")
 		_held_rig = 0
 		_set_mode(Mode.WALK)
+	_placing = false
 
 
 # --- CUE mode -------------------------------------------------------------------------------------
