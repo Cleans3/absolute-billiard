@@ -55,7 +55,8 @@ func player_position() -> Vector3:
 
 
 func _roster_entry() -> Dictionary:
-	for e in NetManager.get_roster():
+	# looked up by path: a `-s` probe compiles this script before the autoloads exist
+	for e: Dictionary in get_tree().root.get_node(^"NetManager").call(&"get_roster"):
 		if e.peer_id == peer_id:
 			return e
 	return {}

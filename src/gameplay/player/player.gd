@@ -408,7 +408,7 @@ func _show(a: PackedFloat64Array, b: PackedFloat64Array, w: float) -> void:
 	global_position = Vector3(a[1], a[2], a[3]).lerp(Vector3(b[1], b[2], b[3]), w)
 	rotation.y = lerp_angle(a[4], b[4], w)
 	head.rotation.x = lerpf(a[5], b[5], w)
-	var m := int(b[6]) as Mode
+	var m := int((b if w >= 0.5 else a)[6]) as Mode
 	if m != _puppet_mode and _avatar_cue != null:
 		_puppet_mode = m
 		_avatar_cue.visible = m == Mode.CUE
