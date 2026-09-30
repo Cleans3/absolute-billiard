@@ -10,10 +10,14 @@ func _init() -> void:
 func _run() -> void:
 	var nm := root.get_node("NetManager")
 	nm.config.direct_port = 27000 + randi() % 5000
+	SaveManager.root = "user://test_lobby_ui"
+	DirAccess.make_dir_recursive_absolute(SaveManager.checkpoint_dir())
 	var lobby: Node = load("res://src/levels/Lobby.tscn").instantiate()
 	root.add_child(lobby)
 	await process_frame
 	var ui: Control = lobby.get_node("LobbyUI")
+	assert(not ui.get_node("%Resume").visible, "Resume hidden with no checkpoints")
+	_resume_flow(ui, nm)
 	assert(nm.steam_available() or not ui.get_node("%Steam").visible, "Steam button must be hidden without Steam")
 	ui.get_node("%HostLan").pressed.emit()
 	await process_frame
@@ -28,5 +32,45 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	assert(not nm.is_host() and nm.get_roster().is_empty(), "left")
+	for f in DirAccess.get_files_at(SaveManager.checkpoint_dir()):
+		DirAccess.remove_absolute(SaveManager.checkpoint_dir().path_join(f))
+	DirAccess.remove_absolute(SaveManager.checkpoint_dir())
+	DirAccess.remove_absolute(SaveManager.root)
 	print("LOBBY UI OK")
 	quit()
+
+
+## Two checkpoints → Resume shows both newest first; picking one sets pending_resume and hosts from it.
+func _resume_flow(ui: Control, nm: Node) -> void:
+	var old := SaveProfile.new()
+	old.crew_cash = 700
+	old.current_night = 1
+	old.round_index = 1
+	old.crew_size = 2
+	SaveManager.write_checkpoint("OLDONE", SaveManager.encode(old))
+	var newer := SaveProfile.new()
+	newer.crew_cash = 1500
+	newer.current_night = 3
+	newer.round_index = 2
+	newer.crew_size = 3
+	SaveManager.write_checkpoint("NEWEST", SaveManager.encode(newer))
+	DirAccess.remove_absolute(SaveManager.checkpoint_path("OLDONE"))  # stale file must vanish from the list
+	SaveManager.write_checkpoint("OLDONE", SaveManager.encode(old))
+	ui._set_home(true)
+	assert(ui.get_node("%Resume").visible, "Resume visible with checkpoints")
+	ui.get_node("%Resume").pressed.emit()
+	var rows := ui.get_node("%ResumeList").get_child_count()
+	assert(rows == 2 and ui.get_node("%ResumeScroll").visible and not ui.get_node("%Host").visible, "resume screen lists both: %d" % rows)
+	var first: Button = ui.get_node("%ResumeList").get_child(0)
+	assert("Night" in first.text and "crew" in first.text and first.custom_minimum_size.y >= 48, "row label: " + first.text)
+	ui.get_node("%ResumeBack").pressed.emit()
+	assert(ui.get_node("%Host").visible and not ui.get_node("%ResumeScroll").visible, "Back returns home")
+	ui.get_node("%Resume").pressed.emit()
+	ui.get_node("%AdvancedToggle").button_pressed = true
+	var entries: Array[Dictionary] = SaveManager.list_checkpoints()
+	ui._on_resume_pick(entries[0])
+	assert(SaveManager.pending_resume != null and SaveManager.pending_resume.crew_cash == entries[0].cash, "pending_resume set from the pick")
+	assert(nm.is_host() and ui.get_node("%Roster").visible, "picking hosts and opens the room")
+	assert("Resuming" in ui.get_node("%Status").text, "room says it is a resume")
+	ui.get_node("%Leave").pressed.emit()
+	assert(SaveManager.pending_resume == null, "Leave drops the pick")

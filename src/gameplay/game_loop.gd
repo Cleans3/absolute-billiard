@@ -323,16 +323,23 @@ func build_profile() -> SaveProfile:
 	p.owned_items = economy.owned.duplicate()
 	p.persistent_unlocks = economy.persistent_unlocks().duplicate()
 	p.campaign_seed = campaign_seed
+	var net := get_node_or_null(^"/root/NetManager")
+	p.crew_size = int(net.call(&"get_roster").size()) if net != null else 1
 	return p
 
 
 ## Every Round end (host): write it here and push it to every peer, which each write their own copy.
+## A finished run (game over / campaign won) deletes the checkpoint on every peer instead; the newest
+## SaveManager.KEEP_CHECKPOINTS files are kept, one file per session key, overwritten each Round.
 func _checkpoint() -> void:
-	if phase == Phase.GAME_OVER or phase == Phase.CAMPAIGN_WON:
-		return  # the run is over; only the persistent-unlock file survives
-	var blob := SaveManager.encode(build_profile())
+	var over := phase == Phase.GAME_OVER or phase == Phase.CAMPAIGN_WON
+	var blob := PackedByteArray() if over else SaveManager.encode(build_profile())
 	var net := get_node_or_null(^"/root/NetManager")
 	var roster_size := int(net.call(&"get_roster").size()) if net != null else 1
-	SaveManager.write_checkpoint(SaveManager.checkpoint_key(net.lobby_code if net != null else "", roster_size, net.session_seed if net != null else 0), blob)
+	var key := SaveManager.checkpoint_key(net.lobby_code if net != null else "", roster_size, net.session_seed if net != null else 0)
+	if over:
+		SaveManager.delete_checkpoint(key)
+	else:
+		SaveManager.write_checkpoint(key, blob)
 	if net != null and net.has_method(&"push_save_checkpoint"):
 		net.rpc(&"push_save_checkpoint", SaveManager.SAVE_VERSION, blob)

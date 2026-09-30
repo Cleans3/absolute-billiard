@@ -3,7 +3,8 @@ extends RefCounted
 ## Static save I/O (docs/plan/04 §2.6, 02 §3.7): Round checkpoints every peer keeps, plus the run-surviving
 ## persistent-unlock file. Not an autoload. `root` is swappable so probes never touch the real user dir.
 
-const SAVE_VERSION := 2  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them
+const SAVE_VERSION := 2
+const KEEP_CHECKPOINTS := 10  # newest files kept; an older campaign falls off the Resume list  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them
 
 static var root := "user://"
 static var last_error := &""  # why the last decode() refused
@@ -67,7 +68,9 @@ static func migrate(d: Dictionary) -> Dictionary:
 
 ## A client's copy of the host's checkpoint (NetManager.push_save_checkpoint lands here).
 static func receive_checkpoint(lobby_code: String, roster_size: int, session_seed: int, save_version: int, blob: PackedByteArray) -> void:
-	if save_version <= SAVE_VERSION:
+	if blob.is_empty():
+		delete_checkpoint(checkpoint_key(lobby_code, roster_size, session_seed))
+	elif save_version <= SAVE_VERSION:
 		write_checkpoint(checkpoint_key(lobby_code, roster_size, session_seed), blob)
 	else:
 		push_warning("SaveManager: checkpoint v%d is newer than this build (v%d); not stored" % [save_version, SAVE_VERSION])
@@ -80,7 +83,24 @@ static func write_checkpoint(key: String, blob: PackedByteArray) -> bool:
 		push_error("SaveManager: cannot write %s (%s)" % [checkpoint_path(key), error_string(FileAccess.get_open_error())])
 		return false
 	f.store_buffer(blob)
+	f.close()
+	prune()
 	return true
+
+
+## A finished campaign leaves no checkpoint (host deletes its own; clients get an empty blob).
+static func delete_checkpoint(key: String) -> void:
+	DirAccess.remove_absolute(checkpoint_path(key))
+
+
+## Keeps the KEEP_CHECKPOINTS newest files.
+static func prune() -> void:
+	var files: Array[Dictionary] = []
+	for file in DirAccess.get_files_at(checkpoint_dir()):
+		files.append({path = checkpoint_dir().path_join(file), modified = FileAccess.get_modified_time(checkpoint_dir().path_join(file))})
+	files.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.modified > b.modified)
+	for i in range(KEEP_CHECKPOINTS, files.size()):
+		DirAccess.remove_absolute(files[i].path)
 
 
 static func load_checkpoint(path: String) -> SaveProfile:
@@ -90,7 +110,7 @@ static func load_checkpoint(path: String) -> SaveProfile:
 	return decode(FileAccess.get_file_as_bytes(path))
 
 
-## Newest first: [{path, key, modified, night, round_index, cash}] for the Lobby's "Resume" list.
+## Newest first: [{path, key, modified, night, round_index, cash, crew}] for the Lobby's "Resume" list.
 static func list_checkpoints() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for file in DirAccess.get_files_at(checkpoint_dir()):
@@ -98,7 +118,7 @@ static func list_checkpoints() -> Array[Dictionary]:
 		var p := load_checkpoint(path)
 		if p != null:
 			out.append({path = path, key = file.get_basename(), modified = FileAccess.get_modified_time(path),
-				night = p.current_night, round_index = p.round_index, cash = p.crew_cash})
+				night = p.current_night, round_index = p.round_index, cash = p.crew_cash, crew = p.crew_size})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.modified > b.modified)
 	return out
 
