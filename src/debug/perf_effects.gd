@@ -54,7 +54,7 @@ func _run() -> void:
 	vp.scaling_3d_scale = 1.0
 	var limit := 1000.0 / 60.0 + JANK_TOL_MS
 	var gpu_mean := logger.mean(logger.gpu_ms)
-	check("gpu_frame_mean_all_effects", gpu_mean, 13.0, "<=", "ms", gpu_mean > 0.0)
+	check("gpu_frame_mean_all_effects", gpu_mean, 13.0, "<=", "ms", true, true, gpu_mean > 0.0)
 	check("frames_within_vsync_pct", logger.pct_under(logger.frame_ms, limit), 95.0, ">=", "%", true)
 	check("particles_alive", _particles, 2000, "<=", "particles", false, false)
 	check("draw_calls_max", logger.draw_calls.size() if logger.draw_calls.is_empty() else _max_i(logger.draw_calls), 120, "<=", "calls", true, false)

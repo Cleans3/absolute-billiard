@@ -36,11 +36,12 @@ func _run() -> void:
 	vp.scaling_3d_scale = 1.0
 	var limit := 1000.0 / 60.0 + JANK_TOL_MS
 	check("frames_within_vsync_pct", logger.pct_under(logger.frame_ms, limit), 95.0, ">=", "%", true)
-	check("draw_calls_p95", logger.percentile(_to_float(logger.draw_calls), 0.95), 120, "<=", "calls", true)
+	var dc := logger.percentile(_to_float(logger.draw_calls), 0.95)
+	check("draw_calls_p95", dc, 120, "<=", "calls", true, true, dc > 0.0)
 	check("primitives_max", logger.primitives_max, 60000, "<=", "tris", true)
 	var gpu_mean := logger.mean(logger.gpu_ms)
-	check("gpu_frame_mean", gpu_mean, 13.0, "<=", "ms", gpu_mean > 0.0)
-	check("gpu_frame_p95", logger.percentile(logger.gpu_ms, 0.95), 13.0, "<=", "ms", true, false)
+	check("gpu_frame_mean", gpu_mean, 13.0, "<=", "ms", true, true, gpu_mean > 0.0)
+	check("gpu_frame_p95", logger.percentile(logger.gpu_ms, 0.95), 13.0, "<=", "ms", true, false, gpu_mean > 0.0)
 	check("frame_max_first_5s", logger.first_window_max_ms, 50.0, "<=", "ms", true)
 	check("texture_mem_max", logger.texture_mem_max, 180.0, "<=", "MB", true)
 	check("static_mem_max", logger.static_mem_max, 260.0, "<=", "MB")

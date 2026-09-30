@@ -62,10 +62,11 @@ func arg(key: String, fallback: Variant) -> Variant:
 
 
 ## One budget row. `gate` false = informational (shown, never fails). SKIP when the metric needs a renderer
-## and there is none (headless CI).
-func check(name: String, value: float, limit: float, op: String, unit: String, needs_renderer := false, gate := true) -> void:
+## and there is none (headless CI) or the platform does not report it (`available` false: GPU timer / draw-call
+## monitor read 0 on the Compatibility renderer and on some drivers).
+func check(name: String, value: float, limit: float, op: String, unit: String, needs_renderer := false, gate := true, available := true) -> void:
 	var status := "INFO"
-	if needs_renderer and not PerfLogger.renders():
+	if (needs_renderer and not PerfLogger.renders()) or not available:
 		status = "SKIP"
 	elif gate:
 		status = "PASS" if (value <= limit if op == "<=" else value >= limit) else "FAIL"

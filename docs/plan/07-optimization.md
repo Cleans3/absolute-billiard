@@ -31,7 +31,7 @@ Everything below is per aspect: budget → measurement → techniques in priorit
 
 ## 1. Physics (Jolt)
 
-*Status (M0):* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured (one constant: `PhysicsSim.LIVE_TICK`). Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4). **Layers (item 1) are live**: balls layer 1 / mask `1|2|3` (`Ball.tscn`), bed + rails layer 2 (`table_builder.gd`), pocket drop zones layer 3 (Area3D, mask 1, not monitorable), world/players/bar layer 4 (`BarRoom` collision, `Player.tscn` layer 4 / mask `2|4`); `Interactable` keeps its own layer 6. `tests/physics/layers_probe.gd` proves a world-layer wall does not stop a ball. **Jolt limits trimmed** (`project.godot [physics]`): `max_bodies 512` (was 10240), `max_body_pairs 4096` (65536), `max_contact_constraints 2048` (20480), `temporary_memory_buffer_size 8` MiB (32) — `Memory/Static` with Table + 13 balls: **59.3 MB → 35.0 MB (−24.3 MB)**, measured on the dev PC, deterministic. `perf_break` findings that need a Ball/PhysicsSim decision (SYNC): CCD is on for up to **6** bodies during a break (budget ≤ 2 — `ccd_speed_mps` gate lets every fast ball switch it on), and a max break takes **10.0 s** to all-rest (budget ≤ 9 s).
+*Status (M0):* items 2–6 below and §7.2's idle downclock are implemented (`PhysicsSim.gd`, `Ball.gd`, `project.godot`), at 120 Hz + speed-gated CCD; the 240 Hz hypothesis is still unmeasured (one constant: `PhysicsSim.LIVE_TICK`). Jolt ignores sleep for bodies with `_integrate_forces` — `Ball` sleeps itself at rest (01 §4). **Layers (item 1) are live**: balls layer 1 / mask `1|2|3` (`Ball.tscn`), bed + rails layer 2 (`table_builder.gd`), pocket drop zones layer 3 (Area3D, mask 1, not monitorable), world/players/bar layer 4 (`BarRoom` collision, `Player.tscn` layer 4 / mask `2|4`); `Interactable` keeps its own layer 6. `tests/physics/layers_probe.gd` proves a world-layer wall does not stop a ball. **Jolt limits trimmed** (`project.godot [physics]`): `max_bodies 512` (was 10240), `max_body_pairs 4096` (65536), `max_contact_constraints 2048` (20480), `temporary_memory_buffer_size 8` MiB (32) — `Memory/Static` with Table + 13 balls: **59.3 MB → 35.0 MB (−24.3 MB)**, measured on the dev PC, deterministic. `perf_break` findings that need a Ball/PhysicsSim decision (SYNC): CCD is on for up to **6–7** bodies during a break (budget ≤ 2 — the `ccd_speed_mps` gate lets every fast ball switch it on), and a max break takes up to **10–11 s** to all-rest (budget ≤ 9 s; 7.9 s in 6 emulator runs — aim jitter moves it).
 
 | metric | budget |
 |---|---|
@@ -272,7 +272,7 @@ Godot's importer maps *High Quality* to ASTC on mobile and BPTC on desktop, and 
 
 **Do not.** Do not ship 2048² textures to a phone. Do not disable mipmaps on 3D textures. Do not leave desktop texture formats enabled in a mobile preset. Do not import `.blend` (requires Blender at import time).
 
-**Status (M0):** `src/tools/check_gates.gd` fails on any image above `1024²`, on a mobile (Android/iOS) preset with S3TC/BPTC on, on `import_etc2_astc` off, and on a PCK over 90 MB or > max(10%, 2 MB) above `tests/perf/baseline.json` (re-baseline only with a written reason). `Android M0` presets ship arm64 only (`Android M0 emu`: x86_64 only, smoke) with `gradle_build/compress_native_libraries=true` — the sideload debug APK drops from 84 MB (uncompressed `libgodot_android.so`) to __APK_MB__ MB. The AAB gate itself needs a release build; until then the APK size is printed by `m0_device_run.sh`.
+**Status (M0):** `src/tools/check_gates.gd` fails on any image above `1024²`, on a mobile (Android/iOS) preset with S3TC/BPTC on, on `import_etc2_astc` off, and on a PCK over 90 MB or > max(10%, 2 MB) above `tests/perf/baseline.json` (re-baseline only with a written reason). `Android M0` presets ship arm64 only (`Android M0 emu`: x86_64 only, smoke) with `gradle_build/compress_native_libraries=true` — the sideload debug APK drops from 84 MB (uncompressed `libgodot_android.so`) to 33.7 MB. The AAB gate itself needs a release build; until then the APK size is printed by `m0_device_run.sh`.
 
 **Acceptance:** exported AAB `≤ 90 MB` with no texture asset above `1024²` (CI-checkable, see §9).
 
@@ -314,7 +314,23 @@ It exports the `Android M0` preset (gradle, arm64), installs, launches with `am 
 
 **Dev-PC reference (i7-11800H + RTX 3050 Ti Laptop, other agents running — never a sign-off):**
 
-__REF_TABLE__
+| fixture | budget row | dev PC | 07 budget |
+|---|---|---|---|
+| `perf_break` ×20 | Jolt tick, live, mean / p99 (ms, net of empty-frame baseline) | 1.50 / 4.44 | ≤ 1.0 |
+| | physics tick at rest, median (ms) | 0.87 (0 bodies active) | ≤ 0.05 |
+| | contacts per step (peak) / CCD bodies (peak) | 23 / **7** | ≤ 40 / ≤ 2 |
+| | events per shot (max) / strike→rest (max) | 48 / **11.4 s** | ≤ 200 / ≤ 9 |
+| | balls off table or fell / ball count delta | 0 / 0 | 0 |
+| `perf_bar` 60 s, scale 0.85, MSAA 2× | frames within vsync | 99.9% | ≥ 95% |
+| | draw calls p95 / primitives max / nodes | 87 / 25.7k / 173 | ≤ 120 / ≤ 60k / ≤ 1500 |
+| | GPU frame mean / p95 (ms) | 1.76 / 2.69 | ≤ 13.0 |
+| | texture mem / `Memory/Static` (MB) | 44 / 63 | ≤ 180 / ≤ 260 |
+| | slowest frame in first 5 s (ms) | 26 | ≤ 50 |
+| `perf_effects` 30 s | GPU frame mean (ms) / frames within vsync | 1.82 / 99.5% | ≤ 13.0 / ≥ 95% |
+| `perf_soak` 2 min | active-frame fps / deepest tier / orphans | 59.9 / 0 / 0 | ≥ 55 / < 2 / 0 |
+| | `Memory/Static` drift Round 1→5 / reduced-rate share | +0.04% / 48% | ≤ 5% / ≥ 50% |
+
+`perf_break`'s live step is a whole-tick number (engine + `_integrate_forces` GDScript) taken under load from other agents; the rest median stays ~0.9 ms although Jolt reports 0 active bodies — unexplained, worth a Profiler look on the device. The emulator smoke (`--emulator`, Compatibility renderer, software GL) reaches every row of the table and proves the pipeline; its fps/GPU rows are meaningless.
 
 **Acceptance:** every §1–§8 acceptance test runs unattended from one command on both devices and emits pass/fail per budget.
 
@@ -322,7 +338,7 @@ __REF_TABLE__
 
 ## Open questions
 
-- **Ball.gd vs budgets (SYNC/alpha decide):** `perf_break` sees 6 simultaneous CCD bodies (≤ 2) and 10.0 s strike-to-rest (≤ 9 s) on the dev PC; both are deterministic, not device noise. Candidates: a higher `ccd_speed_mps`, a stricter `rest_speed_mps`, or re-tune the budgets.
+- **Ball.gd vs budgets (SYNC/alpha decide):** `perf_break` sees 6–7 simultaneous CCD bodies (≤ 2) and up to 11.4 s strike-to-rest (≤ 9 s); both are physics outcomes, not device noise. Candidates: a higher `ccd_speed_mps`, a stricter `rest_speed_mps`, or re-tune the budgets.
 - **Ball bodies at rest:** `Ball._integrate_forces` never sets `sleeping`, so the "table at rest ≈ 0.05 ms" row depends on Jolt sleeping the bodies anyway; `perf_break` reports `bodies_active_at_rest`.
 - Tier 0 scale: 07 §7.4 says 1.0, the frame budget is written at 0.85. If the 695 misses at 1.0, tier 0 becomes 0.85 (`QualityManager.TIERS[0]`, one line).
 - 240 Hz on the 695 is a projection, not a measurement — M0 (P1) settles it. Everything in §1 has a 120 Hz fallback for that reason.

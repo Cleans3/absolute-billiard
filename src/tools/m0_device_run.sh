@@ -156,11 +156,12 @@ def add(fx, name, val, lim, op, unit, gate=True):
     rows.append(dict(fixture=fx, budget=name, value=str(val), op=op, limit=str(lim), unit=unit, status=st))
 if float(total_ms) > 0: add("device", "am_start_total_time", float(total_ms), 4000, "<=", "ms")
 if float(rss_kb) > 0: add("device", "rss_max", round(float(rss_kb) / 1024, 1), 500, "<=", "MB")
-add("device", "skin_temp_rise", round(float(t1) - float(t0), 1), 8, "<=", "C", gate=False)
-add("device", "temp_max_seen", float(tmax), 0, "<=", "C", gate=False)
+if float(tmax) > 0:
+    add("device", "skin_temp_rise", round(float(t1) - float(t0), 1), 8, "<=", "C", gate=False)
+    add("device", "temp_max_seen", float(tmax), 0, "<=", "C", gate=False)
 if float(dur) > 0 and b0 != b1:
     add("device", "battery_drop_%/h_(USB: not valid)", round((float(b0) - float(b1)) * 3600 / float(dur), 1), 12, "<=", "%/h", gate=False)
-add("device", "apk_size_debug_arm64", float(apk_mb), 90, "<=", "MB", gate=False)
+add("device", "apk_size_debug", float(apk_mb), 90, "<=", "MB", gate=False)
 # SurfaceFlinger latency (only meaningful on device): frames slower than 60 Hz + 1 ms during the bar orbit
 sf = os.path.join(out, "sf_latency.txt")
 if os.path.exists(sf):
