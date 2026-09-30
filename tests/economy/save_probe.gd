@@ -4,7 +4,7 @@ extends SceneTree
 ##   godot --path . --headless -s tests/economy/save_probe.gd
 ## Prints SAVE OK, or the failing checks and SAVE FAIL (exit 1).
 
-const TEST_DIR := "user://test_save"
+var TEST_DIR := "user://test_save_%d" % OS.get_process_id()  # per process: probes run concurrently across worktrees and share user://
 
 var fails := 0
 var finished := false
@@ -103,6 +103,9 @@ func _files() -> void:
 	for i in SaveManager.KEEP_CHECKPOINTS + 3:
 		SaveManager.write_checkpoint("bulk%d" % i, SaveManager.encode(_profile()))
 	_check(DirAccess.get_files_at(SaveManager.checkpoint_dir()).size() <= SaveManager.KEEP_CHECKPOINTS, "only the newest %d checkpoints are kept" % SaveManager.KEEP_CHECKPOINTS)
+	for i in 5:
+		SaveManager.write_checkpoint("tie%d" % i, SaveManager.encode(_profile()))
+		_check(FileAccess.file_exists(SaveManager.checkpoint_path("tie%d" % i)), "a same-second write survives its own prune")
 	SaveManager.receive_checkpoint("", 2, 9, SaveManager.SAVE_VERSION + 1, PackedByteArray([1]))
 	_check(not FileAccess.file_exists(SaveManager.checkpoint_path("lan-9")), "a newer-version checkpoint is not stored")
 

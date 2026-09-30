@@ -11,7 +11,7 @@ const ROWS := {
 	&"lens_t2": [&"camera", 400], &"lens_t3": [&"camera", 800], &"spare_tripod": [&"camera", 500],
 	&"magnetic_pockets": [&"table", 600], &"stream_overlay": [&"table", 500], &"fresh_cloth": [&"table", 350],
 }
-const TEST_DIR := "user://test_shop"
+var TEST_DIR := "user://test_shop_%d" % OS.get_process_id()  # per process: probes run concurrently across worktrees and share user://
 
 var fails := 0
 var finished := false
