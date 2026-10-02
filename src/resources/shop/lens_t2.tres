@@ -10,6 +10,8 @@ camera_tier = 2
 [resource]
 script = ExtResource("1_item")
 id = &"lens_t2"
+display_name = "Lens Mk II"
+description = "Camera rigs score 1.25x on a well framed pot. Kept across runs."
 category = &"camera"
 cost_cash = 400
 payload = SubResource("Delta_1")

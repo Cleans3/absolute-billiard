@@ -10,6 +10,8 @@ ball_values = {&"red_basic": 130}
 [resource]
 script = ExtResource("1_item")
 id = &"polish_the_set"
+display_name = "Polish the Set"
+description = "Red balls are worth 130 instead of 100. Kept across runs."
 category = &"ball"
 cost_cash = 250
 payload = SubResource("Delta_1")

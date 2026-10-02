@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="Drink" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
+
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
+stat = &"pocket_radius_mult"
+op = 1
+value = 1.2
+
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
+id = &"tiki_pockets"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Mod_1_0"]
+script = ExtResource("2_mod")
+stat = &"cushion_restitution_mult"
+op = 1
+value = 1.3
+
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("1_effect")
+id = &"tiki_rails"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1_0")])
+duration_sec = -1.0
+tag = &"booze"
+
+[resource]
+script = ExtResource("3_drink")
+id = &"tiki_torch"
+display_name = "Tiki Torch"
+description = "A flaming bowl: wider pockets for the crew, wild rails."
+tier = 3
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0"), SubResource("Effect_1")])
+reward_mult = 1.45
+cost_cash = 240

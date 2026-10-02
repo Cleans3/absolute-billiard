@@ -87,6 +87,8 @@ func _run() -> void:
 	var saved := SaveManager.load_checkpoint(listed[0].path)
 	if saved.round_index != 1 or saved.crew_cash != 700 or saved.owned_items.get(&"heavy_shaft") != 1 or saved.crew_size != 2:
 		_fail("checkpoint content %s" % [saved.to_dict()])
+	if saved.stock_ids.size() != DrinkStock.SIZE or saved.stock_ids != DrinkStock.roll(saved.stock_key) or (role == "host" and saved.stock_key != loop.stock_key()):
+		_fail("the checkpoint's Bartender shelf %s (key %d)" % [saved.stock_ids, saved.stock_key])
 	# --- phase 2: both leave; the client re-hosts from its copy --------------------------------------
 	if role == "host":
 		await create_timer(1.0).timeout  # the client is holding its copy too
@@ -114,6 +116,12 @@ func _run() -> void:
 	await _until(func() -> bool: return loop.phase == GameLoop.Phase.INTERMISSION and loop.round_index == saved.round_index, "resumed Intermission")
 	if loop.night_index != saved.current_night - 1 or eco.cash != saved.crew_cash or eco.count_of(&"heavy_shaft") != 1 or level.get_node("StreamManager").viewers != saved.viewers:
 		_fail("resumed state night=%d round=%d cash=%d" % [loop.night_index, loop.round_index, eco.cash])
+	await _until(func() -> bool: return eco.stock_size() == saved.stock_ids.size(), "the shelf on this peer", 10.0)
+	for i in saved.stock_ids.size():
+		if eco.stock_id(i) != saved.stock_ids[i] or eco.stock_left(i) != saved.stock_left[i]:
+			_fail("resumed shelf slot %d is %s x%d, the checkpoint had %s x%d" % [i, eco.stock_id(i), eco.stock_left(i), saved.stock_ids[i], saved.stock_left[i]])
+	if nm.is_host() and eco.stock_key != loop.stock_key():  # only the host knows the campaign seed
+		_fail("resumed shelf key %d is not this Intermission's %d" % [eco.stock_key, loop.stock_key()])
 	print("RESUME %s OK" % role.to_upper())
 	await create_timer(2.0).timeout
 	for f in DirAccess.get_files_at(dir.path_join("checkpoints")):

@@ -26,6 +26,8 @@ effects = Array[ExtResource("3_effect")]([SubResource("Effect_1")])
 [resource]
 script = ExtResource("1_item")
 id = &"magnetic_pockets"
+display_name = "Magnetic Pockets"
+description = "Pockets are 10% wider every Round."
 category = &"table"
 cost_cash = 600
 payload = SubResource("Delta_1")

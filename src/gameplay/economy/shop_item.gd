@@ -3,6 +3,8 @@ extends Resource
 ## One catalog row (docs/plan/02 §2, §3.6). Drinks are synthesised from the 03 catalog by ShopCatalog.
 
 @export var id: StringName
+@export var display_name := ""
+@export_multiline var description := ""  # one line on the Bartender's Upgrades tab
 @export var category: StringName  # drink | ball | cue | camera | table
 @export var cost_cash := 0
 @export var payload: Resource  # Drink for drinks, ItemDelta otherwise

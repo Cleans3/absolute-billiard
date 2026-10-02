@@ -1,0 +1,40 @@
+[gd_resource type="Resource" script_class="Drink" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
+
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
+stat = &"cue_power_mult"
+op = 1
+value = 1.06
+
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
+id = &"pickle_power"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
+duration_sec = -1.0
+
+[sub_resource type="Resource" id="Mod_1_0"]
+script = ExtResource("2_mod")
+stat = &"cue_spin_radius_mult"
+op = 1
+value = 0.8
+
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("1_effect")
+id = &"pickle_spin"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1_0")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_drink")
+id = &"pickle_juice"
+display_name = "Pickle Juice"
+description = "Brine for the brave: a firmer stroke, looser english."
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0"), SubResource("Effect_1")])
+mid_round = true
+cost_cash = 35

@@ -32,8 +32,7 @@ var prompt := ""
 var _rd: Node                        # RoundDirector
 var _sim: PhysicsSim
 var _world: WorldInteractions
-var _shop: ShopMenu
-var _picker: DrinkPicker
+var _bartender: BartenderMenu
 var _cameras: CameraRigs
 var _net: Node
 var _host_away := false
@@ -77,8 +76,7 @@ func bind(level: Node) -> void:
 	_rd = level.get_node("RoundDirector")
 	_sim = table.sim
 	_world = level.get_node_or_null("WorldInteractions")
-	_shop = level.get_node_or_null("UILayer/ShopMenu")
-	_picker = level.get_node_or_null("UILayer/DrinkPicker")
+	_bartender = level.get_node_or_null("UILayer/BartenderMenu")
 	_cameras = level.get_node_or_null("Cameras")
 	_controls = level.get_node_or_null("UILayer/TouchControls")
 	cue.table = table
@@ -96,11 +94,8 @@ func bind(level: Node) -> void:
 		_world.interaction_rejected.connect(func(_k: StringName, reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
 	if _cameras != null:
 		_cameras.holders_changed.connect(_sync_carry)
-	if _picker != null:
-		_picker.picked.connect(_on_picked)
-		_picker.shop_requested.connect(func() -> void:
-			if _shop != null:
-				_shop.open())
+	if _bartender != null:
+		_bartender.picked.connect(_on_picked)
 	if _controls != null:
 		_controls.interact_pressed.connect(interact)
 		_controls.shoot_pressed.connect(toggle_cue)
@@ -208,9 +203,9 @@ func _scan() -> void:
 	_target = best
 	var text := best.prompt if best != null else ""
 	if best != null and best.effective_kind() in BAR_KINDS:
-		text = "Bar counter"
-	elif _picker != null and _picker.is_open():
-		_picker.close()  # walked away
+		text = "Bartender"
+	elif _bartender != null and _bartender.is_open():
+		_bartender.close()  # walked away
 	if mode == Mode.CARRY:
 		text = "Place the camera"
 	if text != prompt:
@@ -227,9 +222,9 @@ func interact() -> void:
 		return
 	if _target == null:
 		return
-	if _target.effective_kind() in BAR_KINDS:  # the counter menu: serve / throw here, or on to the Shop
-		if _picker != null:
-			_picker.open(&"bar_serve")
+	if _target.effective_kind() in BAR_KINDS:  # the Bartender: Drinks (serve / throw) and Upgrades
+		if _bartender != null:
+			_bartender.open()
 		return
 	if not _target.try_use({}):
 		_toast("wait")
@@ -244,7 +239,7 @@ func place_camera(at_feet: bool) -> void:
 	_world.request(&"move_camera", _held_rig, {&"place_at": Vector3(spot.x, 0.0, spot.z)})
 
 
-## The bar counter menu's pick: the host validates reach, cooldown, Cash and the hostile caps (03 §3.4).
+## The Bartender menu's Drink pick: the host validates reach, cooldown, Cash and the hostile caps (03 §3.4).
 func _on_picked(kind: StringName, drink_id: StringName, target_peer: int) -> void:
 	if _world != null:
 		_world.request(kind, 0, {&"drink_id": drink_id, &"target_peer": target_peer})

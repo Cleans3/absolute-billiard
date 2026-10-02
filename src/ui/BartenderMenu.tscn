@@ -1,0 +1,124 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/ui/bartender_menu.gd" id="econ_script"]
+
+[node name="BartenderMenu" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("econ_script")
+
+[node name="Dim" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0, 0, 0, 0.78)
+
+[node name="Panel" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -620.0
+offset_top = -336.0
+offset_right = 620.0
+offset_bottom = 336.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="Box" type="VBoxContainer" parent="Panel"]
+layout_mode = 2
+
+[node name="Head" type="HBoxContainer" parent="Panel/Box"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Panel/Box/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 30
+text = "Bartender"
+
+[node name="Cash" type="Label" parent="Panel/Box/Head"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_font_sizes/font_size = 26
+text = "Cash $0"
+
+[node name="Close" type="Button" parent="Panel/Box/Head"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+text = "Close"
+
+[node name="Tabs" type="TabContainer" parent="Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Drinks" type="VBoxContainer" parent="Panel/Box/Tabs"]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="Modes" type="HBoxContainer" parent="Panel/Box/Tabs/Drinks"]
+layout_mode = 2
+
+[node name="Serve" type="Button" parent="Panel/Box/Tabs/Drinks/Modes"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+toggle_mode = true
+text = "Serve"
+
+[node name="Throw" type="Button" parent="Panel/Box/Tabs/Drinks/Modes"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(120, 52)
+layout_mode = 2
+theme_override_font_sizes/font_size = 20
+toggle_mode = true
+text = "Throw"
+
+[node name="Targets" type="HBoxContainer" parent="Panel/Box/Tabs/Drinks/Modes"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Cards" type="HBoxContainer" parent="Panel/Box/Tabs/Drinks"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+theme_override_constants/separation = 12
+alignment = 1
+
+[node name="Note" type="Label" parent="Panel/Box/Tabs/Drinks"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="Upgrades" type="ScrollContainer" parent="Panel/Box/Tabs"]
+visible = false
+layout_mode = 2
+horizontal_scroll_mode = 0
+metadata/_tab_index = 1
+
+[node name="List" type="VBoxContainer" parent="Panel/Box/Tabs/Upgrades"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="Status" type="Label" parent="Panel/Box"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+horizontal_alignment = 1

@@ -1,0 +1,47 @@
+[gd_resource type="Resource" script_class="Drink" load_steps=9 format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
+
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
+stat = &"cue_power_mult"
+op = 1
+value = 1.25
+
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
+id = &"void_power"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
+duration_sec = -1.0
+tag = &"booze"
+
+[sub_resource type="Resource" id="Mod_1_0"]
+script = ExtResource("2_mod")
+stat = &"rule_call_pocket"
+value = 1.0
+
+[sub_resource type="Resource" id="Mod_1_1"]
+script = ExtResource("2_mod")
+stat = &"cue_spin_radius_mult"
+op = 1
+
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("1_effect")
+id = &"void_call"
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1_0"), SubResource("Mod_1_1")])
+duration_sec = -1.0
+tag = &"booze"
+
+[resource]
+script = ExtResource("3_drink")
+id = &"void_juice"
+display_name = "Void Juice"
+description = "Do not look into the glass. A strong hit, a called pocket, no english."
+tier = 5
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0"), SubResource("Effect_1")])
+reward_mult = 1.8
+cost_cash = 120

@@ -12,6 +12,9 @@ var hype := 0.0
 var owned_items: Dictionary = {}  # item id -> count
 var persistent_unlocks: Array[StringName] = []
 var campaign_seed := 0
+var stock_key := -1  # GameLoop.stock_key() the Bartender's shelf was rolled for; -1 = none yet
+var stock_ids: Array[StringName] = []  # the Drinks shelf at this boundary, parallel to stock_left
+var stock_left: Array[int] = []
 var crew_size := 0  # peers in the lobby when it was written (0 = unknown); informational, resume never seat-locks
 
 
@@ -21,6 +24,9 @@ func to_dict() -> Dictionary:
 	var cue: Array[String] = []
 	var owned := {}
 	var persistent: Array[String] = []
+	var stock: Array[String] = []
+	for id in stock_ids:
+		stock.append(String(id))
 	for id: StringName in owned_items:
 		owned[String(id)] = owned_items[id]
 		var it := ShopCatalog.item(id)
@@ -46,6 +52,7 @@ func to_dict() -> Dictionary:
 		"persistent_unlocks": persistent,
 		"seed": campaign_seed,
 		"crew_size": crew_size,
+		"bar_stock": {"key": stock_key, "ids": stock, "left": stock_left},
 	}
 
 
@@ -64,4 +71,12 @@ static func from_dict(d: Dictionary) -> SaveProfile:
 		p.persistent_unlocks.append(StringName(id))
 	p.campaign_seed = int(d.get("seed", 0))
 	p.crew_size = int(d.get("crew_size", 0))
+	var bar: Dictionary = d.get("bar_stock", {})
+	p.stock_key = int(bar.get("key", -1))
+	var ids: Array = bar.get("ids", [])
+	var left: Array = bar.get("left", [])
+	if ids.size() == left.size():  # a torn pair means a hand-edited file: ignore the shelf, a fresh one is rolled
+		for i in ids.size():
+			p.stock_ids.append(StringName(ids[i]))
+			p.stock_left.append(int(left[i]))
 	return p

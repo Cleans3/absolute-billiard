@@ -1,28 +1,30 @@
-[gd_resource type="Resource" script_class="Drink" format=3]
+[gd_resource type="Resource" script_class="Drink" load_steps=6 format=3]
 
-[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_xxol8"]
-[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_xiouk"]
-[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_hpjk7"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
 
-[sub_resource type="Resource" id="Resource_3bqfw"]
-script = ExtResource("2_xiouk")
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
 stat = &"stream_hype_gain_mult"
 op = 1
 value = 1.2
 
-[sub_resource type="Resource" id="Resource_c84wb"]
-script = ExtResource("1_xxol8")
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
 id = &"neighbours_hype"
 target = 6
-stat_modifiers = Array[ExtResource("2_xiouk")]([SubResource("Resource_3bqfw")])
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
 duration_sec = -1.0
 
 [resource]
-script = ExtResource("3_hpjk7")
+script = ExtResource("3_drink")
 id = &"neighbours_round"
-effects = Array[ExtResource("1_xxol8")]([SubResource("Resource_c84wb")])
+display_name = "Round for the Neighbour"
+description = "A drink for the player on your left: they earn 1.25x this Round."
+tier = 1
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0")])
 serve_target = 0
 mid_round = true
-roll_weights = PackedFloat32Array()
 neighbour_reward_mult = 1.25
 cost_cash = 70
