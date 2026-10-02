@@ -3,7 +3,7 @@ extends Node3D
 ## Low-poly person built in code (06 P15, 08 §2.7): 11 bones, one vertex-coloured material, two skinned
 ## meshes (body; head + hat) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
 ## CARRY stances, hand targets). `ragdoll()` hands the bones to a PhysicalBoneSimulator3D; its 11 bodies are
-## static on layer 0 (not simulated, not in the broad phase) until then, and `get_up()` blends back to the pose.
+## on no layer and not simulated until then, and `get_up()` blends back to the pose.
 ## Rests facing -Z with the feet at this node's origin, like the CharacterBody3D it hangs from.
 
 signal got_up  ## simulation stopped (the blend back to the pose starts); `pelvis_at_getup` is where the body lay
@@ -122,6 +122,11 @@ func apply_skin(skin: CharacterSkin) -> void:
 func set_first_person(on: bool) -> void:
 	_first_person = on
 	_head_mi.layers = HEAD_LAYER if on else 1
+
+
+## Local player in CUE: the leaning trunk would fill the aiming view, so the body only casts its shadow.
+func set_body_hidden(on: bool) -> void:
+	_body_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
 ## Head turn relative to the body, radians (positive pitch looks up). Clamped to what a neck can do.

@@ -390,6 +390,7 @@ func _set_mode(m: Mode) -> void:
 	mode = m
 	if m != Mode.RAGDOLL:
 		humanoid.stance = m as Humanoid.Stance  # same order
+	humanoid.set_body_hidden(is_local and m == Mode.CUE)
 	if _controls != null:
 		_controls.set_mode(m)
 	mode_changed.emit(m)
@@ -415,6 +416,8 @@ func knock(impulse: Vector3, seconds: float) -> void:
 		exit_cue()
 		if mode == Mode.CARRY:
 			place_camera(true)
+		if _bartender != null and _bartender.is_open():
+			_bartender.close()
 		cam.top_level = true  # keeps its world transform; _process drives it from the head bone
 		_cam_blend = 1.0
 	_getup_msec = until

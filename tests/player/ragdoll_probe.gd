@@ -222,9 +222,11 @@ func _player() -> void:
 	rd.current_shooter_id = me
 	await _wait(0.3)
 	_check(player.enter_cue() and player.mode == Player.Mode.CUE, "entered CUE")
+	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY, "CUE: the local body is shadow-only, out of the aiming view")
 	player.knock(Vector3(1.0, 1.0, 0.0), 0.5)
 	await process_frame
 	_check(player.mode == Player.Mode.RAGDOLL and not player.cue.active, "knocked out of CUE")
+	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "limp: the body shows again")
 	await _until(func() -> bool: return player.mode == Player.Mode.WALK, 4.0)
 	_check(player.mode == Player.Mode.WALK and not player.cue.active, "back in WALK, not CUE")
 
@@ -257,6 +259,31 @@ func _player() -> void:
 	spawner.knock_blast(player.global_position + Vector3(spawner.BLAST_RADIUS_M - 0.5, 0.0, 0.0))
 	await _wait(0.2)
 	_check(player.is_ragdoll(), "a blast inside the radius knocks the player down")
+	await _until(func() -> bool: return player.mode == Player.Mode.WALK, 5.0)
+	# the real bomb path: a detonating ball (set down beside the player) knocks them through RoundDirector
+	var bomb: Ball
+	for b in rd.get_balls():
+		if not b.is_cue_ball and not b.is_pocketed and not b.retired:
+			bomb = b
+	player.global_position = Vector3(-3.0, 0.05, 3.0)
+	await _wait(0.3)
+	bomb.global_position = player.global_position + Vector3(1.0, 0.9, 0.0)
+	rd.shot_in_progress = true
+	rd._detonate(bomb)
+	rd.shot_in_progress = false
+	await _wait(0.2)
+	_check(player.is_ragdoll(), "a detonating bomb ball knocks the player within its blast")
+	await _until(func() -> bool: return player.mode == Player.Mode.WALK, 5.0)
+	# the stumble stat: a Mystery debuff trips its drinker (a huge dt makes the Poisson roll certain)
+	spawner._process(1000.0)
+	await _wait(0.2)
+	_check(not player.is_ragdoll(), "no stumble without the stat")
+	var fx: EffectManager = level.get_node("EffectManager")
+	fx.apply(&"static_stumble", me, me)
+	await _wait(0.2)
+	spawner._process(1000.0)
+	await _wait(0.2)
+	_check(player.is_ragdoll(), "player_stumble_per_min knocks its peer down")
 	await _until(func() -> bool: return player.mode == Player.Mode.WALK, 5.0)
 	# a thrown drink: the shooter goes down, the thrower does not
 	rd.current_shooter_id = me

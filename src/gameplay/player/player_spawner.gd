@@ -35,7 +35,7 @@ func _process(delta: float) -> void:
 	var dt := _stumble_clock
 	_stumble_clock = 0.0
 	var fx := get_node_or_null(^"../EffectManager") as EffectManager
-	if fx == null or not Stats.ALL.has(STUMBLE_STAT):  # econ adds the stat; harmless before it lands
+	if fx == null:
 		return
 	for slot in _slots().get_children():
 		var peer := (slot as PlayerSlot).peer_id
