@@ -20,6 +20,7 @@ var pocket_osc_m := 0.0  # 03 `pocket_oscillation_m`: amplitude the drop chutes 
 var pocket_seed := 0  # Round seed: with the tick clock it fixes every pocket's phase, so no packets
 var _pocket_t := 0.0
 var _pocket_t_manual := false  # set_pocket_time() pins the clock (probes, tools)
+var felt_color := TableVisuals.CLOTH_COLOR  # BarSkin felt; re-applied by rebuild()
 var layout: TableLayout  # raw TableGeometry.layout() output, table-local at cloth height (y = 0)
 
 @onready var sim: PhysicsSim = $PhysicsSim
@@ -38,6 +39,12 @@ func _ready() -> void:
 	set_physics_process(false)
 	set_process(false)  # _process is defined: it would walk every child each frame (~60 us) until oscillation asks for it
 	rebuild()
+
+
+## The cloth colour (06 P18 bar skins). Visual only: friction lives in the spec and the Effects.
+func set_felt_color(c: Color) -> void:
+	felt_color = c
+	TableVisuals.set_cloth_color(self, c)
 
 
 ## Frees every generated child (bodies + visuals; not `sim`), recomputes `layout` from `spec`,
@@ -62,6 +69,7 @@ func rebuild() -> void:
 
 	TableBuilder.build(self, spec, layout, y)
 	TableVisuals.build(self, spec, layout, y)
+	TableVisuals.set_cloth_color(self, felt_color)
 
 	for area in get_children():
 		if area is Area3D and area.has_meta(&"pocket_id"):
