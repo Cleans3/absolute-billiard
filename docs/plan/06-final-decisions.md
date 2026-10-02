@@ -177,3 +177,21 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 **P10 — Noray first, own tunnel relay as fallback (2026-09-30, after the first real relay run).** Noray stays for the lobby code and the direct punch. Its built-in relay is not used: it cannot reach a host behind a symmetric NAT (Cleanse's own network, many mobile carriers). The fallback is `deploy/noray/tunnel.py` on the same VPS: one UDP port per joiner, both addresses learned from token packets on that port, so it works behind any NAT (04 §2.3).
 
 **P9 — M0 is measured later, not waited on.** The mobile perf spike ships as a one-command device run (`src/tools/m0_device_run.sh`); M2+ proceed meanwhile. `PhysicsSim.LIVE_TICK` is the single tick constant, so the 240/120 Hz outcome is a one-line change.
+
+# Cleanse's rulings (2026-10-02) — polish pass (override P3, P6 "cosmetics later", P8 "fouls cost no Cash")
+
+**P11 — Settings and controls.** A Settings screen reachable from the main menu and an in-game pause menu (Esc / touch pause button): master volume, graphics quality `Auto | High | Medium | Low` (Auto = `QualityLadder`), FOV, mouse / touch-look / cue-aim sensitivity, invert Y, touch layout mirror, show FPS. A Controls screen rebinds every keyboard/mouse gameplay action, with reset to defaults. Persisted in `user://settings.cfg` by a static `Settings` class. The pause menu never pauses the simulation (multiplayer); it blocks local input only.
+
+**P12 — Drawn UI, isolated screens.** One project-wide `Theme` built from hand-drawn SVG sprites (panels, buttons, icons). One `UIRouter` under `UILayer` owns modal screens: at most one modal is open, a phase change closes every modal that does not belong to the new phase, Esc closes the top modal or opens Pause. HUD regions are fixed and never overlap; one toast channel. GAME_OVER gets a way back to the menu.
+
+**P13 — No fog planes.** The three additive haze quads over the table are removed (they sat at eye height). The Environment's depth fog stays.
+
+**P14 — Camera rigs look like cameras.** Real tripod + body + lens model with authored materials; they rendered with the engine default material.
+
+**P15 — Triggered ragdoll player.** Every player is a jointed humanoid. It walks normally and goes limp on a hit — thrown drink, bomb-ball blast nearby, a mystery-drink stumble, a fall — then gets up after ~2 s; the first-person camera rides the ragdoll head. The host broadcasts the knock; each peer simulates the ragdoll locally (cosmetic); pose mode `3 = RAGDOLL`. The bartender NPC uses the same humanoid body.
+
+**P16 — Scratch costs Cash.** Cue ball pocketed or off the table = fine of 10% of the Night's Quota, rounded to the nearest $5, minimum $25; Cash may go negative. A whiff or shot-clock foul still costs no Cash.
+
+**P17 — Bartender NPC replaces the Shop menu (refines P3).** The counter moves off the back wall; an NPC bartender stands behind it. No Shop button. One bartender menu: **Drinks** = a random stock of 5 offers, rerolled by the host at every Intermission, each offer's tier drawn by relative weight Common 50 · Uncommon 26 · Rare 13 · Epic 6 · Legendary 2 · Mystery 3, then a drink of that tier; stock per offer Common 3 · Uncommon 2 · others 1, shared by the crew. **Mystery** drinks are red with glitching text and show one buff and one debuff, so the buyer weighs it. **Upgrades** = the fixed ball/cue/camera/table rows.
+
+**P18 — Skins (test mode).** A Skins screen in the main menu with character skins and bar skins, all free and unlocked for now (economy later). Each Round the host picks one bar skin at random from the crew's equipped bar skins.
