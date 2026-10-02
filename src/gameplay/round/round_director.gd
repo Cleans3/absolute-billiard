@@ -616,6 +616,9 @@ func _detonate(bomb: Ball) -> void:
 		var dir := d / dist if dist > 0.0001 else Vector3.RIGHT
 		b.wake()
 		b.apply_central_impulse(dir * BOMB_KICK_MPS * (1.0 - dist / reach) * b.mass)
+	var spawner := get_tree().get_first_node_in_group(&"player_spawner")  # by group: a -s probe compiles this before the autoloads exist
+	if spawner != null:  # players near the blast go limp (06 P15)
+		spawner.call(&"knock_blast", bomb.global_position)
 	bomb.retire()
 
 
