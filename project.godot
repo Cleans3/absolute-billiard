@@ -223,6 +223,7 @@ textures/vram_compression/import_etc2_astc=true
 anti_aliasing/quality/msaa_3d=1
 scaling_3d/mode=0
 scaling_3d/scale=1.0
+viewport/hdr_2d=true
 lights_and_shadows/directional_shadow/size=1024
 lights_and_shadows/positional_shadow/atlas_size=2048
 lights_and_shadows/positional_shadow/atlas_quadrant_0_subdiv=2

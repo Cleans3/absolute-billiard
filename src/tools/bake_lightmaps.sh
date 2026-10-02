@@ -6,7 +6,7 @@ set -euo pipefail
 cd "$(dirname "$0")/../.."
 cp project.godot /tmp/project.godot.bake-bak
 before=$(git diff --name-only)
-trap 'cp /tmp/project.godot.bake-bak project.godot; for f in $(git diff --name-only); do grep -qxF "$f" <<<"$before" || git checkout -- "$f"; done' EXIT  # editor re-saves .tres uids: undo those
+trap 'cp /tmp/project.godot.bake-bak project.godot; for f in $(git diff --name-only); do case $f in src/gameplay/bar_room/BarRoom.*) continue;; esac; grep -qxF "$f" <<<"$before" || git checkout -- "$f"; done' EXIT  # editor re-saves .tres uids: undo those (never the bake's own outputs)
 sed -i 's|^enabled=PackedStringArray(\(.*\))|enabled=PackedStringArray(\1, "res://src/tools/bake_plugin/plugin.cfg")|' project.godot
 godot --path . --editor -- bake-bar-room 2>&1 | tee /tmp/bake.log | grep -E "BAKE|rror|Bake" || true
 grep -q "BAKE DONE light_data=(res" /tmp/bake.log && ls src/gameplay/bar_room/*.lmbake

@@ -534,7 +534,7 @@ func _world() -> void:
 	_check(rejected.back() == &"cant_afford" and economy.cash == 5, "cash cost refuses when short")
 	# throw_drink: price = the drink's, view shake lands on the shooter only
 	economy.cash = 100
-	at[0] = Vector3(5.5, 0.0, 4.6)
+	at[0] = Vector3(4.2, 0.0, 2.5)
 	now[0] += 1000000
 	r.director.end_shot(0)
 	wi.request(&"throw_drink", 0, {&"drink_id": &"beer"})

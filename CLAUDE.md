@@ -43,7 +43,7 @@ Do not hand-edit `.godot/` (editor cache) or `*.uid` / `*.import` files.
 
 ## Architecture (from 04, D7, P1–P2)
 
-- **Mobile first.** Keep `renderer/rendering_method="mobile"`; no Forward+-only features (SSR, SDFGI, volumetric fog). Bar mood = `LightmapGI` bake + emissive + fog plane. Web export is out of scope.
+- **Mobile first.** Keep `renderer/rendering_method="mobile"`; no Forward+-only features (SSR, SDFGI, volumetric fog). Bar mood = `LightmapGI` bake + emissive + the Environment's depth fog (no fog planes, 06 P13); `viewport/hdr_2d=true` keeps the dark room from banding. Web export is out of scope.
 - **One autoload: `NetManager`** (`src/core/`). `SaveManager` is a static class. `GameLoop`, `RoundDirector`, `EconomyManager`, `StreamManager`, `EffectManager`, `EventScheduler` are children of `MainLevel`; `PhysicsSim` lives inside the `Table` scene. No global signal bus. "New campaign" = scene reload.
 - **Host-authoritative, event-based sync.** Host runs Jolt; clients dead-reckon between transmitted contact events via shared `BallMotion.advance`, interpolate only, gate presentation on the playback clock. Hand-packed `PackedByteArray`, not `MultiplayerSynchronizer` (only `PlayerSlot`s use `MultiplayerSpawner`). RPC modes/channels are tabulated in 04 §5 — match them exactly.
 - **Transport enum** `{enet_direct, enet_noray, steam}`; Noray is primary (lobby code + direct punch) with our own tunnel relay as the any-NAT fallback (06 P10, `deploy/noray/tunnel.py`), Steam optional PC-only, loaded conditionally. Singleplayer = host with zero peers (`OfflineMultiplayerPeer`), never an `if singleplayer` branch.
