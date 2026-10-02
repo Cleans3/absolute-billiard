@@ -1,8 +1,10 @@
 class_name PhaseScreen
 extends UIModal
 ## The Night/Round phase screens as one modal (docs/plan/06 P12): Intermission, Reckoning, Game over, Campaign won.
-## It opens and closes itself from GameLoop.phase_changed (keep_on_phase, so the router leaves it alone). Only the
-## Intermission screen can be set aside ("Visit the bar"): Pause then offers it back, so the host can still start the Round.
+## It opens and closes itself from GameLoop.phase_changed (keep_on_phase, so the router leaves it alone) and has the
+## lowest priority: the Bartender menu, Pause, Settings, Controls and the vote all displace it and it comes back when
+## they close, while the phase still holds, so the host can always still press Start Round. Only the Intermission
+## screen can be set aside ("Visit the bar" to walk to the bar); the next screen that opens and closes brings it back.
 
 @export var game_loop: GameLoop
 @export var economy: EconomyManager
@@ -10,7 +12,8 @@ extends UIModal
 var _night_number := 1
 var _body := ""  # Intermission text: the Night's ask, then the last Round's result
 var _reckoning := ""
-var _aside := false  # the Intermission screen was set aside by "Visit the bar"
+var _wanted := false  # the phase holds a screen (open, displaced, or set aside)
+var _aside := false  # set aside by "Visit the bar": the player is walking, nothing else is open
 
 @onready var _title: Label = %Title
 @onready var _text: Label = %Body
@@ -20,16 +23,11 @@ var _aside := false  # the Intermission screen was set aside by "Visit the bar"
 @onready var _again: Button = %NewCampaign
 
 
-func _init() -> void:
-	super()
-	add_to_group(&"ui_phase")
-
-
 func _ready() -> void:
 	super()
 	keep_on_phase = true
 	dismissable = false
-	priority = 10
+	priority = -10
 	_next.pressed.connect(func() -> void: game_loop.advance())
 	_bar.pressed.connect(_set_aside)
 	_menu.pressed.connect(func() -> void: _net().call(&"leave"))
@@ -42,23 +40,27 @@ func _ready() -> void:
 		game_loop.phase_changed.connect(_on_phase_changed)
 	if economy != null:
 		economy.quota_evaluated.connect(_on_quota_evaluated)
+	_bind_router.call_deferred()
 
 
-## True while the Intermission screen is set aside: Pause offers it back.
-func can_reopen() -> bool:
-	return _aside
+func _bind_router() -> void:
+	if UIRouter.instance != null:
+		UIRouter.instance.modal_changed.connect(_on_modal_changed)
 
 
-func title_text() -> String:
-	return _title.text
+## Another screen opened: the walk is over. Nothing is open any more: the phase screen returns unless the player is walking.
+func _on_modal_changed(open: bool) -> void:
+	if open:
+		_aside = false
+	elif _wanted and not _aside and not visible:
+		open()
 
 
 func _set_aside() -> void:
 	_aside = true
 	close()
-	var router := UIRouter.instance
-	if router != null and game_loop.is_host():
-		router.toast("Open the menu to start the Round", &"info")
+	if UIRouter.instance != null:
+		UIRouter.instance.toast("Menu, then Resume, returns to the Intermission")
 
 
 func _on_night_started(night_number: int, quota: int) -> void:
@@ -80,6 +82,7 @@ func _on_quota_evaluated(paid: int, demand: int, is_game_over: bool) -> void:
 func _on_phase_changed(phase: GameLoop.Phase) -> void:
 	var host := game_loop.is_host()
 	_aside = false
+	_wanted = true
 	match phase:
 		GameLoop.Phase.INTERMISSION:
 			var next_round := game_loop.round_index + 1
@@ -87,10 +90,11 @@ func _on_phase_changed(phase: GameLoop.Phase) -> void:
 		GameLoop.Phase.RECKONING:
 			_present("Night %d reckoning" % _night_number, _reckoning, "Next Night", host, false, false)
 		GameLoop.Phase.GAME_OVER:
-			_present("Game over", _reckoning, "", false, false, true)
+			_present("Game over", _reckoning, "", host, false, true)
 		GameLoop.Phase.CAMPAIGN_WON:
 			_present("Campaign won", _reckoning, "Endless", host, false, true)
 		_:
+			_wanted = false
 			close()
 
 

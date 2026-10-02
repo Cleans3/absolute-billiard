@@ -209,9 +209,10 @@ custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
 text = "Leave"
 
-[node name="Footer" type="HBoxContainer" parent="Center/Menu"]
+[node name="Footer" type="GridContainer" parent="Center/Menu"]
 unique_name_in_owner = true
 layout_mode = 2
+columns = 2
 
 [node name="Settings" type="Button" parent="Center/Menu/Footer"]
 unique_name_in_owner = true

@@ -8,7 +8,6 @@ const CONFIRM_SEC := 3.0
 var _confirm: SceneTreeTimer
 
 @onready var _resume: Button = %Resume
-@onready var _phase: Button = %Phase
 @onready var _leave: Button = %Leave
 
 
@@ -25,17 +24,10 @@ func _ready() -> void:
 	%Settings.pressed.connect(_open_group.bind(&"ui_settings"))
 	%Controls.pressed.connect(_open_group.bind(&"ui_controls"))
 	%Controls.visible = not OS.has_feature("mobile")  # no keyboard to rebind on a phone
-	_phase.pressed.connect(func() -> void:
-		close()
-		_phase_screen().open())
 	_leave.pressed.connect(_on_leave)
 
 
 func _on_open() -> void:
-	var screen := _phase_screen()
-	_phase.visible = screen != null and screen.can_reopen()
-	if _phase.visible:
-		_phase.text = "Back to the %s" % screen.title_text()
 	_leave.text = "Leave to menu"
 	_confirm = null
 	_resume.grab_focus()
@@ -60,7 +52,3 @@ func _open_group(group: StringName) -> void:
 	var m := get_tree().get_first_node_in_group(group)
 	if m != null:
 		m.call(&"open")
-
-
-func _phase_screen() -> PhaseScreen:
-	return get_tree().get_first_node_in_group(&"ui_phase") as PhaseScreen

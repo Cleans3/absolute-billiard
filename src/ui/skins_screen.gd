@@ -5,6 +5,11 @@ extends UIModal
 @onready var _back: Button = %Back
 
 
+func _init() -> void:
+	super()
+	add_to_group(&"ui_skins")
+
+
 func _ready() -> void:
 	super()
 	keep_on_phase = true

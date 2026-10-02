@@ -47,7 +47,7 @@ text = "Settings"
 
 [node name="Tabs" type="TabContainer" parent="Center/Panel/Rows"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 340)
+custom_minimum_size = Vector2(0, 372)
 layout_mode = 2
 
 [node name="Buttons" type="HBoxContainer" parent="Center/Panel/Rows"]

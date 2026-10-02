@@ -52,13 +52,6 @@ theme_type_variation = &"PrimaryButton"
 text = "Resume"
 icon = ExtResource("ui_pause")
 
-[node name="Phase" type="Button" parent="Center/Panel/Rows"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 68)
-layout_mode = 2
-text = "Back to the Intermission"
-
 [node name="Settings" type="Button" parent="Center/Panel/Rows"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 68)

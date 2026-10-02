@@ -23,7 +23,7 @@ func _init() -> void:
 func _ready() -> void:
 	if dim:
 		var shade := ColorRect.new()
-		shade.color = Color(0.02, 0.01, 0.01, 0.62)
+		shade.color = Color(0.02, 0.01, 0.01, 0.68)
 		shade.set_anchors_preset(Control.PRESET_FULL_RECT)
 		add_child(shade)
 		move_child(shade, 0)

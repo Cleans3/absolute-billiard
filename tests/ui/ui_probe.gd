@@ -24,6 +24,7 @@ func _run() -> void:
 	await _controls_screen()
 	await _quality()
 	await _vote()
+	await _phase_and_pause()
 	await _layout()
 	DirAccess.remove_absolute(Settings.path)
 	Settings.reset_bindings()
@@ -259,6 +260,76 @@ func _vote() -> void:
 	router.free()
 
 
+# --- phase screens vs the other modals --------------------------------------------------------------------
+
+func _phase_and_pause() -> void:
+	root.multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()  # we are the host: Start Round is ours to press
+	var loop := GameLoop.new()
+	var nights: Array[NightConfig] = [load("res://src/resources/nights/night_1.tres")]
+	loop.nights = nights
+	root.add_child(loop)
+	var router := UIRouter.new()
+	router.game_loop = loop
+	root.add_child(router)
+	var phase: PhaseScreen = load("res://src/ui/PhaseScreen.tscn").instantiate()
+	phase.game_loop = loop
+	var pause: PauseMenu = load("res://src/ui/PauseMenu.tscn").instantiate()
+	var settings: SettingsScreen = load("res://src/ui/SettingsScreen.tscn").instantiate()
+	var controls: ControlsScreen = load("res://src/ui/ControlsScreen.tscn").instantiate()
+	var bartender := UIModal.new()  # stands in for BartenderMenu: a ui_modal at the default priority
+	var vote: EventVote = load("res://src/ui/EventVote.tscn").instantiate()
+	for n in [phase, pause, settings, controls, bartender, vote]:
+		root.add_child(n)
+	await process_frame
+	await process_frame
+	var screens := {"Bartender": bartender, "Pause": pause, "Settings": settings, "Controls": controls}
+	loop.phase_changed.emit(GameLoop.Phase.INTERMISSION)
+	_check(phase.visible and phase._next.visible and phase._next.text == "Start Round", "Intermission screen with the host's Start Round")
+	for name: String in screens:
+		var m: UIModal = screens[name]
+		m.open()
+		_check(m.visible and not phase.visible and router.current == m, "%s open: the phase screen is hidden" % name)
+		m.close()
+		_check(phase.visible and phase._next.visible and not m.visible, "%s closed: the phase screen is back and the host can press Start Round" % name)
+	var ids: Array[StringName] = [FxCatalog.EVENTS[0].id, FxCatalog.EVENTS[1].id, FxCatalog.EVENTS[2].id]
+	vote._on_offer(1, 1, ids)
+	_check(vote.visible and not phase.visible, "the vote displaces the phase screen")
+	vote._left = 0.01
+	vote._process(0.05)
+	_check(phase.visible and not vote.visible, "and the phase screen returns when the vote is over")
+
+	_esc()
+	_check(pause.visible and not phase.visible, "Esc over the phase screen opens Pause (it cannot be dismissed)")
+	settings.open()
+	_check(settings.visible and not pause.visible, "Settings opens over Pause")
+	settings.close()
+	_check(pause.visible and not phase.visible, "closing Settings returns to Pause")
+	pause.close()
+	_check(phase.visible, "closing Pause returns to the phase screen")
+
+	phase._bar.pressed.emit()
+	_check(not phase.visible and not router.is_modal_open(), "Visit the bar sets the Intermission screen aside: nothing blocks the walk")
+	bartender.open()
+	_check(bartender.visible and not phase.visible, "the bar menu opens while walking")
+	bartender.close()
+	_check(phase.visible and phase._next.visible, "the walk is over once a screen has come and gone: the phase screen is back")
+	phase._bar.pressed.emit()
+	_esc()
+	pause._resume.pressed.emit()
+	_check(phase.visible, "Pause, Resume from a walk brings the phase screen back")
+
+	loop.phase_changed.emit(GameLoop.Phase.ROUND_LIVE)
+	_check(not phase.visible, "a Round starting closes the phase screen")
+	bartender.open()
+	bartender.close()
+	_check(not phase.visible, "and no screen closing brings it back while the phase has none")
+	loop.phase_changed.emit(GameLoop.Phase.GAME_OVER)
+	_check(phase.visible and phase._menu.visible and not phase._next.visible and phase._again.visible, "Game over: Back to menu and the host's New campaign")
+	for n in [phase, pause, settings, controls, bartender, vote, router, loop]:
+		n.free()
+	root.multiplayer.multiplayer_peer = null
+
+
 # --- region map -----------------------------------------------------------------------------------------
 
 func _layout() -> void:
@@ -274,6 +345,10 @@ func _layout() -> void:
 		var tc: TouchControls = load("res://src/ui/TouchControls.tscn").instantiate()
 		vp.add_child(tc)
 		await process_frame
+		Settings.set_value(&"touch_mirror", true)
+		_check(tc.mirror, "the touch mirror setting reaches TouchControls")
+		Settings.set_value(&"touch_mirror", false)
+		_check(not tc.mirror, "and back")
 		for chip: Label in [hud._night, hud._round, hud._time, hud._shots, hud._cash, hud._quota, hud._viewers, hud._hype]:
 			chip.text += "0"  # a size worse than the real ones
 		hud._fps.text = "120 fps"
