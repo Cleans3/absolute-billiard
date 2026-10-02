@@ -187,7 +187,12 @@ func _client() -> void:
 	await _until(func() -> bool: return rig.held_by == 0, "mirrored: rig free", 5.0)
 	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
 	await _until(func() -> bool: return player.prompt == "Grab camera", "grab prompt on the placed rig", 5.0)
-	player.interact()
+	# The host judges reach from this peer's streamed pose, and ENet throttles unreliable packets for seconds once the
+	# idle 30 fps downclock raises the round trip: ask again until the host has seen us (a refusal is `too_far`).
+	var t_ask := Time.get_ticks_msec()
+	while player.mode != Player.Mode.CARRY and Time.get_ticks_msec() - t_ask < 12000:
+		player.interact()
+		await create_timer(0.5).timeout
 	await _until(func() -> bool: return player.mode == Player.Mode.CARRY, "client CARRY from the mirrored holder", 5.0)
 	_flag("client_done")
 	await create_timer(1.0).timeout

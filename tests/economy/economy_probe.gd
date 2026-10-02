@@ -8,6 +8,7 @@ extends SceneTree
 const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")
 const NIGHT_2 := preload("res://src/resources/nights/night_2.tres")
 const HUD_SCENE := preload("res://src/ui/HUD.tscn")
+const PHASE_SCENE := preload("res://src/ui/PhaseScreen.tscn")
 const COMBO: Array[StringName] = [&"Combo"]
 
 var fails := 0
@@ -160,6 +161,10 @@ func _loop() -> void:
 	hud.economy = economy
 	hud.stream = stream
 	root.add_child(hud)
+	var phase_screen: PhaseScreen = PHASE_SCENE.instantiate()
+	phase_screen.game_loop = loop
+	phase_screen.economy = economy
+	root.add_child(phase_screen)
 	var reasons: Array[StringName] = []
 	loop.round_ended.connect(func(reason: StringName, _points: int) -> void: reasons.append(reason))
 	var over: Array[bool] = []
@@ -167,10 +172,10 @@ func _loop() -> void:
 
 	loop.start_campaign()
 	_check(loop.phase == GameLoop.Phase.INTERMISSION and stream.viewers == 100, "Night 1 opens in Intermission, viewers = base")
-	_check(hud.get_node("%Overlay").visible and hud.get_node("%Next").visible, "HUD: Intermission overlay + host Next button")
+	_check(phase_screen.visible and phase_screen.get_node("%Next").visible, "PhaseScreen: Intermission screen + host Next button")
 	loop.advance()
 	_check(loop.phase == GameLoop.Phase.ROUND_LIVE and loop.shots_left == 10, "advance() starts Round 1 with 10 shots")
-	_check(not hud.get_node("%Overlay").visible, "HUD: overlay hides while a Round is live")
+	_check(not phase_screen.visible, "PhaseScreen: closes while a Round is live")
 	_check(director.started.size() == 1 and director.started[0][1] == 1, "start_round(config, 1, seed) called")
 	_check(director.started[0][2] == loop.round_seed, "HUD seed == seed handed to RoundDirector")
 	director.shot(0, [], true)
@@ -208,6 +213,7 @@ func _loop() -> void:
 			director.shot(0)
 	_check(loop.phase == GameLoop.Phase.GAME_OVER and over == [true, false], "final-night miss -> GAME_OVER")
 	_check(economy.cash == banked, "a missed demand deducts nothing")
-	_check(hud.get_node("%Title").text == "Game over" and not hud.get_node("%Next").visible, "HUD: game over panel, no Next")
-	for node in [hud, loop, economy, stream, director]:
+	_check(phase_screen.get_node("%Title").text == "Game over" and not phase_screen.get_node("%Next").visible, "PhaseScreen: game over, no Next")
+	_check(phase_screen.get_node("%Menu").visible, "PhaseScreen: game over offers Back to menu")
+	for node in [hud, phase_screen, loop, economy, stream, director]:
 		node.free()

@@ -10,6 +10,7 @@ shader_parameter/fog_density = 0.0
 shader_parameter/shake_amp = 0.0
 
 [node name="ViewOverlay" type="ColorRect"]
+z_index = -1
 material = SubResource("ShaderMaterial_view")
 anchors_preset = 15
 anchor_right = 1.0

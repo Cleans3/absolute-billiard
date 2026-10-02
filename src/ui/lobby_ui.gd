@@ -1,5 +1,6 @@
 extends Control
 ## Boot screen (docs/plan/04 §4): Host / Join by code / Advanced IP / Solo, then the room (code, roster, Start).
+## Settings / Controls / Skins open as modals of this scene's UIRouter.
 
 const REASONS := {
 	bad_code = "That is not a lobby code.",
@@ -14,7 +15,7 @@ const REASONS := {
 	host_left = "The host left the lobby.",
 }
 
-@onready var _home: Array[Control] = [%Host, $Center/Menu/JoinRow, %AdvancedToggle, %Solo]
+@onready var _home: Array[Control] = [%Host, %JoinRow, %AdvancedToggle, %Solo, %Footer]
 @onready var _resume_screen: Array[Control] = [%ResumeScroll, %ResumeBack]
 @onready var _room: Array[Control] = [%RoomCode, %Share, %Roster, %Start, %Leave]
 @onready var _status: Label = %Status
@@ -31,6 +32,12 @@ func _ready() -> void:
 	%Steam.pressed.connect(_busy.bind(NetManager.host.bind(NetManager.Transport.STEAM)))
 	%Solo.pressed.connect(_busy.bind(NetManager.host_solo))
 	%AdvancedToggle.toggled.connect(func(on: bool) -> void: %AdvancedRow.visible = on)
+	%Settings.pressed.connect(_open_group.bind(&"ui_settings"))
+	%Controls.pressed.connect(_open_group.bind(&"ui_controls"))
+	%Skins.pressed.connect(_open_group.bind(&"ui_skins"))
+	%Quit.pressed.connect(get_tree().quit)
+	%Controls.visible = not OS.has_feature("mobile")  # no keyboard to rebind on a phone
+	%Quit.visible = OS.has_feature("pc")
 	%Share.pressed.connect(_on_share)
 	%Start.pressed.connect(NetManager.start_game)
 	%Leave.pressed.connect(NetManager.leave)
@@ -74,9 +81,16 @@ func _on_failed(reason: StringName) -> void:
 	_set_home(true)
 
 
+func _open_group(group: StringName) -> void:
+	var m := get_tree().get_first_node_in_group(group)
+	if m != null:
+		m.call(&"open")
+
+
 func _set_home(on: bool) -> void:
 	for c in _home:
 		c.visible = on
+	%AdvancedRow.visible = on and %AdvancedToggle.button_pressed
 	%Steam.visible = on and NetManager.steam_available()  # PC + addon + Steam client only
 	for c in _room:
 		c.visible = not on
@@ -93,8 +107,7 @@ func _show_resume() -> void:
 		c.queue_free()
 	for e in SaveManager.list_checkpoints():
 		var row := Button.new()
-		row.custom_minimum_size = Vector2(0, 72)
-		row.add_theme_font_size_override(&"font_size", 24)
+		row.custom_minimum_size = Vector2(0, 68)
 		row.text = resume_label(e)
 		row.pressed.connect(_on_resume_pick.bind(e))
 		%ResumeList.add_child(row)

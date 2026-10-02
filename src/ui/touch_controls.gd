@@ -14,7 +14,7 @@ signal pocket_tapped(index: int)
 
 const BTN := Vector2(96, 96)
 const MARGIN := 24.0
-const TOAST_SEC := 2.5
+const PAUSE_BTN := Vector2(64, 64)
 const MODE_WALK := 0  ## Player.Mode values, kept as ints so this file needs no Player dependency
 const MODE_CUE := 1
 const MODE_CARRY := 2
@@ -41,23 +41,22 @@ var _mode := MODE_WALK
 var _can_shoot := false
 var _prompt := ""
 var _call_pockets := false
-var _clock_text := ""
-var _toast_text := ""
 var _btn_interact: TouchButton
 var _btn_shoot: TouchButton
 var _btn_jump: TouchButton
 var _btn_back: TouchButton
 var _btn_place: TouchButton
 var _btn_drop: TouchButton
+var _btn_pause: TouchButton
 var _prompt_label: Label
-var _status: Label
-var _toast_timer: Timer
+var _status: Label  ## the shot clock; notices go through UIRouter.toast (one channel)
 var _away: Label
 var _right: Array[Control] = []  ## laid out on the right-thumb side, flipped by `mirror`
 var _left: Array[Control] = []
 
 
 func _ready() -> void:
+	add_to_group(Settings.GROUP)
 	var root := Control.new()
 	root.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -74,23 +73,46 @@ func _ready() -> void:
 	_btn_jump = _button(root, "Jump", jump_pressed)
 	_btn_interact = _button(root, "Use", interact_pressed)
 	_btn_shoot = _button(root, "Shoot", shoot_pressed)
-	_btn_back = _button(root, "Back", back_pressed)
+	_btn_back = _button(root, "", back_pressed)
+	_btn_back.icon = load("res://assets/ui/icon_back.svg")
 	_btn_place = _button(root, "Place", place_pressed)
 	_btn_drop = _button(root, "Drop", drop_pressed)
 	for i in 6:
 		var b := _button(root, str(i + 1), pocket_tapped, i)
 		pockets.append(b)
-	_prompt_label = _label(root, 0.5, 1.0, -200, -150, 200, -110)
-	_status = _label(root, 0.5, 0.0, -300, 16, 300, 56)
-	_away = _label(root, 0.5, 0.0, -300, 120, 300, 170)
+	_btn_pause = TouchButton.new()
+	_btn_pause.icon = load("res://assets/ui/icon_pause.svg")
+	_btn_pause.pressed.connect(func() -> void:
+		if UIRouter.instance != null:
+			UIRouter.instance.open_pause())
+	root.add_child(_btn_pause)
+	_prompt_label = _label(root, 0.5, 1.0, -200, -76, 200, -36)
+	_status = _label(root, 0.5, 0.0, -160, 64, 160, 104)
+	_away = _label(root, 0.5, 0.0, -300, 232, 300, 272)
 	_away.text = "Host away, waiting…"
 	_away.hide()
-	_toast_timer = Timer.new()
-	_toast_timer.one_shot = true
-	_toast_timer.timeout.connect(_on_toast_end)
-	add_child(_toast_timer)
+	mirror = bool(Settings.value(&"touch_mirror"))  # the setter lays out
 	_layout()
 	_apply()
+	_bind_router.call_deferred()
+
+
+## Hidden under a modal: the screens own every touch while one is open (docs 08 §2.8).
+func _bind_router() -> void:
+	if UIRouter.instance != null:
+		UIRouter.instance.modal_changed.connect(_on_modal_changed)
+		_on_modal_changed(UIRouter.instance.is_modal_open())
+
+
+func _on_modal_changed(open: bool) -> void:
+	visible = not open
+	if open:
+		look.release()
+		stick.release()
+
+
+func _on_settings_changed() -> void:
+	mirror = bool(Settings.value(&"touch_mirror"))
 
 
 ## Mode / context. Every setter redraws only what changed.
@@ -134,24 +156,13 @@ func set_called_pocket(index: int) -> void:
 
 
 func set_clock(text: String) -> void:
-	if text != _clock_text:
-		_clock_text = text
-		_show_status()
+	_status.text = text
 
 
+## Kept for callers that hold the controls (CueController); the line itself is UIRouter's.
 func toast(text: String) -> void:
-	_toast_text = text
-	_toast_timer.start(TOAST_SEC)
-	_show_status()
-
-
-func _on_toast_end() -> void:
-	_toast_text = ""
-	_show_status()
-
-
-func _show_status() -> void:
-	_status.text = _toast_text if _toast_text != "" else _clock_text
+	if UIRouter.instance != null:
+		UIRouter.instance.toast(text)
 
 
 func _apply() -> void:
@@ -159,9 +170,11 @@ func _apply() -> void:
 	var cue := _mode == MODE_CUE
 	var carry := _mode == MODE_CARRY
 	look.visible = touch
+	_layout_look()
+	_btn_pause.visible = touch
 	stick.visible = touch and not cue
 	_btn_jump.visible = touch and walk
-	_btn_interact.visible = touch and (walk or carry) and _prompt != ""
+	_btn_interact.visible = touch and walk and _prompt != ""  # CARRY has Place / Drop in that corner
 	_btn_shoot.visible = touch and walk and _can_shoot
 	_btn_back.visible = touch and cue
 	_btn_place.visible = touch and carry
@@ -182,6 +195,8 @@ func _layout() -> void:
 	stick.anchor_right = 1.0 if mirror else 0.5
 	stick.anchor_top = 0.25
 	stick.anchor_bottom = 1.0
+	_layout_look()
+	_corner(_btn_pause, not mirror, 16.0, 8.0, PAUSE_BTN, true)  # opposite corner to Back (top, left-thumb side)
 	# right-thumb group (flips with `mirror`)
 	_corner(_btn_jump, not mirror, MARGIN, MARGIN)
 	_corner(_btn_interact, not mirror, MARGIN, MARGIN * 2 + BTN.y)
@@ -202,8 +217,21 @@ func _layout() -> void:
 		b.anchor_bottom = 0.0
 		b.offset_left = (i - 3) * 80.0
 		b.offset_right = b.offset_left + 72.0
-		b.offset_top = 72.0
-		b.offset_bottom = 144.0
+		b.offset_top = 156.0
+		b.offset_bottom = 228.0
+
+
+## Look pad: the half opposite the stick (WALK / CARRY), the whole screen in CUE where any free spot aims. Under every button.
+func _layout_look() -> void:
+	var half := _mode != MODE_CUE
+	look.anchor_left = 0.0 if (not half or mirror) else 0.5
+	look.anchor_right = 1.0 if (not half or not mirror) else 0.5
+	look.anchor_top = 0.0
+	look.anchor_bottom = 1.0
+	look.offset_left = 0.0
+	look.offset_right = 0.0
+	look.offset_top = 0.0
+	look.offset_bottom = 0.0
 
 
 ## Pin `c` to a screen corner: `side_right` picks left/right, `x`/`y` are the inset, `top` picks the top edge.
@@ -257,6 +285,7 @@ func _label(parent: Control, ax: float, ay: float, l: float, t: float, r: float,
 	lab.offset_right = r
 	lab.offset_bottom = b
 	lab.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	lab.theme_type_variation = &"HudLabel"
 	lab.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(lab)
 	return lab

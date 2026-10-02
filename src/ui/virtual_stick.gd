@@ -3,6 +3,8 @@ extends Control
 ## Floating move stick (08 §2.3): origin is wherever the finger lands, radius 80, dead zone 0.15.
 ## `value` uses Input.get_vector's convention (up = −y) so it adds straight onto the keyboard vector.
 
+const RING := preload("res://assets/ui/touch_stick_ring.svg")
+const KNOB := preload("res://assets/ui/touch_stick_knob.svg")
 const RADIUS := 80.0
 const DEAD_ZONE := 0.15
 
@@ -41,5 +43,5 @@ func release() -> void:
 func _draw() -> void:
 	if _finger == -1:
 		return
-	draw_arc(_origin, RADIUS, 0.0, TAU, 32, Color(1, 1, 1, 0.35), 3.0)
-	draw_circle(_knob, 28.0, Color(1, 1, 1, 0.55))
+	draw_texture_rect(RING, Rect2(_origin - Vector2(RADIUS, RADIUS), Vector2(RADIUS, RADIUS) * 2.0), false)
+	draw_texture_rect(KNOB, Rect2(_knob - Vector2(32, 32), Vector2(64, 64)), false)

@@ -12,15 +12,6 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("econ_script")
 
-[node name="Dim" type="ColorRect" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.78)
-
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 8
@@ -28,10 +19,10 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -620.0
-offset_top = -336.0
-offset_right = 620.0
-offset_bottom = 336.0
+offset_left = -616.0
+offset_top = -344.0
+offset_right = 616.0
+offset_bottom = 344.0
 grow_horizontal = 2
 grow_vertical = 2
 
@@ -44,20 +35,18 @@ layout_mode = 2
 [node name="Title" type="Label" parent="Panel/Box/Head"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 30
+theme_type_variation = &"Heading"
 text = "Bartender"
 
 [node name="Cash" type="Label" parent="Panel/Box/Head"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
 text = "Cash $0"
 
 [node name="Close" type="Button" parent="Panel/Box/Head"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 52)
+custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 text = "Close"
 
 [node name="Tabs" type="TabContainer" parent="Panel/Box"]
@@ -75,17 +64,15 @@ layout_mode = 2
 
 [node name="Serve" type="Button" parent="Panel/Box/Tabs/Drinks/Modes"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 52)
+custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 toggle_mode = true
 text = "Serve"
 
 [node name="Throw" type="Button" parent="Panel/Box/Tabs/Drinks/Modes"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 52)
+custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 toggle_mode = true
 text = "Throw"
 
@@ -97,7 +84,6 @@ layout_mode = 2
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
-theme_override_constants/separation = 12
 alignment = 1
 
 [node name="Note" type="Label" parent="Panel/Box/Tabs/Drinks"]
@@ -120,5 +106,5 @@ size_flags_horizontal = 3
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 28)
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"Caption"
 horizontal_alignment = 1

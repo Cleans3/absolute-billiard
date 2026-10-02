@@ -19,15 +19,6 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("skins_script")
 
-[node name="Dim" type="ColorRect" parent="."]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-color = Color(0, 0, 0, 0.78)
-
 [node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
 anchors_preset = 8
@@ -50,21 +41,20 @@ layout_mode = 2
 
 [node name="Title" type="Label" parent="Panel/Box/Head"]
 layout_mode = 2
-theme_override_font_sizes/font_size = 30
+theme_type_variation = &"Heading"
 text = "Skins"
 
 [node name="Note" type="Label" parent="Panel/Box/Head"]
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"Caption"
 text = "Free while in test mode"
 horizontal_alignment = 1
 
 [node name="Close" type="Button" parent="Panel/Box/Head"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(120, 52)
+custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 text = "Close"
 
 [node name="Tabs" type="TabContainer" parent="Panel/Box"]
@@ -75,7 +65,6 @@ current_tab = 0
 
 [node name="Character" type="HBoxContainer" parent="Panel/Box/Tabs"]
 layout_mode = 2
-theme_override_constants/separation = 12
 metadata/_tab_index = 0
 
 [node name="Side" type="VBoxContainer" parent="Panel/Box/Tabs/Character"]
@@ -108,7 +97,7 @@ light_energy = 2.0
 [node name="CharName" type="Label" parent="Panel/Box/Tabs/Character/Side"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
+theme_type_variation = &"CardName"
 horizontal_alignment = 1
 
 [node name="CharHat" type="Label" parent="Panel/Box/Tabs/Character/Side"]
@@ -120,7 +109,6 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 text = "Equip"
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Box/Tabs/Character"]
@@ -132,14 +120,11 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 12
 columns = 4
 
 [node name="Bar" type="HBoxContainer" parent="Panel/Box/Tabs"]
 visible = false
 layout_mode = 2
-theme_override_constants/separation = 12
 metadata/_tab_index = 1
 
 [node name="Side" type="VBoxContainer" parent="Panel/Box/Tabs/Bar"]
@@ -158,14 +143,13 @@ alignment = 1
 [node name="BarName" type="Label" parent="Panel/Box/Tabs/Bar/Side"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 26
+theme_type_variation = &"CardName"
 horizontal_alignment = 1
 
 [node name="EquipBar" type="Button" parent="Panel/Box/Tabs/Bar/Side"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 52)
 layout_mode = 2
-theme_override_font_sizes/font_size = 20
 text = "Equip"
 
 [node name="Scroll" type="ScrollContainer" parent="Panel/Box/Tabs/Bar"]
@@ -177,6 +161,4 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/h_separation = 12
-theme_override_constants/v_separation = 12
 columns = 4

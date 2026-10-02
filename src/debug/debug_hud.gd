@@ -15,7 +15,7 @@ func _ready() -> void:
 	panel.offset_left = 8
 	panel.offset_top = 8
 	panel.offset_right = 260
-	panel.offset_bottom = 220
+	panel.offset_bottom = 240
 	add_child(panel)
 	_label = Label.new()
 	panel.add_child(_label)
@@ -26,6 +26,9 @@ func _process(_delta: float) -> void:
 		return
 	var lines := PackedStringArray()
 	lines.append("fps: %d" % Engine.get_frames_per_second())
+	var loop := get_tree().current_scene.get_node_or_null("GameLoop") if get_tree().current_scene != null else null
+	if loop != null:  # the Round seed left the player HUD for here (docs 08 §2.7)
+		lines.append("seed: %d" % loop.round_seed)
 	lines.append("physics tick: %d Hz" % Engine.physics_ticks_per_second)
 	lines.append("physics step: %.2f ms" % (Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0))
 	# PHYSICS_3D_COLLISION_PAIRS reads 0 under Jolt (verified live, gamma_probe.log case J; no

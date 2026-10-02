@@ -1,18 +1,16 @@
 class_name SkinsScreen
-extends Control
+extends UIModal
 ## The Skins screen (06 P18): pick the character you wear and the bar you bring. A `ui_modal`, opened from the main
 ## menu. Test mode: everything is free and unlocked, so a card is only ever "Equip" or "Equipped"; equipping
 ## writes user://profile.json at once (`SkinCatalog`). Character preview = a turning Humanoid in a SubViewport,
 ## bar preview = the skin's palette.
 
-signal closed
+signal closed  ## it was open and now is not (kept for callers; UIModal's `dismissed` fires on every close())
 
 const CARD_SIZE := Vector2(196, 184)
 const SWATCH_SIZE := Vector2(30, 30)
 const TURN_RAD_PER_SEC := 0.7
 const HAT_NAMES := {&"none": "No hat", &"cap": "Cap", &"tophat": "Top hat", &"beanie": "Beanie", &"crown": "Crown"}
-
-var keep_on_phase := false  # the UIRouter closes modals on a phase change unless this is true
 
 var _sel_char: StringName = &""
 var _sel_bar: StringName = &""
@@ -33,8 +31,14 @@ var _turn := PI  ## the Humanoid faces -Z; PI shows its face to the camera
 @onready var _bar_grid: GridContainer = %BarGrid
 
 
+func _init() -> void:
+	super()
+	add_to_group(&"ui_skins")
+
+
 func _ready() -> void:
-	add_to_group(&"ui_modal")
+	super()  # UIModal: dim backdrop; closed by a phase change (the main menu has none), Esc closes it
+	priority = 60
 	%Close.pressed.connect(close)
 	_equip_char.pressed.connect(func() -> void: equip_character(_sel_char))
 	_equip_bar.pressed.connect(func() -> void: equip_bar(_sel_bar))
@@ -48,10 +52,6 @@ func _ready() -> void:
 	hide()
 
 
-func is_open() -> bool:
-	return visible
-
-
 func open() -> void:
 	_tabs.current_tab = 0
 	select_character(SkinCatalog.resolve_character(SkinCatalog.equipped_character_id(), 0).id)
@@ -61,11 +61,11 @@ func open() -> void:
 
 
 func close() -> void:
-	if not visible:
-		return
-	hide()
+	var was_open := visible
+	super()
 	set_process(false)
-	closed.emit()
+	if was_open:
+		closed.emit()
 
 
 func select_character(id: StringName) -> void:

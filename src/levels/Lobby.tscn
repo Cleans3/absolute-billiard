@@ -1,7 +1,27 @@
-[gd_scene load_steps=2 format=3]
+[gd_scene load_steps=5 format=3]
 
 [ext_resource type="PackedScene" path="res://src/ui/LobbyUI.tscn" id="1_ui"]
+[ext_resource type="Script" path="res://src/ui/ui_router.gd" id="ui_router"]
+[ext_resource type="PackedScene" path="res://src/ui/SettingsScreen.tscn" id="ui_settings"]
+[ext_resource type="PackedScene" path="res://src/ui/ControlsScreen.tscn" id="ui_controls"]
+[ext_resource type="PackedScene" path="res://src/ui/SkinsScreen.tscn" id="ui_skins"]
 
 [node name="Lobby" type="Node"]
 
 [node name="LobbyUI" parent="." instance=ExtResource("1_ui")]
+
+[node name="UILayer" type="CanvasLayer" parent="."]
+
+[node name="UIRouter" type="Control" parent="UILayer"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("ui_router")
+
+[node name="SettingsScreen" parent="UILayer" instance=ExtResource("ui_settings")]
+
+[node name="ControlsScreen" parent="UILayer" instance=ExtResource("ui_controls")]
+
+[node name="SkinsScreen" parent="UILayer" instance=ExtResource("ui_skins")]
