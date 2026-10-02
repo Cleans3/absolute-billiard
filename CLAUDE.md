@@ -10,13 +10,13 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 |---|---|
 | `00-contract.md` | pitch, **shared vocabulary** (use these names exactly: `Ball`, `BallType`, `Shot`, `Turn`, `Round`, `Night`, `Quota`, `Cash`, `Stream`, `Viewers`, `Camera`, `Drink`, `Effect`, `Event`, `TrickShot`), doc template |
 | `01-physics-table-balls.md` | Jolt `RigidBody3D` settings, cue, BallType tiers, TrickShot detection, random drop, physics test fixtures |
-| `02-economy-loop.md` | Night/Round/Quota, income sheet, Stream/Viewers/Camera scoring, Bartender Shop catalog |
+| `02-economy-loop.md` | Night/Round/Quota, income sheet, Stream/Viewers/Camera scoring, Bartender (drink shelf + upgrades) |
 | `03-bar-drinks-events.md` | typed `StatMod`/`Effect` schema, Drinks, crew-chosen Events, free-roam world interactions |
 | `04-architecture-netcode.md` | project layout, scene tree, autoloads, transport, RPC/channel table, `SaveProfile` |
 | `05-index.md` | cross-module signal map, open questions, review checklist |
 | `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P10** (P rulings override everything above them in that file) |
 | `07-optimization.md` | per-aspect mobile budgets and measurement gates |
-| `08-player.md` | Player v1 (P6): touch-first first person, WALK/CUE/CARRY modes, touch layout, avatars |
+| `08-player.md` | Player v1 (P6): touch-first first person, WALK/CUE/CARRY/RAGDOLL modes, touch layout, humanoid avatars, skins, screens |
 
 Open questions listed in `05`/each doc §6 need the user's decision — do not resolve them silently in code.
 
@@ -55,12 +55,12 @@ Planned layout (04 §4): `src/core` net/save/shared motion · `src/gameplay` Tab
 
 ## Current state
 
-M0–M7 built (2026-09-30), every milestone's code and probes on `main`; what is still open needs hardware or a user run (bottom).
+M0–M7 built (2026-09-30), polish pass 06 P11–P18 built (2026-10-02), every milestone's code and probes on `main`; what is still open needs hardware or a user run (bottom).
 
 - **Boot → play.** `Lobby.tscn` (`LobbyUI`: Host / Join code / Advanced IP / Solo / Resume / Steam when available) → `NetManager` (autoload: roster, seat order, `start_game`, `all_peers_ready` barrier) → `MainLevel.tscn`. Solo = `NetManager.host_solo()` on `OfflineMultiplayerPeer`. Lobby code = Noray OID (6-char Crockford); share link `http://160.191.243.188:8892/j/<code>` and `absolutebilliard://j/<code>` both open the app (gradle build injects the intent-filters, `addons/deeplink`).
 - **Sync (M3).** Host strikes with `PhysicsSim.active_cue` after `shot_validator`; streams 25 B-intent / ≤21 B contact + divergence events (`BallEventCodec`, s16 fixed point), clients replay through `BallMotion.advance` 100 ms behind (`at_playback`). Balls freeze at rest and thaw at strike — anything that moves a resting ball outside a strike must thaw it first. Background/resume: `NetManager.backgrounded` + `request_full_state`. `tests/net/rpc_table_probe.gd` fails if any `@rpc` drifts from 04 §5.
-- **Game (01/02/03).** `RoundDirector` (racks incl. authored N1/N5, gimmick balls bomb/split/joker/stone, call-pocket, host shot clock, shuffle, pocket radius/oscillation), `GameLoop` (Night/Round, checkpoints each Round via `SaveManager`, Endless), `EconomyManager` (Bartender Shop, camera rigs + scorer, cue specs), `StreamManager`, `EffectManager`/`EventScheduler` (drinks, events + vote, world interactions via `WorldInteractions`).
-- **Player (08).** `player.gd` WALK/CUE/CARRY, `CueController` is the one `ShotIntent` source for touch (`src/ui/TouchControls`) and desktop keys; remote peers are puppets fed by 10 Hz poses.
+- **Game (01/02/03).** `RoundDirector` (racks incl. authored N1/N5, gimmick balls bomb/split/joker/stone, call-pocket, host shot clock, shuffle, pocket radius/oscillation), `GameLoop` (Night/Round, checkpoints each Round via `SaveManager`, Endless), `EconomyManager` (Bartender: random tiered Drinks shelf rerolled each Intermission + fixed Upgrades, Mystery tier with buff+debuff, scratch fine, camera rigs + scorer, cue specs), `StreamManager`, `EffectManager`/`EventScheduler` (drinks, events + vote, world interactions via `WorldInteractions`).
+- **Player (08).** `player.gd` WALK/CUE/CARRY/RAGDOLL, every body a `Humanoid` (procedural skinned mesh, `PhysicalBoneSimulator3D` ragdoll on a host `PlayerSpawner.knock`; the bartender NPC uses it too). `CueController` is the one `ShotIntent` source for touch (`src/ui/TouchControls`) and desktop keys; remote peers are puppets fed by 10 Hz poses. Skins (P18, free in test mode): `SkinCatalog`, profile + roster `char_skin`/`bar_skin`, `MainLevel/BarSkins` picks a crew bar skin each Round.
 - **UI (06 P11-P12, 08 §2.8).** One project Theme (`src/ui/theme/game_theme.tres`, drawn SVG sprites in `assets/ui/`, rebuilt by `src/tools/ui_art.py` + `build_ui_theme.gd`). `UILayer/UIRouter` keeps at most one modal open (`UIModal` / group `ui_modal`: PhaseScreen, EventVote, BartenderMenu, PauseMenu, Settings/Controls/Skins screens), owns the mouse mode, Esc and the one toast line; Player / CueController gate input on `UIRouter.blocking()`. HUD and touch widgets sit in a fixed region map that `tests/ui/ui_probe.gd` checks never overlap. The Lobby scene carries its own router for Settings / Controls / Skins.
 - **Mobile (07).** `BarRoom.tscn` baked lighting (rebuild: `build_bar_room.gd` + `bake_lightmaps.sh`), `QualityManager` tiers, collision layers per 08 §2.1 (balls mask 1|2|3, player layer 4), CCD threshold derived from `TableSpec`, Android APK arm64 with compressed native libs.
 
