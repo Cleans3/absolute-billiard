@@ -14,7 +14,7 @@ panel only calls public gameplay API — `Table.rebuild()`, `DemoRack.spawn_layo
 
 | Action | Key | Does |
 |---|---|---|
-| `debug_hud` | F1 | Toggle the stats HUD (fps, physics tick, physics step ms, contact pairs, awake balls, per-ball speed) |
+| `debug_hud` | F1 | Toggle the stats HUD (fps, Round seed, physics tick, physics step ms, contact pairs, awake balls, per-ball speed) |
 | `debug_freecam` | F2 | Toggle the free-fly camera (WASD + mouse look, Q/E up/down, scroll wheel = fly speed); player input is suppressed while active |
 | `debug_gizmos` | F3 | Toggle world-space gizmos: pocket mouths, drop zones, rail inward normals, jaw markers, kitchen line, head/foot/centre spots, plus live ball velocity vectors + trails |
 | `debug_spec` | F4 | Toggle the TableSpec panel — a spinbox per numeric `@export`; edits call `Table.rebuild()` and re-spawn the rack |
