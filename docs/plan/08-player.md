@@ -2,7 +2,7 @@
 
 *Ruling R1 (Cleanse, 2026-09-30): Player is built now, touch first, desktop parity. Supersedes the "Player = black box" line in 00/05 for everything below; gamepad stays deferred.*
 
-*Update (06 P15 / P18, 2026-10-02): **cosmetics and avatar animation are no longer deferred.** Every player is a jointed `Humanoid` in a `CharacterSkin` (§2.6, §2.7) that walks, leans over the cue, and goes limp on a hit; the "no animation rig in v1" and "Cosmetics" lines below are superseded. The Skins screen itself is a later slice; until it lands a player wears the skin of their seat.*
+*Update (06 P15 / P18, 2026-10-02): **cosmetics and avatar animation are no longer deferred.** Every player is a jointed `Humanoid` in a `CharacterSkin` (§2.6, §2.7) that walks, leans over the cue, and goes limp on a hit; the "no animation rig in v1" and "Cosmetics" lines below are superseded. The Skins screen (main menu, `src/ui/SkinsScreen.tscn`) lets a player equip one; with nothing equipped a player wears the skin of their seat. Everything is free and unlocked while the game is in test mode.*
 
 ## 1. Purpose
 Turns a person into two things the systems already consume: a `ShotIntent` for 01 when it is their Shot, and a position + `Interactable` use for 03/02 while someone else shoots.
@@ -43,7 +43,7 @@ Mouse captured in `WALK`/`CARRY`: `WASD` move, mouse look (`0.0025 rad/px`), `F`
 `called_pocket: StringName` (`&""` = none). Required by 03's `rule_call_pocket`; the host scores a pot into any other pocket as `0`, not a foul (03 §5).
 
 ### 2.6 Remote avatars
-A remote slot renders the same `Humanoid` the local player wears (§2.7), in its seat's `CharacterSkin` (`Player.SEAT_SKINS`: `seat_red|seat_blue|seat_yellow|seat_green`, `src/resources/skins/characters/`), a `Label3D` name tag (billboard, `fixed_size`), and the cue stick mesh while that peer is in `CUE` — 2 draw calls for the body, 1 for the tag, the stick extra. In `CUE` the avatar stands `0.2 m` left of the aim line leaning over the stick, both hands on it; in `CARRY` both hands hold the rig in front of it. The stick lies on the aim line with its tip `BACK_M` in front of the body. Poses come from `PlayerSlot` at `10 Hz` (04 `push_player_pose`) and are interpolated `100 ms` behind, like balls. A pose is 16 B: `pos 3×f32 | yaw u16 | u16 = mode << 14 | pitch (14 bit, ±π/2)`; the mode is `0 WALK · 1 CUE · 2 CARRY · 3 RAGDOLL`. The puppet renders the sample bracket at `now − 100 ms` (a newer sample is reached, never jumped to). While `RAGDOLL` the owner sends its **pelvis** XZ as the position and the puppet ignores the stream's position (it is limp on its own local physics); see §2.7 for how it stands again.
+A remote slot renders the same `Humanoid` the local player wears (§2.7), in the `CharacterSkin` from its roster entry's `char_skin` (the seat's `seat_red|seat_blue|seat_yellow|seat_green` when none is equipped; `SkinCatalog.resolve_character`; `src/resources/skins/characters/`), a `Label3D` name tag (billboard, `fixed_size`), and the cue stick mesh while that peer is in `CUE` — 2 draw calls for the body, 1 for the tag, the stick extra. In `CUE` the avatar stands `0.2 m` left of the aim line leaning over the stick, both hands on it; in `CARRY` both hands hold the rig in front of it. The stick lies on the aim line with its tip `BACK_M` in front of the body. Poses come from `PlayerSlot` at `10 Hz` (04 `push_player_pose`) and are interpolated `100 ms` behind, like balls. A pose is 16 B: `pos 3×f32 | yaw u16 | u16 = mode << 14 | pitch (14 bit, ±π/2)`; the mode is `0 WALK · 1 CUE · 2 CARRY · 3 RAGDOLL`. The puppet renders the sample bracket at `now − 100 ms` (a newer sample is reached, never jumped to). While `RAGDOLL` the owner sends its **pelvis** XZ as the position and the puppet ignores the stream's position (it is limp on its own local physics); see §2.7 for how it stands again.
 
 **Backgrounding (04 §6):** `PlayerSlot` sends no pose while `NetManager.backgrounded`; on `host_away_changed(true)` `TouchControls` shows *Host away, waiting…*, the Player leaves `CUE` and refuses to enter it until the host is back. The shot-clock text also clears at `round_ended`.
 
@@ -65,6 +65,8 @@ A remote slot renders the same `Humanoid` the local player wears (§2.7), in its
 | hard landing | owner's `_physics_process` | falling faster than `7 m/s` when landing; the owner knocks itself and tells everyone (`PlayerSlot.push_player_knock`) |
 
 The host entry point is `PlayerSpawner.knock(peer_id, impulse, seconds := 2.0)` → `apply_knock` RPC on every peer (04 §5); `knock_away(peer, from, speed)` and `knock_blast(origin)` are its helpers. The bar is `3.6 m` high, so nothing a player can reach on foot comes near `7 m/s` (a `1.8 m` drop is `5.9 m/s`): the hard-landing trigger exists for launches and effects, and the probes launch the body at the floor to exercise it.
+
+**Skins screen (06 P18).** `src/ui/SkinsScreen.tscn` + `skins_screen.gd`, a full-screen `ui_modal` (`open()` / `close()` / `is_open()`, `closed`) the main menu opens. Two tabs, **Character** and **Bar**, each a card grid (palette chips, name, an "Equipped" badge) beside a preview: the character preview is a `Humanoid` in a `SubViewport` turning at `0.7 rad/s` in the previewed skin, the bar preview lists the skin's wall / floor / wood / seat / felt / neon colours. Tapping a card previews it, **Equip** writes `user://profile.json` at once (`SkinCatalog.equip_character` / `equip_bar`), the badge follows. "Free while in test mode" is printed in the header; there is no price, no lock, no ownership. The `bartender` skin is not offered. `tests/economy/skins_probe.gd` and `tests/player/skins_pair_probe.gd` guard it.
 
 **Bartender.** `src/gameplay/bar/Bartender.tscn` (`Bar/Bartender` in `MainLevel`, at the stand point behind the counter, facing −X) is a `Humanoid` in the `bartender` skin on a static capsule (layer 4, so players bump into him). Idle life: breathing, head eased toward the nearest player within `4 m`, and every `6–12 s` the right hand wipes the counter for `3 s`. It is not an `Interactable`; the counter props are (02 / P17).
 
@@ -99,7 +101,8 @@ The host entry point is `PlayerSpawner.knock(peer_id, impulse, seconds := 2.0)` 
 - `src/gameplay/cue/cue_controller.gd` — owns `CUE`: aim line, cue mesh, pullback, reads input from `TouchControls` or mouse/keys, builds the `ShotIntent`, calls `table.sim.request_shot(intent)`. The `gate` export is gone (host validates via `PhysicsSim.shot_validator`).
 - `src/ui/TouchControls.tscn` + `virtual_stick.gd`, `look_pad.gd`, `power_slider.gd`, `spin_pad.gd` — each a `Control` handling `InputEventScreenTouch/Drag` by finger index in `_gui_input`; they expose values, they never call gameplay.
 - Input actions added to `project.godot`: `interact`, `cue_mode`, `call_pocket_1..6` (existing `move_*`, `jump`, `shoot`, `spin_*`, `elevate_*`, `spin_reset` stay).
-- `src/gameplay/player/humanoid.gd` (+ `src/resources/skins/characters/*.tres`, `character_skin.gd`) — the body, §2.7; `Player` owns one (`player.humanoid`), `PlayerSlot` skins it by seat; `PlayerSpawner` carries the host's knock entry points and the stumble tick; `src/gameplay/bar/Bartender.tscn` is the NPC.
+- `src/ui/SkinsScreen.tscn` + `skins_screen.gd`, `src/resources/skins/skin_catalog.gd` — the Skins screen and the catalog behind it.
+- `src/gameplay/player/humanoid.gd` (+ `src/resources/skins/characters/*.tres`, `character_skin.gd`) — the body, §2.7; `Player` owns one (`player.humanoid`), `PlayerSlot` skins it from its roster `char_skin` (seat colour as the fallback); `PlayerSpawner` carries the host's knock entry points and the stumble tick; `src/gameplay/bar/Bartender.tscn` is the NPC.
 - Performance (07): no `get_node` in `_physics_process`, UI redraws only on value change, avatars are 2 draw calls each (+ the tag), `Label3D` not a `SubViewport`, nothing simulates while a body is standing.
 
 ## 5. Interfaces to other modules
@@ -111,8 +114,8 @@ The host entry point is `PlayerSpawner.knock(peer_id, impulse, seconds := 2.0)` 
 ## 6. Open questions
 - Gamepad layout (PC/Steam Deck) — later.
 - Camera comfort: should `CUE` fade in over `0.2 s` instead of snapping? Playtest.
-- ~~Cosmetics~~ — resolved by 06 P18: `CharacterSkin` resources, free and unlocked in test mode. Still open: the Skins screen, the profile field and roster sync that make the pick visible to other peers (a later slice), whether a skin may change the silhouette.
+- ~~Cosmetics~~ — resolved by 06 P18: `CharacterSkin` resources, free and unlocked in test mode, picked on the Skins screen, stored in `profile.json` and synced through the roster (04 §2.3). Still open: whether a skin may change the silhouette; what a skin costs once the test mode ends.
 - Ragdoll feel (`2 s`, shove strengths, joint limits) is `[tune]` — nothing is measured on a phone; two limp players at once is the budget, not the proof (07).
 
 ## 7. MVP cut vs later
-**v1:** everything above, including the humanoid, skins by seat and the triggered ragdoll. **Later:** gamepad, emotes, the Skins screen, per-peer shooter mute (03 §3.4), aim assist line length as an upgrade.
+**v1:** everything above, including the humanoid, skins by seat and the triggered ragdoll. **Later:** gamepad, emotes, per-peer shooter mute (03 §3.4), aim assist line length as an upgrade.

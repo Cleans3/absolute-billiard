@@ -27,11 +27,18 @@
 [ext_resource type="PackedScene" path="res://src/ui/TouchControls.tscn" id="19_touch"]
 [ext_resource type="PackedScene" path="res://src/ui/BartenderMenu.tscn" id="econ_bartender"]
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Bartender.tscn" id="rag_bartender"]
+[ext_resource type="Script" path="res://src/gameplay/bar_room/bar_skin_director.gd" id="skins_director"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
 
 [node name="BarRoom" parent="." instance=ExtResource("1_barroom")]
+
+[node name="BarSkins" type="Node" parent="." node_paths=PackedStringArray("game_loop", "bar_room", "table")]
+script = ExtResource("skins_director")
+game_loop = NodePath("../GameLoop")
+bar_room = NodePath("../BarRoom")
+table = NodePath("../Table")
 
 [node name="PlayerSlots" type="Node3D" parent="."]
 

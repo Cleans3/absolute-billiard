@@ -24,7 +24,7 @@ func _ready() -> void:
 	player.name = "Player"
 	add_child(player)
 	var who := _roster_entry()
-	var skin := Player.skin_for_seat(int(who.get("seat", 0)))
+	var skin := SkinCatalog.resolve_character(who.get("char_skin", &""), int(who.get("seat", 0)))
 	if is_local():
 		player.set_skin(skin)
 		local_player_ready.emit(player)

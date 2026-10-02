@@ -1,7 +1,13 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://src/ui/skins_screen.gd" id="ui_script"]
-[ext_resource type="Texture2D" path="res://assets/ui/icon_skins.svg" id="ui_skins"]
+[ext_resource type="Script" path="res://src/ui/skins_screen.gd" id="skins_script"]
+
+[sub_resource type="Environment" id="skins_env"]
+background_mode = 1
+background_color = Color(0.2, 0.22, 0.27, 1)
+ambient_light_source = 2
+ambient_light_color = Color(1, 1, 1, 1)
+ambient_light_energy = 3.0
 
 [node name="SkinsScreen" type="Control"]
 visible = false
@@ -11,46 +17,148 @@ anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
-script = ExtResource("ui_script")
+script = ExtResource("skins_script")
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="Panel" type="PanelContainer" parent="."]
 layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
+anchors_preset = 8
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -620.0
+offset_top = -336.0
+offset_right = 620.0
+offset_bottom = 336.0
 grow_horizontal = 2
 grow_vertical = 2
-mouse_filter = 2
 
-[node name="Panel" type="PanelContainer" parent="Center"]
-custom_minimum_size = Vector2(620, 0)
+[node name="Box" type="VBoxContainer" parent="Panel"]
 layout_mode = 2
 
-[node name="Rows" type="VBoxContainer" parent="Center/Panel"]
+[node name="Head" type="HBoxContainer" parent="Panel/Box"]
 layout_mode = 2
 
-[node name="Icon" type="TextureRect" parent="Center/Panel/Rows"]
-custom_minimum_size = Vector2(96, 96)
-layout_mode = 2
-texture = ExtResource("ui_skins")
-expand_mode = 1
-stretch_mode = 5
-
-[node name="Title" type="Label" parent="Center/Panel/Rows"]
-layout_mode = 2
-theme_type_variation = &"Title"
-text = "Skins"
-horizontal_alignment = 1
-
-[node name="Body" type="Label" parent="Center/Panel/Rows"]
-unique_name_in_owner = true
+[node name="Title" type="Label" parent="Panel/Box/Head"]
 layout_mode = 2
 theme_type_variation = &"Heading"
-text = "Coming in the next update"
+text = "Skins"
+
+[node name="Note" type="Label" parent="Panel/Box/Head"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Caption"
+text = "Free while in test mode"
 horizontal_alignment = 1
 
-[node name="Back" type="Button" parent="Center/Panel/Rows"]
+[node name="Close" type="Button" parent="Panel/Box/Head"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 68)
+custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
-text = "Back"
+text = "Close"
+
+[node name="Tabs" type="TabContainer" parent="Panel/Box"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_vertical = 3
+current_tab = 0
+
+[node name="Character" type="HBoxContainer" parent="Panel/Box/Tabs"]
+layout_mode = 2
+metadata/_tab_index = 0
+
+[node name="Side" type="VBoxContainer" parent="Panel/Box/Tabs/Character"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="Frame" type="PanelContainer" parent="Panel/Box/Tabs/Character/Side"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Holder" type="SubViewportContainer" parent="Panel/Box/Tabs/Character/Side/Frame"]
+layout_mode = 2
+stretch = true
+
+[node name="Preview" type="SubViewport" parent="Panel/Box/Tabs/Character/Side/Frame/Holder"]
+unique_name_in_owner = true
+own_world_3d = true
+handle_input_locally = false
+size = Vector2i(296, 360)
+
+[node name="Camera" type="Camera3D" parent="Panel/Box/Tabs/Character/Side/Frame/Holder/Preview"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 4.4)
+environment = SubResource("skins_env")
+fov = 28.0
+
+[node name="Key" type="DirectionalLight3D" parent="Panel/Box/Tabs/Character/Side/Frame/Holder/Preview"]
+rotation_degrees = Vector3(-35, 20, 0)
+light_energy = 2.0
+
+[node name="CharName" type="Label" parent="Panel/Box/Tabs/Character/Side"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"CardName"
+horizontal_alignment = 1
+
+[node name="CharHat" type="Label" parent="Panel/Box/Tabs/Character/Side"]
+unique_name_in_owner = true
+layout_mode = 2
+horizontal_alignment = 1
+
+[node name="EquipChar" type="Button" parent="Panel/Box/Tabs/Character/Side"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Equip"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Box/Tabs/Character"]
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
+
+[node name="CharGrid" type="GridContainer" parent="Panel/Box/Tabs/Character/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 4
+
+[node name="Bar" type="HBoxContainer" parent="Panel/Box/Tabs"]
+visible = false
+layout_mode = 2
+metadata/_tab_index = 1
+
+[node name="Side" type="VBoxContainer" parent="Panel/Box/Tabs/Bar"]
+custom_minimum_size = Vector2(300, 0)
+layout_mode = 2
+
+[node name="Frame" type="PanelContainer" parent="Panel/Box/Tabs/Bar/Side"]
+layout_mode = 2
+size_flags_vertical = 3
+
+[node name="Palette" type="VBoxContainer" parent="Panel/Box/Tabs/Bar/Side/Frame"]
+unique_name_in_owner = true
+layout_mode = 2
+alignment = 1
+
+[node name="BarName" type="Label" parent="Panel/Box/Tabs/Bar/Side"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"CardName"
+horizontal_alignment = 1
+
+[node name="EquipBar" type="Button" parent="Panel/Box/Tabs/Bar/Side"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "Equip"
+
+[node name="Scroll" type="ScrollContainer" parent="Panel/Box/Tabs/Bar"]
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
+
+[node name="BarGrid" type="GridContainer" parent="Panel/Box/Tabs/Bar/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+columns = 4

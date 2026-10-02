@@ -33,7 +33,7 @@ var host_away := false  ## client mirror of the host's `backgrounded`
 
 var last_notice := &""  ## why the last session ended; the Lobby shows it once via take_notice()
 
-var _roster: Array[Dictionary] = []  # {peer_id, name, seat, ready}; host writes, clients mirror
+var _roster: Array[Dictionary] = []  # {peer_id, name, seat, ready, char_skin, bar_skin}; host writes, clients mirror
 var _level_ready: Dictionary = {}  # peer_id -> true, host only, this session
 var _timeout: SceneTreeTimer
 var _steam: Node  # SteamTransport instance, PC + addon + Steam running only
@@ -76,7 +76,7 @@ func host_solo() -> void:
 	_reset()
 	transport = Transport.ENET_DIRECT
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
-	_roster = [_entry(HOST_ID, 0)]
+	_roster = [_host_entry()]
 	session_started.emit(true)
 	roster_changed.emit()
 	start_game()
@@ -182,7 +182,7 @@ func _push_roster(roster: Array) -> void:
 ## Noray host path replaces this with a relay-registered peer; both end in _install_host.
 func _install_host(peer: MultiplayerPeer) -> void:
 	multiplayer.multiplayer_peer = peer
-	_roster = [_entry(HOST_ID, 0)]
+	_roster = [_host_entry()]
 	session_started.emit(true)
 	roster_changed.emit()
 
@@ -397,8 +397,15 @@ func _check_barrier() -> void:
 	all_peers_ready.emit()
 
 
+## Skins (06 P18): `char_skin` &"" = nothing equipped, the seat's colour applies; `bar_skin` is always a real id.
 func _entry(peer_id: int, seat: int) -> Dictionary:
-	return {peer_id = peer_id, name = "Player %d" % (seat + 1), seat = seat, ready = false}
+	return {peer_id = peer_id, name = "Player %d" % (seat + 1), seat = seat, ready = false, char_skin = &"", bar_skin = SkinCatalog.DEFAULT_BAR}
+
+
+func _host_entry() -> Dictionary:
+	var e := _entry(HOST_ID, 0)
+	e.merge(SkinCatalog.local_pick(), true)
+	return e
 
 
 func _on_peer_connected(peer_id: int) -> void:
@@ -425,7 +432,23 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	_relax_timeout(HOST_ID)
+	var pick := SkinCatalog.local_pick()
+	register_skins.rpc_id(HOST_ID, pick.char_skin, pick.bar_skin)  # ahead of peer_ready on the same channel: the roster is final before slots spawn
 	session_started.emit(false)
+
+
+## Host: a client's equipped skins join its roster entry, validated (an unknown or non-selectable id falls back).
+@rpc("any_peer", "call_remote", "reliable", 3)
+func register_skins(char_skin: StringName, bar_skin: StringName) -> void:
+	if not is_host():
+		return
+	for e in _roster:
+		if e.peer_id == multiplayer.get_remote_sender_id():
+			e.char_skin = char_skin if SkinCatalog.is_selectable_character(char_skin) else &""
+			e.bar_skin = SkinCatalog.resolve_bar(bar_skin).id
+			roster_changed.emit()
+			_push_roster.rpc(_roster)
+			return
 
 
 func _notification(what: int) -> void:
