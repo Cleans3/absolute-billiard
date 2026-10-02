@@ -22,6 +22,8 @@ func _run() -> void:
 	var loop: GameLoop = current_scene.get_node("GameLoop")
 	var rd: RoundDirector = current_scene.get_node("RoundDirector")
 	await _frames(5)
+	var walker: Player = current_scene.get_node("PlayerSpawner").get_local_player()
+	assert(walker != null and root.get_viewport().get_camera_3d() == walker.cam, "local headCam must be the view, got %s" % root.get_viewport().get_camera_3d())
 	assert(loop.phase == GameLoop.Phase.INTERMISSION, "expected INTERMISSION, got %s" % loop.phase)
 	assert(loop.nights.size() == 5, "5 NightConfigs expected")
 	loop.advance()

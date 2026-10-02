@@ -72,6 +72,7 @@ func _ready() -> void:
 ## One-time wiring of the local player to the level (contract §3 names). Never called on puppets.
 func bind(level: Node) -> void:
 	is_local = true
+	cam.make_current()  # claim the view: the first Camera3D in tree (Debug's freecam) is current otherwise
 	var table: Table = level.get_node("Table")
 	_rd = level.get_node("RoundDirector")
 	_sim = table.sim
