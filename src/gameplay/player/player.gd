@@ -18,12 +18,6 @@ const EYE_M := 1.6
 const REACH_M := 2.0                 # same number WorldInteractions validates
 const PLACE_AHEAD_M := 1.5
 const BAR_KINDS: Array[StringName] = [&"bar_buy", &"bar_serve", &"throw_drink"]  # one counter, one menu
-const SEAT_SKINS: Array[CharacterSkin] = [
-	preload("res://src/resources/skins/characters/seat_red.tres"),
-	preload("res://src/resources/skins/characters/seat_blue.tres"),
-	preload("res://src/resources/skins/characters/seat_yellow.tres"),
-	preload("res://src/resources/skins/characters/seat_green.tres"),
-]
 const KNOCK_SEC := 2.0
 const TAG_Y := 2.05                  # name tag height, above a top hat
 const HARD_LAND_MPS := 7.0           # [tune] fall speed that knocks you over on landing
@@ -80,7 +74,7 @@ func _ready() -> void:
 	humanoid = Humanoid.new()
 	humanoid.name = "Humanoid"
 	add_child(humanoid)
-	humanoid.apply_skin(SEAT_SKINS[0])
+	humanoid.apply_skin(SkinCatalog.default_character(0))
 	add_to_group(&"players")
 	set_physics_process(false)
 	set_process(false)
@@ -506,7 +500,7 @@ func set_skin(skin: CharacterSkin) -> void:
 
 
 static func skin_for_seat(seat: int) -> CharacterSkin:
-	return SEAT_SKINS[seat % SEAT_SKINS.size()]
+	return SkinCatalog.default_character(seat)
 
 
 ## Turn this Player into a remote peer's avatar: no camera, no cue, no input; the humanoid + tag + cue stick.

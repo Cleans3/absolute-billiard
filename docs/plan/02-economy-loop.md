@@ -200,6 +200,8 @@ The income sheet's assumed path is `polish_the_set + tier2_rack + lens_t2 + lens
 ### 3.7 Persistence across runs
 A wipe keeps `persistent == true` items: the ball rows (`polish_the_set`, tier racks, gimmick balls) and the camera tiers (`lens_t2/t3`) — drinks are consumables and `spare_tripod` is a per-run prop, so neither persists. Cash, quota progress and cue/table mods reset. Stored in `user://profile.json` (04 §2.6) on every persistent purchase; `start_campaign()` calls `EconomyManager.wipe()`, which re-seeds `owned` from it. Five Nights is ~45 minutes; a wipe that returns zero is the reason nobody replays.
 
+**Skins are outside the economy for now (06 P18).** Character and bar skins are free and unlocked while the game is in test mode: no Cash, no Shop row, no ownership, nothing in the checkpoint. Pricing them is a later decision.
+
 ### 3.8 Scratch fine (P16, supersedes P8's "fouls cost no Cash")
 A Shot that **pockets the cue ball or sends it off the table** (`RoundDirector.cue_respawned` with reason `scratch` or `off_table`) costs the crew a fine on top of the lost Shot and the viewer drop (§3.3):
 

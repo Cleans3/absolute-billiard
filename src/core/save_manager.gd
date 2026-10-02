@@ -125,21 +125,48 @@ static func list_checkpoints() -> Array[Dictionary]:
 	return out
 
 
-static func load_persistent() -> Array[StringName]:
-	var out: Array[StringName] = []
+## The whole of user://profile.json; {} when absent, unreadable or from a newer build. Every writer merges into it.
+static func _read_profile() -> Dictionary:
 	var path := root.path_join("profile.json")
 	if FileAccess.file_exists(path):
-		var d: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
-		if d is Dictionary and int(d.get("save_version", 0)) <= SAVE_VERSION:
-			for id: String in d.get("persistent_unlocks", []):
-				out.append(StringName(id))
+		var json := JSON.new()  # not parse_string: a hand-mangled file must not log an engine error every read
+		if json.parse(FileAccess.get_file_as_string(path)) == OK and json.data is Dictionary and int(json.data.get("save_version", 0)) <= SAVE_VERSION:
+			return json.data
+	return {}
+
+
+static func _write_profile(d: Dictionary) -> void:
+	DirAccess.make_dir_recursive_absolute(root)
+	var f := FileAccess.open(root.path_join("profile.json"), FileAccess.WRITE)
+	if f != null:
+		d["save_version"] = SAVE_VERSION
+		f.store_string(JSON.stringify(d))
+
+
+static func load_persistent() -> Array[StringName]:
+	var out: Array[StringName] = []
+	for id: String in _read_profile().get("persistent_unlocks", []):
+		out.append(StringName(id))
 	return out
 
 
 static func save_persistent(ids: Array[StringName]) -> void:
-	var f := FileAccess.open(root.path_join("profile.json"), FileAccess.WRITE)
-	if f != null:
-		var strings: Array[String] = []
-		for id in ids:
-			strings.append(String(id))
-		f.store_string(JSON.stringify({"save_version": SAVE_VERSION, "persistent_unlocks": strings}))
+	var strings: Array[String] = []
+	for id in ids:
+		strings.append(String(id))
+	var d := _read_profile()
+	d["persistent_unlocks"] = strings
+	_write_profile(d)
+
+
+## The equipped skin ids (06 P18), &"" when the profile has none. SkinCatalog validates them; this only stores.
+static func load_skins() -> Dictionary:
+	var d := _read_profile()
+	return {char_skin = StringName(str(d.get("char_skin", ""))), bar_skin = StringName(str(d.get("bar_skin", "")))}
+
+
+static func save_skins(char_skin: StringName, bar_skin: StringName) -> void:
+	var d := _read_profile()
+	d["char_skin"] = String(char_skin)
+	d["bar_skin"] = String(bar_skin)
+	_write_profile(d)

@@ -104,6 +104,10 @@ func is_ragdoll() -> bool:
 	return _ragdoll
 
 
+func skin() -> CharacterSkin:
+	return _skin
+
+
 ## Re-colours and re-hats the body (rebuilds both meshes, ~1k vertices; the skeleton is untouched).
 func apply_skin(skin: CharacterSkin) -> void:
 	_skin = skin
