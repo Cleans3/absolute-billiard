@@ -146,7 +146,10 @@ func _intermission(r: int) -> void:
 			ev.submit_event_vote.rpc_id(1, pick)
 			_offer = []
 	if r == 1:
+		if role == "host":  # the Bartender's shelf is random: stock the drink the client is about to buy
+			eco.set_stock(eco.stock_key, [&"bar_nuts", &"beer", &"ice_water"] as Array[StringName], [3, 3, 3] as Array[int])
 		if role == "client":
+			await _until(func() -> bool: return eco.stock_refusal(&"bar_nuts") == &"", "the host's shelf holds bar_nuts here", 10.0)
 			eco.request_purchase.rpc_id(1, &"magnetic_pockets", 0)
 			await _until(func() -> bool: return eco.count_of(&"magnetic_pockets") == 1, "shop item mirrored", 10.0)
 			eco.request_purchase.rpc_id(1, &"bar_nuts", 0)

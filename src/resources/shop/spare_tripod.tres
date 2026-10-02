@@ -10,6 +10,8 @@ extra_rigs = 1
 [resource]
 script = ExtResource("1_item")
 id = &"spare_tripod"
+display_name = "Spare Tripod"
+description = "One more camera rig to place, up to four."
 category = &"camera"
 cost_cash = 500
 payload = SubResource("Delta_1")
