@@ -19,6 +19,8 @@ const WALK_MPS := 3.5
 const STRIDE_RAD_PER_M := 4.5  ## gait phase per metre walked
 const SMOOTH := 18.0           ## pose smoothing rate (1/s)
 const GOLD := Color("e8b923")
+const CAP_BOTTOM := 1  ## `_cyl` end caps
+const CAP_TOP := 2
 
 const NAMES: PackedStringArray = [
 	"pelvis", "torso", "head", "uarm_r", "larm_r", "uarm_l", "larm_l", "thigh_r", "shin_r", "thigh_l", "shin_l",
@@ -45,6 +47,8 @@ const SEG: Array = [
 	[Vector3(-0.10, 0.715, 0), 1, 0.065, 0.43, 0.0, 7.0],
 	[Vector3(-0.10, 0.29, 0), 1, 0.05, 0.42, 0.0, 4.0],
 ]
+## How much of a knock's impulse each bone takes, in B order.
+const SHOVE_SHARE: PackedFloat32Array = [1.0, 1.3, 1.6, 1.3, 1.3, 1.3, 1.3, 0.6, 0.3, 0.6, 0.3]
 const UPPER := 0.30     ## shoulder → elbow
 const FORE := 0.295     ## elbow → hand centre
 const THIGH := 0.43
@@ -140,8 +144,8 @@ func clear_hand(side: int) -> void:
 	_hand[side] = null
 
 
-## Limp: the bones are handed to physics. `impulse` is a velocity change (m/s) every bone gets, on top of the
-## speed the body was walking at.
+## Limp: the bones are handed to physics. `impulse` is a velocity change (m/s) of the body, on top of the speed it
+## was walking at; the head and trunk take more of it than the legs, so a shove topples rather than slides.
 func ragdoll(impulse: Vector3) -> void:
 	if not _ragdoll:
 		_ragdoll = true
@@ -150,9 +154,9 @@ func ragdoll(impulse: Vector3) -> void:
 		_set_layers(RAG_LAYER, RAG_MASK)
 		_sim.physical_bones_start_simulation()
 		impulse += _vel
-	for pb in _pbs:
-		pb.linear_velocity += impulse
-		pb.angular_velocity += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * impulse.length() * 0.4
+	for i in _pbs.size():
+		_pbs[i].linear_velocity += impulse * SHOVE_SHARE[i]
+		_pbs[i].angular_velocity += Vector3(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * impulse.length() * 0.4
 
 
 ## Stand up: remember where the body lies, stop the simulation and blend from the lying pose to the animated one.
@@ -439,6 +443,9 @@ static func _shared_material() -> StandardMaterial3D:
 	if _material == null:
 		_material = StandardMaterial3D.new()
 		_material.vertex_color_use_as_albedo = true
+		_material.vertex_color_is_srgb = true  # the skins' colours are the hex values people pick
+		_material.albedo_color = Color(0.5, 0.5, 0.5)  # the bar's key lights are tuned for dark wood; bright cloth clips under them
+		_material.metallic_specular = 0.2
 		_material.roughness = 0.85
 	return _material
 
@@ -455,9 +462,12 @@ func _paint(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 	var legs := skin.accent_color
 	var flesh := skin.skin_color
 	var shoe := legs.darkened(0.55)
-	_cyl(body, B.PELVIS, legs, Vector3(0, 0.86, 0), 0.17, Vector2(0.155, 0.10), Vector2(0.155, 0.10), 8)
-	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8)
-	_cyl(body, B.TORSO, flesh, Vector3(0, 1.49, 0), 0.08, Vector2(0.045, 0.045), Vector2(0.04, 0.04), 6)
+	# The torso is open at the top and the shoulder cap + neck live on the head surface, so the local player,
+	# whose camera culls that surface, looks down through the trunk at arms, legs and floor instead of at a lid.
+	_cyl(body, B.PELVIS, legs, Vector3(0, 0.86, 0), 0.17, Vector2(0.155, 0.10), Vector2(0.155, 0.10), 8, CAP_BOTTOM)
+	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8, 0)
+	_cyl(head, B.TORSO, shirt, Vector3(0, 1.498, 0), 0.002, Vector2(0.205, 0.11), Vector2(0.205, 0.11), 8, CAP_TOP)
+	_cyl(head, B.TORSO, flesh, Vector3(0, 1.49, 0), 0.08, Vector2(0.045, 0.045), Vector2(0.04, 0.04), 6)
 	for side in 2:
 		var sx := 0.22 if side == 0 else -0.22
 		var ua := B.UARM_R if side == 0 else B.UARM_L
@@ -495,7 +505,7 @@ func _paint(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 
 
 ## Vertical frustum from `base` up by `h`, elliptical radii (x, z) at the bottom and top, closed with fans.
-func _cyl(st: SurfaceTool, bone: int, col: Color, base: Vector3, h: float, r0: Vector2, r1: Vector2, sides: int) -> void:
+func _cyl(st: SurfaceTool, bone: int, col: Color, base: Vector3, h: float, r0: Vector2, r1: Vector2, sides: int, caps := CAP_BOTTOM | CAP_TOP) -> void:
 	var bottom: Array[Vector3] = []
 	var top: Array[Vector3] = []
 	for n in sides:
@@ -507,9 +517,11 @@ func _cyl(st: SurfaceTool, bone: int, col: Color, base: Vector3, h: float, r0: V
 	var centre := base + Vector3(0.0, h * 0.5, 0.0)
 	for n in sides:
 		var m := (n + 1) % sides
-		_quad(st, bone, col, bottom[n], bottom[m], top[m], top[n], centre)
-		_tri(st, bone, col, [hub0, bottom[m], bottom[n]], [Vector3.DOWN, Vector3.DOWN, Vector3.DOWN])
-		if r1.x > 0.0:
+		if h > 0.01:
+			_quad(st, bone, col, bottom[n], bottom[m], top[m], top[n], centre)
+		if caps & CAP_BOTTOM:
+			_tri(st, bone, col, [hub0, bottom[m], bottom[n]], [Vector3.DOWN, Vector3.DOWN, Vector3.DOWN])
+		if caps & CAP_TOP and r1.x > 0.0:
 			_tri(st, bone, col, [hub1, top[n], top[m]], [Vector3.UP, Vector3.UP, Vector3.UP])
 
 

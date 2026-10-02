@@ -25,6 +25,7 @@ const SEAT_SKINS: Array[CharacterSkin] = [
 	preload("res://src/resources/skins/characters/seat_green.tres"),
 ]
 const KNOCK_SEC := 2.0
+const TAG_Y := 2.05                  # name tag height, above a top hat
 const HARD_LAND_MPS := 7.0           # [tune] fall speed that knocks you over on landing
 const LIMP_GRACE_MSEC := 3000        # a puppet waits this long past its timer for the owner to stand
 
@@ -60,6 +61,7 @@ var _pose := PackedByteArray()
 var _samples: Array[PackedFloat64Array] = []  # puppet: [msec, x, y, z, yaw, pitch, mode]
 var _puppet_mode := Mode.WALK
 var _avatar_cue: MeshInstance3D
+var _tag: Label3D
 var humanoid: Humanoid  # every Player wears one; the local one hides its head from `cam`
 var _getup_msec := 0                 # RAGDOLL: when the knock ends (local clock)
 var _cam_from := Transform3D.IDENTITY
@@ -444,6 +446,8 @@ func _end_knock() -> void:
 		at = Vector3(s[1], s[2], s[3])
 		_samples = [s]
 	global_position = at
+	if _tag != null:
+		_tag.position = Vector3(0.0, TAG_Y, 0.0)
 	velocity = Vector3.ZERO
 	_body.set_deferred(&"disabled", false)
 	_airborne = false
@@ -515,15 +519,15 @@ func make_puppet(display_name: String, skin: CharacterSkin) -> void:
 	set_physics_process(false)
 	set_process(true)
 	humanoid.apply_skin(skin)
-	var tag := Label3D.new()
-	tag.text = display_name
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.fixed_size = true
-	tag.pixel_size = 0.0009
-	tag.font_size = 32
-	tag.outline_size = 8
-	tag.position.y = 2.05
-	add_child(tag)
+	_tag = Label3D.new()
+	_tag.text = display_name
+	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_tag.fixed_size = true
+	_tag.pixel_size = 0.0009
+	_tag.font_size = 32
+	_tag.outline_size = 8
+	_tag.position.y = TAG_Y
+	add_child(_tag)
 	_avatar_cue = MeshInstance3D.new()
 	var stick := CylinderMesh.new()
 	stick.top_radius = 0.008
@@ -537,6 +541,7 @@ func make_puppet(display_name: String, skin: CharacterSkin) -> void:
 
 func _puppet_step() -> void:
 	if mode == Mode.RAGDOLL:
+		_tag.global_position = humanoid.pelvis_position() + Vector3(0.0, 0.8, 0.0)  # the name follows the body down
 		_puppet_limp()
 		return
 	if _samples.is_empty():
