@@ -10,6 +10,8 @@ cue_spin_radius_add = 0.2
 [resource]
 script = ExtResource("1_item")
 id = &"chalk_tin"
+display_name = "Chalk Tin"
+description = "+20% english range on the cue ball."
 category = &"cue"
 cost_cash = 350
 payload = SubResource("Delta_1")

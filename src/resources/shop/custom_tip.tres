@@ -10,6 +10,8 @@ cue_wobble_reduction = 2.0
 [resource]
 script = ExtResource("1_item")
 id = &"custom_tip"
+display_name = "Custom Tip"
+description = "Steadier aim: 2 degrees less wobble."
 category = &"cue"
 cost_cash = 250
 payload = SubResource("Delta_1")

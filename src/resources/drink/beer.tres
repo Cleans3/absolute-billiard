@@ -1,41 +1,42 @@
-[gd_resource type="Resource" script_class="Drink" format=3]
+[gd_resource type="Resource" script_class="Drink" load_steps=8 format=3]
 
-[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_ycfbl"]
-[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_eadxq"]
-[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_1425s"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
 
-[sub_resource type="Resource" id="Resource_onyg3"]
-script = ExtResource("2_eadxq")
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
 stat = &"cue_power_mult"
 op = 1
 value = 1.1
 
-[sub_resource type="Resource" id="Resource_6mut4"]
-script = ExtResource("1_ycfbl")
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
 id = &"beer_power"
 target = 1
-stat_modifiers = Array[ExtResource("2_eadxq")]([SubResource("Resource_onyg3")])
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
 duration_sec = -1.0
 tag = &"booze"
 
-[sub_resource type="Resource" id="Resource_sbmga"]
-script = ExtResource("2_eadxq")
+[sub_resource type="Resource" id="Mod_1_0"]
+script = ExtResource("2_mod")
 stat = &"cue_spin_radius_mult"
 op = 1
 
-[sub_resource type="Resource" id="Resource_8a76k"]
-script = ExtResource("1_ycfbl")
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("1_effect")
 id = &"beer_no_english"
 target = 1
-stat_modifiers = Array[ExtResource("2_eadxq")]([SubResource("Resource_sbmga")])
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1_0")])
 duration_sec = -1.0
 tag = &"booze"
 
 [resource]
-script = ExtResource("3_1425s")
+script = ExtResource("3_drink")
 id = &"beer"
-effects = Array[ExtResource("1_ycfbl")]([SubResource("Resource_6mut4"), SubResource("Resource_8a76k")])
+display_name = "Beer"
+description = "Cold, cheap and a little too confident."
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0"), SubResource("Effect_1")])
 reward_mult = 1.05
 mid_round = true
-roll_weights = PackedFloat32Array()
 cost_cash = 50

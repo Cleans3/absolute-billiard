@@ -10,6 +10,8 @@ ball_types = Array[StringName]([&"gold_prize"])
 [resource]
 script = ExtResource("1_item")
 id = &"tier3_rack"
+display_name = "Tier 3 Rack"
+description = "Gold 500-point balls join the rack. Kept across runs."
 category = &"ball"
 cost_cash = 900
 payload = SubResource("Delta_1")

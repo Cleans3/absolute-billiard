@@ -10,6 +10,8 @@ cue_power_cap_add = 0.15
 [resource]
 script = ExtResource("1_item")
 id = &"heavy_shaft"
+display_name = "Heavy Shaft"
+description = "+15% maximum cue power."
 category = &"cue"
 cost_cash = 300
 payload = SubResource("Delta_1")

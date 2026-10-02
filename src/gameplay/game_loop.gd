@@ -17,6 +17,7 @@ signal cue_respawned(reason: StringName)  # relayed from RoundDirector for the H
 signal state_changed()  # time/shots/round/night fields changed (host after a rule, client after a mirror)
 
 const SYNC_PERIOD := 1.0  # live-Round round_state heartbeat; phase changes are sent at once
+const STOCK_SALT := 0x5701  # keeps the shelf's seed apart from round_seed's hash of the same three numbers
 
 @export var round_director: Node  # RoundDirector; retype once its class lands in this tree
 @export var economy: EconomyManager
@@ -127,6 +128,11 @@ func advance() -> void:
 		Phase.RECKONING, Phase.CAMPAIGN_WON:
 			night_index += 1
 			_begin_night()
+
+
+## Identity of this Intermission's Bartender shelf (06 P17): one Night + Round of one campaign always rolls the same drinks.
+func stock_key() -> int:
+	return hash([campaign_seed, current_night().night_number, round_index, STOCK_SALT])
 
 
 func is_host() -> bool:
@@ -327,6 +333,10 @@ func build_profile() -> SaveProfile:
 	p.hype = stream.hype
 	p.owned_items = economy.owned.duplicate()
 	p.persistent_unlocks = economy.persistent_unlocks().duplicate()
+	p.stock_key = economy.stock_key
+	for i in economy.stock_size():
+		p.stock_ids.append(economy.stock_id(i))
+		p.stock_left.append(economy.stock_left(i))
 	p.campaign_seed = campaign_seed
 	var net := get_node_or_null(^"/root/NetManager")
 	p.crew_size = int(net.call(&"get_roster").size()) if net != null else 1

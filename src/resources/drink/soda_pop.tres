@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="Drink" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
+
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
+stat = &"round_time_add_sec"
+value = 10.0
+
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
+id = &"soda_time"
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_drink")
+id = &"soda_pop"
+display_name = "Soda Pop"
+description = "Sugar rush. A longer Round, no catch."
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0")])
+cost_cash = 35

@@ -10,6 +10,8 @@ ball_types = Array[StringName]([&"joker_ball"])
 [resource]
 script = ExtResource("1_item")
 id = &"joker_ball"
+display_name = "Joker Ball"
+description = "Doubles the best ball potted in the same shot. Night 4 and later. Kept across runs."
 category = &"ball"
 cost_cash = 600
 payload = SubResource("Delta_1")

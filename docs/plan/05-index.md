@@ -21,6 +21,7 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | RoundDirector (01) | `trick_detected(trick, shot_id)`, `table_cleared(round_id)` | StreamManager, GameLoop (02) |
 | GameLoop (02) | `night_started / round_started / round_ended / night_ended` | EventScheduler (03), NetManager `round_state` (04) |
 | EconomyManager (02) | `cash_changed(absolute)`, `quota_evaluated` | UI, NetManager `update_cash(absolute_balance)` (04) |
+| EconomyManager (02) | `fined(reason, amount)` (P16 scratch fine, every peer), `stock_changed()` (the Bartender's shelf; mirrored by `update_stock`, 04 §5) | HUD, `BartenderMenu` |
 | EffectManager (03) | `effect_applied/expired`, `reward_mult_changed` | EconomyManager reads `Reward = Drink_Mult × Event_Mult` at shot resolve; `PhysicsSim.apply_modifier` (01, host-only) |
 | World interactions (03) | `request_world_interaction(kind, target_id)` client→host (04) | EffectManager (03) with `owner_peer_id` |
 | PhysicsSim (01/04) | `shot_started`, `push_contact_events` (reliable ch1, 30 Hz flush), `push_heartbeat` (unreliable_ordered ch2, 2 Hz) | clients dead-reckon + interpolate |

@@ -1,6 +1,6 @@
 class_name ShopCatalog
 extends RefCounted
-## Every Cash sink in one list (docs/plan/02 §3.6): the 16 non-drink rows as .tres plus one item per 03 Drink.
+## Every Cash sink in one list (docs/plan/02 §3.6): the 16 Upgrades rows as .tres plus one item per 03 Drink.
 
 const ROWS: Array[ShopItem] = [
 	preload("res://src/resources/shop/polish_the_set.tres"),
@@ -50,6 +50,8 @@ static func _build() -> void:
 	for d in FxCatalog.DRINKS:
 		var it := ShopItem.new()
 		it.id = d.id
+		it.display_name = d.display_name
+		it.description = d.description
 		it.category = &"drink"
 		it.cost_cash = d.cost_cash
 		it.payload = d

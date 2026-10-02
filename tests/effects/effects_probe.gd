@@ -126,11 +126,11 @@ func _fx(id: StringName, target: Effect.Target, mods: Array[StatMod], dur := -1.
 
 
 func _catalog() -> void:
-	_check(FxCatalog.DRINKS.size() == 11, "11 drinks")
+	_check(FxCatalog.DRINKS.size() == 26, "26 drinks")
 	_check(FxCatalog.EVENTS.size() == 8, "8 events")
 	_check(FxCatalog.INTERACTIONS.size() == 9, "9 world interactions")
 	for id in [&"beer", &"whiskey_shot", &"energy_drink", &"tequila_line", &"ice_water", &"house_special",
-			&"flaming_shot", &"neighbours_round", &"bar_nuts", &"mystery_shot", &"moonshine"]:
+			&"flaming_shot", &"neighbours_round", &"bar_nuts", &"static_shot", &"moonshine"]:
 		_check(FxCatalog.drink(id) != null, "drink %s present" % id)
 	for id in [&"tilted_table", &"glass_cushions", &"bouncer", &"crowd_roar", &"moving_pockets",
 			&"ball_swap_chaos", &"lights_out", &"pocket_jackpot"]:
@@ -150,9 +150,10 @@ func _catalog() -> void:
 		for e in d.effects:
 			for m in e.stat_modifiers:
 				_check(Stats.ALL.has(m.stat), "%s stat known" % e.id)
-	# mystery odds table 40/35/20/5 (03 §3.5)
-	var mys := FxCatalog.drink(&"mystery_shot")
-	_check(mys.roll_table.size() == 4 and mys.roll_weights == PackedFloat32Array([40, 35, 20, 5]), "mystery odds")
+	# Mystery tier (06 P17): every drink shows at least one buff and one debuff, and the stumble stat is real
+	_check(Stats.ALL.has(&"player_stumble_per_min") and Stats.BASE[&"player_stumble_per_min"] == 0.0, "stumble stat in Stats")
+	for d in FxCatalog.drinks_of(DrinkTier.Tier.MYSTERY):
+		_check(StatText.count(d, StatText.Kind.BUFF) >= 1 and StatText.count(d, StatText.Kind.DEBUFF) >= 1, "%s: buff and debuff" % d.id)
 	# every hostile interaction is exclusive_group-tagged (03 §3.7)
 	for w in FxCatalog.INTERACTIONS:
 		if w.hostile:
@@ -279,15 +280,11 @@ func _drinks() -> void:
 	_check(is_equal_approx(fx.get_stat(&"stream_hype_gain_mult", 3, 1.0), 1.2), "neighbours_round: hype ×1.2 for the drinker")
 	_check(fx._drink_count(1) == 0, "the gift takes no drink slot")
 	r.loop.round_ended.emit(&"timer", 0)
-	# mystery_shot: host-side roll, 40/35/20/5
-	var counts := {}
-	var mys := FxCatalog.drink(&"mystery_shot")
-	for i in 4000:
-		var o := fx._roll(mys)
-		counts[o.id] = int(counts.get(o.id, 0)) + 1
-	_check(absi(int(counts[&"mystery_heavy"]) - 1600) < 160 and absi(int(counts[&"mystery_clock"]) - 1400) < 160
-			and absi(int(counts[&"mystery_flat"]) - 800) < 120 and absi(int(counts[&"mystery_wild"]) - 200) < 80, "mystery odds roll ~40/35/20/5")
-	_check(fx.serve_drink(&"mystery_shot", 1) == &"" and fx._drink_count(1) == 1, "mystery_shot served as its outcome")
+	# a Mystery drink is served as itself: its buff and its stumble debuff both land on the drinker
+	_check(fx.serve_drink(&"static_shot", 1) == &"" and fx._drink_count(1) == 1, "static_shot served")
+	_check(is_equal_approx(fx.get_stat(&"cue_power_mult", 1, 1.0), 1.1), "static_shot buff: cue power x1.1")
+	_check(is_equal_approx(fx.get_stat(&"player_stumble_per_min", 1, 0.0), 2.0), "static_shot debuff: 2 stumbles a minute")
+	_check(fx.get_stat(&"player_stumble_per_min", 2, 0.0) == 0.0, "the stumble lands on the drinker only")
 	await process_frame
 
 
@@ -437,6 +434,7 @@ func _world() -> void:
 	var economy := EconomyManager.new()
 	economy.stream = stream
 	economy.cash = 100
+	economy.set_stock(1, [&"beer", &"bar_nuts", &"house_special"] as Array[StringName], [3, 3, 1] as Array[int])
 	_add(stream)
 	_add(economy)
 	var table := Node3D.new()
@@ -539,6 +537,13 @@ func _world() -> void:
 	r.director.end_shot(0)
 	wi.request(&"throw_drink", 0, {&"drink_id": &"beer"})
 	_check(applied.back() == &"throw_drink" and economy.cash == 50, "throw_drink costs the drink")
+	_check(economy.stock_left(0) == 2, "a thrown drink leaves the Bartender's shelf")
+	now[0] += 1000000
+	r.director.end_shot(0)
+	economy.set_stock(1, [&"beer"] as Array[StringName], [0] as Array[int])
+	wi.request(&"throw_drink", 0, {&"drink_id": &"beer"})
+	_check(rejected.back() == &"sold_out" and economy.cash == 50, "a sold-out drink cannot be thrown")
+	economy.set_stock(1, [&"beer", &"bar_nuts", &"house_special"] as Array[StringName], [3, 3, 1] as Array[int])
 	# bar_buy / bar_serve: validated, signalled, nothing charged
 	var purchases: Array = []
 	wi.bar_purchase_requested.connect(func(k: StringName, b: int, d: StringName, t: int) -> void: purchases.append([k, b, d, t]))

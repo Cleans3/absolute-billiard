@@ -371,8 +371,6 @@ func serve_drink(drink_id: StringName, drinker_peer_id: int, server_peer_id := 0
 	if reason != &"":
 		drink_refused.emit(drink_id, drinker_peer_id, reason)
 		return reason
-	if d.roll_on_use:
-		d = _roll(d)
 	if d.night_limit > 0:
 		var key := "%d:%s" % [drinker_peer_id, drink_id]
 		_night_uses[key] = int(_night_uses.get(key, 0)) + 1
@@ -425,19 +423,6 @@ func _record_of(drink_id: StringName, peer_id: int) -> LiveDrink:
 		if r.drink.id == drink_id and r.peer_id == peer_id and not r.gift:
 			return r
 	return null
-
-
-## Weighted pick from the roll table. Host-side only: clients only ever see the resulting Effects.
-func _roll(d: Drink) -> Drink:
-	var total := 0.0
-	for w in d.roll_weights:
-		total += w
-	var r := rng.randf() * total
-	for i in d.roll_table.size():
-		r -= d.roll_weights[i]
-		if r < 0.0:
-			return d.roll_table[i] as Drink
-	return d.roll_table[d.roll_table.size() - 1] as Drink
 
 
 ## A drink whose Effects have all ended (ice_water, timers) stops counting for its slot and reward.

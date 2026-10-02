@@ -11,6 +11,8 @@ tip_rate_mult = 1.5
 [resource]
 script = ExtResource("1_item")
 id = &"stream_overlay"
+display_name = "Stream Overlay"
+description = "+150 base viewers each Night and tips arrive 1.5x as often."
 category = &"table"
 cost_cash = 500
 payload = SubResource("Delta_1")

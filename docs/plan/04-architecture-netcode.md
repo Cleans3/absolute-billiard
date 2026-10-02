@@ -109,11 +109,12 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
   "unlocked": { "ball_types": ["tier2_rack"], "cameras": ["lens_t2"], "cue": ["heavy_shaft"] },
   "owned_items": { "tier2_rack": 1, "lens_t2": 1, "heavy_shaft": 1, "fresh_cloth": 1 },
   "persistent_unlocks": ["tier2_rack", "lens_t2"],
-  "seed": 884213
+  "seed": 884213,
+  "bar_stock": { "key": 1893002211, "ids": ["beer", "pale_ale", "tequila_line", "static_shot", "ice_water"], "left": [3, 2, 1, 1, 3] }
 }
 ```
 
-`round_index` = Rounds finished this Night (`0` = Night start); after a passed Night the resume point is the next Night's start. `owned_items` (Shop id → count) is the truth; `unlocked` is a per-category read-only view of it. `viewers = -1` means "start from the Night's `base_viewers`". Built by `GameLoop.build_profile()`, resumed by `GameLoop.resume_from(profile)`.
+`round_index` = Rounds finished this Night (`0` = Night start); after a passed Night the resume point is the next Night's start. `owned_items` (Shop id → count) is the truth; `unlocked` is a per-category read-only view of it. `viewers = -1` means "start from the Night's `base_viewers`". `bar_stock` is the Bartender's Drinks shelf (02 §3.6): `key` = `GameLoop.stock_key()` (campaign seed + Night + Round), `ids`/`left` the offers and the units each has left. `EconomyManager.restore` puts it back and the Intermission that follows keeps it when the key matches; a missing, torn or stale (unknown drink id) shelf is rerolled from the key instead. Built by `GameLoop.build_profile()`, resumed by `GameLoop.resume_from(profile)`.
 
 `save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
 
@@ -150,7 +151,7 @@ src/
 │                    Bar.tscn · Camera.tscn · Prop.tscn
 ├── levels/          Lobby.tscn (boot scene) · MainLevel.tscn
 ├── resources/       BallType/ · Drink/ · Effect/ · Event/ · ShopItem/ · net_config.tres
-├── ui/              LobbyUI.tscn · StreamUI.tscn · ShopUI.tscn · HUD.tscn
+├── ui/              LobbyUI.tscn · StreamUI.tscn · BartenderMenu.tscn · HUD.tscn
 ├── shaders/         player_view.gdshader · neon.gdshader
 ├── debug/           dev-only overlay (DebugRoot.tscn, HUD/freecam/gizmos/spec panel/shot
 │                    console/timescale/rack presets, src/debug/README.md); NetGraph.tscn ·
@@ -202,7 +203,7 @@ MainLevel.tscn
 | `reroll_ball(net_id, type, tick)` — `_reroll_rpc`: shuffle, in place | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `shot_clock(seconds)` — `_shot_clock_rpc`: the shooter's clock armed | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `request_full_state()` — `_request_full_state_rpc`: a client back from the background asks for everything | RoundDirector | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
-| `full_state(round_id, seed, shot_index, shooter_id, active, live, clock_left, rack_blob, ball_frame, host_pocket_t)` — `_full_state_rpc`: `rack_blob` is the `push_rack` blob, `ball_frame` a `BallEventCodec` frame of every ball (lifecycle in the event flags) at the host's current tick. Then the host calls `resync_peer(peer)` on GameLoop (`round_state`), EconomyManager (`update_cash` + `update_owned`), EffectManager (`_resync_effects_rpc`: adds missing Effects, syncs remaining time) | RoundDirector | H→C | `authority` | `call_remote` | `reliable` | 3 |
+| `full_state(round_id, seed, shot_index, shooter_id, active, live, clock_left, rack_blob, ball_frame, host_pocket_t)` — `_full_state_rpc`: `rack_blob` is the `push_rack` blob, `ball_frame` a `BallEventCodec` frame of every ball (lifecycle in the event flags) at the host's current tick. Then the host calls `resync_peer(peer)` on GameLoop (`round_state`), EconomyManager (`update_cash` + `update_stock` + `update_owned`), EffectManager (`_resync_effects_rpc`: adds missing Effects, syncs remaining time) | RoundDirector | H→C | `authority` | `call_remote` | `reliable` | 3 |
 | `host_away(away)` — `_host_away_rpc`: the host's app paused / resumed; clients show "host away" (`NetManager.host_away`). The host's resume also sends `full_state` to every client | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `set_shooter(peer_id)` — `_set_shooter_rpc` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `round_state(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, end_reason)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
@@ -212,6 +213,7 @@ MainLevel.tscn
 | `request_purchase(item_id, target_peer_id)` | EconomyManager | C→H | `any_peer` | `call_local` | `reliable` | 3 |
 | `reject_purchase(item_id, reason)` | EconomyManager | H→1 | `authority` | `call_local` | `reliable` | 3 |
 | `update_owned(ids, counts, item_id, buyer_peer_id)` | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `update_stock(ids, left, key)` — the Bartender's Drinks shelf (02 §3.6): host rolls it at every Intermission and re-sends it after each sale, checkpoint restore and `full_state`; clients only mirror | EconomyManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `push_rig_poses(poses, holders)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
@@ -230,7 +232,7 @@ MainLevel.tscn
 | `apply_knock(peer_id, impulse, seconds)` — the host's `PlayerSpawner.knock`: thrown drink, bomb blast, stumble tick (08 §2.7) | PlayerSpawner | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_knock(impulse, seconds)` — the owner's own knock (a hard landing); the sender must be the slot's peer | PlayerSlot | any→A | `any_peer` | `call_remote` | `reliable` | 3 |
 
-`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it). `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) plus a `PackedInt32Array` of holder peer ids (0 = free) at 4 Hz, only while a rig moved or changed hands, plus a few repeats at rest; the Player derives `CARRY` from the holders (08 §5). `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
+`update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it); a client that receives `reason == &"scratch"` also emits `fined(reason, -delta)` (06 P16), so the fine banner needs no RPC of its own. The balance may be negative. `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) plus a `PackedInt32Array` of holder peer ids (0 = free) at 4 Hz, only while a rig moved or changed hands, plus a few repeats at rest; the Player derives `CARRY` from the holders (08 §5). `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 
 ### Free-roam world interaction (P2)
 Non-shooters roam the bar. Every one of those interactions is one RPC pair, and 04 owns only the envelope — the `kind` registry is a black box filled in by 01/02/03 and the Player pass:
