@@ -63,6 +63,7 @@ func _labels() -> void:
 	_variation(&"Title", &"Label", {font_size = 64, outline_size = 8, color = BRASS_L, outline = Color(0.45, 0.05, 0.25, 0.95)})
 	_variation(&"Heading", &"Label", {font_size = 38, outline_size = 0, color = BRASS_L})
 	_variation(&"Payout", &"Label", {font_size = 46, outline_size = 8, color = BRASS_L})
+	_variation(&"CardName", &"Label", {font_size = 30, outline_size = 0, color = CREAM})
 	_variation(&"Caption", &"Label", {font_size = 20, outline_size = 0, color = MUTED})
 	_variation(&"Danger", &"Label", {font_size = 26, outline_size = 0, color = RED})
 	_variation(&"Good", &"Label", {font_size = 26, outline_size = 0, color = GREEN})
@@ -73,6 +74,8 @@ func _labels() -> void:
 		theme.set_constant(&"separation", box, 14)
 	theme.set_type_variation(&"ChipBox", &"HBoxContainer")  # icon + value, tighter than a row
 	theme.set_constant(&"separation", &"ChipBox", 6)
+	theme.set_type_variation(&"TightBox", &"VBoxContainer")  # stacked card text
+	theme.set_constant(&"separation", &"TightBox", 4)
 	theme.set_constant(&"h_separation", &"GridContainer", 18)
 	theme.set_constant(&"v_separation", &"GridContainer", 10)
 	theme.set_constant(&"separation", &"HSeparator", 18)
@@ -197,7 +200,7 @@ func _scroll_tabs() -> void:
 		theme.set_color(&"font_hovered_color", type, CREAM)
 		theme.set_font_size(&"font_size", type, 28)
 		theme.set_constant(&"h_separation", type, 8)
-	theme.set_stylebox(&"panel", &"TabContainer", _box("panel_inset", 18, [18, 14, 18, 14]))
+	theme.set_stylebox(&"panel", &"TabContainer", _box("panel_inset", 18, [14, 10, 14, 10]))
 	theme.set_stylebox(&"tabbar_background", &"TabContainer", empty)
 
 

@@ -1,5 +1,5 @@
 class_name BartenderMenu
-extends Control
+extends UIModal
 ## The Bartender's counter (docs/plan/02 §3.6, 06 P17, polish contract §1 and §9): a `ui_modal` with two tabs.
 ## Drinks = the host's random shelf as tier-framed cards (serve a crewmate, or throw one at the shooter);
 ## Upgrades = the fixed ball / cue / camera / table rows. A Drink tap is only reported (`picked`): the Player sends
@@ -23,7 +23,6 @@ const REASON_TEXT := {
 @export var economy: EconomyManager
 @export var game_loop: GameLoop
 
-var keep_on_phase := false  # the UIRouter closes modals on a phase change unless this is true
 var kind := &"bar_serve"  # bar_serve | throw_drink
 var target_peer := 0  ## 0 = me
 var _frames: Dictionary = {}  # DrinkTier.Tier -> StyleBox
@@ -44,7 +43,7 @@ var _upgrade_buttons: Dictionary = {}  # item id -> Buy button of its row
 
 
 func _ready() -> void:
-	add_to_group(&"ui_modal")
+	super()  # UIModal: the dim backdrop and the visibility hook; priority 0, dismissable, closed by a phase change
 	%Close.pressed.connect(close)
 	_serve.pressed.connect(set_mode.bind(&"bar_serve"))
 	_throw.pressed.connect(set_mode.bind(&"throw_drink"))
@@ -59,10 +58,6 @@ func _ready() -> void:
 	hide()
 
 
-func is_open() -> bool:
-	return visible
-
-
 func open() -> void:
 	_status.text = ""
 	_tabs.current_tab = 0
@@ -72,7 +67,7 @@ func open() -> void:
 
 
 func close() -> void:
-	hide()
+	super()
 
 
 func set_mode(k: StringName) -> void:
@@ -127,10 +122,7 @@ func _refresh() -> void:
 	if not visible or economy == null:
 		return
 	_cash.text = "Cash $%d" % economy.cash
-	if economy.cash < 0:
-		_cash.add_theme_color_override(&"font_color", StatText.DEBUFF_COLOUR)
-	else:
-		_cash.remove_theme_color_override(&"font_color")
+	_cash.theme_type_variation = &"Danger" if economy.cash < 0 else &""
 	_serve.button_pressed = kind == &"bar_serve"
 	_throw.button_pressed = kind == &"throw_drink"
 	for pid: int in _targets:
@@ -147,6 +139,7 @@ func _rebuild_cards() -> void:
 		c.queue_free()
 	_drink_buttons.clear()
 	_note.text = "" if economy.stock_size() > 0 else "The shelf is empty. The Bartender restocks at the next Intermission."
+	_note.visible = _note.text != ""  # an empty line would still cost a row of height
 	for i in economy.stock_size():
 		_cards.add_child(_card(i))
 
@@ -176,13 +169,13 @@ func _card(i: int) -> Control:
 	if left <= 0:
 		card.modulate = Color(1.0, 1.0, 1.0, 0.45)  # sold out stays on the shelf, greyed
 	var box := VBoxContainer.new()
-	box.add_theme_constant_override(&"separation", 4)
+	box.theme_type_variation = &"TightBox"
 	card.add_child(box)
-	box.add_child(_text(DrinkTier.label(d.tier).to_upper(), 13, tint, glitch))
-	box.add_child(_text(d.display_name, 22, tint, glitch))
-	box.add_child(_text(d.description, 14, Color(0.82, 0.84, 0.88), glitch))
+	box.add_child(_text(DrinkTier.label(d.tier).to_upper(), &"Caption", tint, glitch))
+	box.add_child(_text(d.display_name, &"CardName", tint, glitch))
+	box.add_child(_text(d.description, &"Caption", Color(0.82, 0.84, 0.88), glitch))
 	for l in StatText.lines(d):
-		var line := _label("%s %s" % ["+" if l.kind == StatText.Kind.BUFF else ("-" if l.kind == StatText.Kind.DEBUFF else "*"), l.text], 15, HORIZONTAL_ALIGNMENT_LEFT, true)
+		var line := _label("%s %s" % ["+" if l.kind == StatText.Kind.BUFF else ("-" if l.kind == StatText.Kind.DEBUFF else "*"), l.text], &"Caption", HORIZONTAL_ALIGNMENT_LEFT, true)
 		if l.kind == StatText.Kind.BUFF:
 			line.add_theme_color_override(&"font_color", StatText.BUFF_COLOUR)
 		elif l.kind == StatText.Kind.DEBUFF:
@@ -192,12 +185,12 @@ func _card(i: int) -> Control:
 	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	box.add_child(fill)
 	if not d.mid_round:
-		box.add_child(_label("Between Rounds only", 12, HORIZONTAL_ALIGNMENT_CENTER))
+		box.add_child(_label("Between Rounds only", &"Caption", HORIZONTAL_ALIGNMENT_CENTER))
 	var foot := HBoxContainer.new()
-	var price := _label("$%d" % d.cost_cash, 22)
+	var price := _label("$%d" % d.cost_cash)
 	price.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(price)
-	foot.add_child(_label("SOLD OUT" if left <= 0 else "%d left" % left, 15, HORIZONTAL_ALIGNMENT_RIGHT))
+	foot.add_child(_label("SOLD OUT" if left <= 0 else "%d left" % left, &"Caption", HORIZONTAL_ALIGNMENT_RIGHT))
 	box.add_child(foot)
 	var buy := _button(("Buy" if kind == &"bar_serve" else "Throw") if why == &"" else REASON_TEXT.get(why, String(why)))
 	buy.disabled = why != &""
@@ -234,9 +227,9 @@ func _frame(tier: DrinkTier.Tier) -> StyleBox:
 
 
 ## A centred line; Mystery text is a RichTextLabel with `[glitch]`, everything else a plain Label.
-func _text(text: String, size: int, colour: Color, glitch: bool) -> Control:
+func _text(text: String, variation: StringName, colour: Color, glitch: bool) -> Control:
 	if not glitch:
-		var l := _label(text, size, HORIZONTAL_ALIGNMENT_CENTER, true)
+		var l := _label(text, variation, HORIZONTAL_ALIGNMENT_CENTER, true)
 		l.add_theme_color_override(&"font_color", colour)
 		return l
 	var r := RichTextLabel.new()
@@ -244,7 +237,7 @@ func _text(text: String, size: int, colour: Color, glitch: bool) -> Control:
 	r.fit_content = true
 	r.scroll_active = false
 	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	r.add_theme_font_size_override(&"normal_font_size", size)
+	r.add_theme_font_size_override(&"normal_font_size", ThemeDB.get_project_theme().get_font_size(&"font_size", variation))  # RichTextLabel has no Label variation
 	r.add_theme_color_override(&"default_color", colour)
 	r.install_effect(_glitch)
 	r.text = "[center][glitch]%s[/glitch][/center]" % text
@@ -261,9 +254,7 @@ func _rebuild_upgrades() -> void:
 	for category in ShopCatalog.CATEGORIES:
 		if category == &"drink":
 			continue
-		var head := _label(CATEGORY_TITLES[category], 22)
-		head.add_theme_color_override(&"font_color", DrinkTier.colour(DrinkTier.Tier.LEGENDARY))
-		_upgrades.add_child(head)
+		_upgrades.add_child(_label(CATEGORY_TITLES[category], &"Heading"))
 		for it in ShopCatalog.in_category(category):
 			_upgrades.add_child(_upgrade_row(it))
 
@@ -274,15 +265,14 @@ func _upgrade_row(it: ShopItem) -> Control:
 	row.custom_minimum_size.y = ROW_HEIGHT
 	var text := VBoxContainer.new()
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	text.add_child(_label(it.display_name, 20))
-	var desc := _label(it.description, 14, HORIZONTAL_ALIGNMENT_LEFT, true)
-	desc.modulate = Color(1.0, 1.0, 1.0, 0.75)
-	text.add_child(desc)
+	text.add_child(_label(it.display_name))
+	text.add_child(_label(it.description, &"Caption", HORIZONTAL_ALIGNMENT_LEFT, true))
 	row.add_child(text)
-	var price := _label("$%d" % it.cost_cash, 20, HORIZONTAL_ALIGNMENT_RIGHT)
+	var price := _label("$%d" % it.cost_cash, &"", HORIZONTAL_ALIGNMENT_RIGHT)
 	price.custom_minimum_size.x = 84
 	row.add_child(price)
 	var buy := _button("Buy" if why == &"" else REASON_TEXT.get(why, String(why)))
+	buy.custom_minimum_size.x = 170  # one column whatever the refusal text says
 	buy.disabled = why != &""
 	buy.pressed.connect(_buy_upgrade.bind(it.id))
 	row.add_child(buy)
@@ -302,13 +292,13 @@ func _name_of(item_id: StringName) -> String:
 
 
 ## `wrap` = flowing text (descriptions, effect lines); short single-line labels must not wrap or a narrow cell stacks them letter by letter.
-func _label(text: String, size: int, align := HORIZONTAL_ALIGNMENT_LEFT, wrap := false) -> Label:
+func _label(text: String, variation := &"", align := HORIZONTAL_ALIGNMENT_LEFT, wrap := false) -> Label:
 	var l := Label.new()
 	l.text = text
+	l.theme_type_variation = variation
 	l.horizontal_alignment = align
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	l.add_theme_font_size_override(&"font_size", size)
 	return l
 
 
@@ -316,5 +306,4 @@ func _button(text: String) -> Button:
 	var b := Button.new()
 	b.text = text
 	b.custom_minimum_size = Vector2(120, BUTTON_HEIGHT)
-	b.add_theme_font_size_override(&"font_size", 20)
 	return b

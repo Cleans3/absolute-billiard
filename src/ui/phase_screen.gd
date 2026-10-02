@@ -86,7 +86,8 @@ func _on_phase_changed(phase: GameLoop.Phase) -> void:
 	match phase:
 		GameLoop.Phase.INTERMISSION:
 			var next_round := game_loop.round_index + 1
-			_present("Intermission", "%s\nNext: Round %d/%d." % [_body, next_round, game_loop.current_night().rounds_count], "Start Round", host, true, false)
+			var cash := "" if economy == null else " Cash $%d." % economy.cash  # the HUD hides behind this screen
+			_present("Intermission", "%s%s\nNext: Round %d/%d." % [_body, cash, next_round, game_loop.current_night().rounds_count], "Start Round", host, true, false)
 		GameLoop.Phase.RECKONING:
 			_present("Night %d reckoning" % _night_number, _reckoning, "Next Night", host, false, false)
 		GameLoop.Phase.GAME_OVER:

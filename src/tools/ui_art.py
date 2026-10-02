@@ -99,7 +99,7 @@ def button(name, top, bot, stroke, glow=None, hi=0.18, shade=False):
 def buttons():
     button("btn_normal", "#69442D", "#3A2316", BRASS)
     button("btn_hover", "#7E5238", "#4A2D1D", BRASS_L, CYAN)
-    button("btn_pressed", "#2B190F", "#432818", BRASS_D, None, shade=True)
+    button("btn_pressed", "#2B190F", "#432818", BRASS_D, CYAN, shade=True)  # the cyan rim reads as "on" for toggles
     button("btn_disabled", "#3C3631", "#2D2926", "#6E6358", None, 0.06)
     button("btn_primary", PINK, PINK_D, BRASS_L, None, 0.4)
     button("btn_primary_hover", PINK_L, "#E02F88", BRASS_L, CYAN, 0.5)

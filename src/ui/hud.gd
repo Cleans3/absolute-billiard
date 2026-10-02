@@ -2,6 +2,7 @@ extends Control
 ## HUD (docs/plan/02 §3.1): one stat bar at the top, one payout line at the bottom. Signals only (07 §5): the clock
 ## label is rewritten once a second, everything else when its own signal fires. Reads the same mirrored state on every
 ## peer. The phase screens live in PhaseScreen, notices in UIRouter's single toast line; the seed is on the F1 debug panel.
+## The whole HUD hides while a modal is open.
 ## Fixed regions (docs 08 §2.7): stat bar x[140, W-140] y[8, 64]; payout x[240, W-240] y[576, 636].
 
 const FEED_SECS := 4.0
@@ -58,9 +59,17 @@ func _ready() -> void:
 	if stream != null:
 		stream.viewers_changed.connect(_on_viewers_changed)
 	_on_settings_changed()
+	_bind_router.call_deferred()
 	_refresh_round()
 	_refresh_cash()
 	_refresh_time()
+
+
+## Hidden under a modal: a screen shows only itself, nothing of the HUD peeks out round its edges.
+func _bind_router() -> void:
+	if UIRouter.instance != null:
+		UIRouter.instance.modal_changed.connect(func(open: bool) -> void: visible = not open)
+		visible = not UIRouter.instance.is_modal_open()
 
 
 func _process(_delta: float) -> void:
