@@ -2,12 +2,6 @@
 
 [ext_resource type="Script" path="res://src/ui/hud.gd" id="1_hud"]
 
-[sub_resource type="Theme" id="Theme_hud"]
-default_font_size = 32
-Button/font_sizes/font_size = 36
-Label/colors/font_outline_color = Color(0, 0, 0, 1)
-Label/constants/outline_size = 8
-
 [node name="HUD" type="Control"]
 layout_mode = 3
 anchors_preset = 15
@@ -16,124 +10,46 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-theme = SubResource("Theme_hud")
 script = ExtResource("1_hud")
 
 [node name="Top" type="MarginContainer" parent="."]
 layout_mode = 1
 anchors_preset = 10
 anchor_right = 1.0
+offset_bottom = 64.0
 grow_horizontal = 2
 mouse_filter = 2
-theme_override_constants/margin_left = 16
-theme_override_constants/margin_top = 12
-theme_override_constants/margin_right = 16
+theme_override_constants/margin_left = 140
+theme_override_constants/margin_top = 8
+theme_override_constants/margin_right = 140
 
-[node name="Stats" type="HFlowContainer" parent="Top"]
+[node name="Plate" type="PanelContainer" parent="Top"]
+unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
-theme_override_constants/h_separation = 32
-theme_override_constants/v_separation = 4
+size_flags_horizontal = 4
+size_flags_vertical = 0
+theme_type_variation = &"PanelPlate"
 
-[node name="Night" type="Label" parent="Top/Stats"]
+[node name="Stats" type="HBoxContainer" parent="Top/Plate"]
 unique_name_in_owner = true
 layout_mode = 2
-text = "Night 1"
+mouse_filter = 2
 
-[node name="Round" type="Label" parent="Top/Stats"]
+[node name="Payout" type="Label" parent="."]
 unique_name_in_owner = true
-layout_mode = 2
-text = "Round 0/3"
-
-[node name="Time" type="Label" parent="Top/Stats"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "0:00"
-
-[node name="Shots" type="Label" parent="Top/Stats"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Shots 0"
-
-[node name="Cash" type="Label" parent="Top/Stats"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "$0 / $0"
-
-[node name="Viewers" type="Label" parent="Top/Stats"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Viewers 0"
-
-[node name="Seed" type="Label" parent="Top/Stats"]
-unique_name_in_owner = true
-layout_mode = 2
-text = "Seed -"
-
-[node name="Feed" type="VBoxContainer" parent="."]
 layout_mode = 1
 anchors_preset = 12
 anchor_top = 1.0
 anchor_right = 1.0
 anchor_bottom = 1.0
-offset_top = -120.0
-offset_bottom = -24.0
+offset_left = 240.0
+offset_top = -144.0
+offset_right = -240.0
+offset_bottom = -84.0
 grow_horizontal = 2
 grow_vertical = 0
 mouse_filter = 2
-
-[node name="Payout" type="Label" parent="Feed"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 44
+theme_type_variation = &"Payout"
 horizontal_alignment = 1
-
-[node name="Notice" type="Label" parent="Feed"]
-unique_name_in_owner = true
-layout_mode = 2
-horizontal_alignment = 1
-
-[node name="Overlay" type="CenterContainer" parent="."]
-unique_name_in_owner = true
-visible = false
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-
-[node name="Panel" type="PanelContainer" parent="Overlay"]
-custom_minimum_size = Vector2(560, 0)
-layout_mode = 2
-
-[node name="Margin" type="MarginContainer" parent="Overlay/Panel"]
-layout_mode = 2
-theme_override_constants/margin_left = 32
-theme_override_constants/margin_top = 32
-theme_override_constants/margin_right = 32
-theme_override_constants/margin_bottom = 32
-
-[node name="Rows" type="VBoxContainer" parent="Overlay/Panel/Margin"]
-layout_mode = 2
-theme_override_constants/separation = 20
-
-[node name="Title" type="Label" parent="Overlay/Panel/Margin/Rows"]
-unique_name_in_owner = true
-layout_mode = 2
-theme_override_font_sizes/font_size = 44
-horizontal_alignment = 1
-
-[node name="Body" type="Label" parent="Overlay/Panel/Margin/Rows"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(496, 0)
-layout_mode = 2
-horizontal_alignment = 1
-autowrap_mode = 3
-
-[node name="Next" type="Button" parent="Overlay/Panel/Margin/Rows"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 88)
-layout_mode = 2
-text = "Next"
+vertical_alignment = 1

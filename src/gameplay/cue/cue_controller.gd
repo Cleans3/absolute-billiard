@@ -161,9 +161,11 @@ func swayed_yaw() -> float:
 # --- desktop input --------------------------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
+	if UIRouter.blocking():
+		return
 	if event is InputEventMouseMotion:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
-			turn(-event.relative.x * mouse_aim_rad_per_px)
+			turn(-event.relative.x * mouse_aim_rad_per_px * float(Settings.value(&"cue_aim_sens")))
 	elif event.is_action_pressed(&"shoot"):
 		if call_required and called_pocket == &"":
 			if controls != null:
@@ -194,9 +196,12 @@ func _process(delta: float) -> void:
 	if controls != null:
 		var d := controls.look.consume()
 		if d != Vector2.ZERO:
-			turn(-d.x * deg_to_rad(touch_aim_deg_per_px) * (fine_aim_mult if controls.look.fine else 1.0))
+			turn(-d.x * deg_to_rad(touch_aim_deg_per_px) * float(Settings.value(&"cue_aim_sens")) * (fine_aim_mult if controls.look.fine else 1.0))
 		if controls.touch:
 			power = controls.power.value
+	if charging and UIRouter.blocking():  # a modal opened mid-charge: drop it, the release will never arrive
+		charging = false
+		power = 0.0
 	if charging:
 		if rising:
 			power += delta / charge_time
@@ -209,10 +214,12 @@ func _process(delta: float) -> void:
 				power = 0.0
 				rising = true
 	var v := Input.get_vector(&"spin_left", &"spin_right", &"spin_down", &"spin_up")
+	if UIRouter.blocking():
+		v = Vector2.ZERO
 	if v != Vector2.ZERO:
 		set_spin(spin + v * spin_rate * delta)
 	var e := Input.get_axis(&"elevate_down", &"elevate_up")
-	if e != 0.0:
+	if e != 0.0 and not UIRouter.blocking():
 		set_elevation(elevation_deg + e * elevation_rate_deg * delta)
 	_pose_cue()
 	if player != null:

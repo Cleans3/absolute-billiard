@@ -34,6 +34,10 @@ window/vsync/vsync_mode=1
 
 enabled=PackedStringArray("res://addons/deeplink/plugin.cfg")
 
+[gui]
+
+theme/custom="res://src/ui/theme/game_theme.tres"
+
 [file_customization]
 
 folder_colors={

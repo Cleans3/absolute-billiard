@@ -67,13 +67,22 @@ func _drag_to(f: float) -> void:
 
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.35))
-	var h := size.y * value / max_value
-	var fill := Color(0.9, 0.2, 0.2, 0.8) if value >= max_value else Color(1, 1, 1, 0.6)
-	if from_top:
-		draw_rect(Rect2(0, 0, size.x, h), fill)
-	else:
-		draw_rect(Rect2(0, size.y - h, size.x, h), fill)
+	var track := get_theme_stylebox(&"panel", &"PanelInset")
+	draw_style_box(track, Rect2(Vector2.ZERO, size))
+	var pad := 8.0
+	var inner := Rect2(pad, pad, size.x - pad * 2.0, size.y - pad * 2.0)
+	var h := inner.size.y * value / max_value
+	var top := get_theme_color(&"pink" if value >= max_value else &"cyan", &"Game")
+	var bottom := get_theme_color(&"pink", &"Game") if from_top else get_theme_color(&"cyan", &"Game")
+	if h > 0.5:
+		var r := Rect2(inner.position.x, inner.position.y if from_top else inner.end.y - h, inner.size.x, h)
+		var c0 := bottom if from_top else top
+		var c1 := top if from_top else bottom
+		draw_polygon(PackedVector2Array([r.position, Vector2(r.end.x, r.position.y), r.end, Vector2(r.position.x, r.end.y)]), PackedColorArray([c0, c0, c1, c1]))
+		var edge_y := r.end.y if from_top else r.position.y
+		draw_rect(Rect2(inner.position.x - 4.0, edge_y - 3.0, inner.size.x + 8.0, 6.0), get_theme_color(&"brass_light", &"Game"))
 	if locked:
+		draw_style_box(track, Rect2(Vector2.ZERO, size))
 		draw_rect(Rect2(Vector2.ZERO, size), Color(0, 0, 0, 0.5))
-	draw_string(ThemeDB.fallback_font, Vector2(0, size.y + 14), caption, HORIZONTAL_ALIGNMENT_CENTER, size.x, 12)
+	var font := get_theme_default_font()
+	draw_string(font, Vector2(0, size.y + 20), caption, HORIZONTAL_ALIGNMENT_CENTER, size.x, 18, get_theme_color(&"muted", &"Game"))

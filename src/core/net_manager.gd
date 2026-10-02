@@ -43,6 +43,7 @@ var _gen := 0  # bumped by _reset(); an async join/host from an older generation
 
 
 func _ready() -> void:
+	Settings.load_all()  # volume, key bindings: the one boot-time load (docs/plan/06 P11)
 	_init_steam()
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_connected.connect(_relax_timeout)

@@ -1,6 +1,12 @@
 [gd_scene load_steps=2 format=3]
 
 [ext_resource type="Script" path="res://src/ui/lobby_ui.gd" id="1_lobby"]
+[ext_resource type="Texture2D" path="res://assets/ui/menu_bg.svg" id="ui_bg"]
+[ext_resource type="Texture2D" path="res://assets/ui/logo_emblem.svg" id="ui_logo"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_gear.svg" id="ui_gear"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_controls.svg" id="ui_controls"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_skins.svg" id="ui_skins"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_close.svg" id="ui_close"]
 
 [node name="LobbyUI" type="Control"]
 layout_mode = 3
@@ -11,66 +17,138 @@ grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("1_lobby")
 
-[node name="Center" type="CenterContainer" parent="."]
+[node name="Background" type="TextureRect" parent="."]
 layout_mode = 1
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
+texture = ExtResource("ui_bg")
+expand_mode = 1
+stretch_mode = 6
+
+[node name="Brand" type="VBoxContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = 56.0
+offset_right = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+alignment = 1
+
+[node name="Emblem" type="TextureRect" parent="Brand"]
+custom_minimum_size = Vector2(256, 256)
+layout_mode = 2
+size_flags_horizontal = 4
+texture = ExtResource("ui_logo")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Title" type="Label" parent="Brand"]
+layout_mode = 2
+theme_type_variation = &"Title"
+text = "ABSOLUTE
+BILLIARD"
+horizontal_alignment = 1
+
+[node name="Tagline" type="Label" parent="Brand"]
+layout_mode = 2
+theme_type_variation = &"Heading"
+text = "Make rent before closing time."
+horizontal_alignment = 1
+
+[node name="Center" type="PanelContainer" parent="."]
+layout_mode = 1
+anchors_preset = -1
+anchor_left = 1.0
+anchor_top = 0.5
+anchor_right = 1.0
+anchor_bottom = 0.5
+offset_left = -600.0
+offset_right = -56.0
+grow_horizontal = 0
+grow_vertical = 2
 
 [node name="Menu" type="VBoxContainer" parent="Center"]
-custom_minimum_size = Vector2(640, 0)
+custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
-theme_override_constants/separation = 16
-
-[node name="Title" type="Label" parent="Center/Menu"]
-layout_mode = 2
-theme_override_font_sizes/font_size = 48
-text = "ABSOLUTE BILLIARD"
-horizontal_alignment = 1
 
 [node name="Host" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"PrimaryButton"
 text = "Host"
 
 [node name="Steam" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
 text = "Host on Steam"
 
 [node name="JoinRow" type="HBoxContainer" parent="Center/Menu"]
+unique_name_in_owner = true
 layout_mode = 2
 
 [node name="Code" type="LineEdit" parent="Center/Menu/JoinRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 28
 placeholder_text = "CODE"
 max_length = 6
 alignment = 1
 
 [node name="Join" type="Button" parent="Center/Menu/JoinRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 72)
+custom_minimum_size = Vector2(150, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
 text = "Join"
+
+[node name="Solo" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Solo"
+
+[node name="Resume" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Resume"
+
+[node name="ResumeScroll" type="ScrollContainer" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 360)
+layout_mode = 2
+horizontal_scroll_mode = 0
+
+[node name="ResumeList" type="VBoxContainer" parent="Center/Menu/ResumeScroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="ResumeBack" type="Button" parent="Center/Menu"]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(0, 68)
+layout_mode = 2
+text = "Back"
 
 [node name="AdvancedToggle" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 layout_mode = 2
+theme_type_variation = &"FlatButton"
 toggle_mode = true
 text = "Advanced: join by IP"
-flat = true
 
 [node name="AdvancedRow" type="HBoxContainer" parent="Center/Menu"]
 unique_name_in_owner = true
@@ -79,102 +157,97 @@ layout_mode = 2
 
 [node name="Address" type="LineEdit" parent="Center/Menu/AdvancedRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_font_sizes/font_size = 28
 placeholder_text = "192.168.1.20:7777"
 
 [node name="JoinIP" type="Button" parent="Center/Menu/AdvancedRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 72)
+custom_minimum_size = Vector2(120, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
 text = "Join IP"
 
 [node name="HostLan" type="Button" parent="Center/Menu/AdvancedRow"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(140, 72)
+custom_minimum_size = Vector2(120, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
 text = "Host LAN"
-
-[node name="Solo" type="Button" parent="Center/Menu"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 72)
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "Solo"
-
-[node name="Resume" type="Button" parent="Center/Menu"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 72)
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "Resume"
-
-[node name="ResumeScroll" type="ScrollContainer" parent="Center/Menu"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 400)
-layout_mode = 2
-horizontal_scroll_mode = 0
-
-[node name="ResumeList" type="VBoxContainer" parent="Center/Menu/ResumeScroll"]
-unique_name_in_owner = true
-layout_mode = 2
-size_flags_horizontal = 3
-theme_override_constants/separation = 8
-
-[node name="ResumeBack" type="Button" parent="Center/Menu"]
-unique_name_in_owner = true
-visible = false
-custom_minimum_size = Vector2(0, 72)
-layout_mode = 2
-theme_override_font_sizes/font_size = 28
-text = "Back"
 
 [node name="RoomCode" type="Label" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 40
+theme_type_variation = &"Title"
 horizontal_alignment = 1
 
 [node name="Share" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 24
 text = "Copy invite link"
 
 [node name="Roster" type="Label" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"Heading"
 
 [node name="Start" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
+theme_type_variation = &"PrimaryButton"
 text = "Start"
 
 [node name="Leave" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(0, 72)
+custom_minimum_size = Vector2(0, 68)
 layout_mode = 2
-theme_override_font_sizes/font_size = 28
 text = "Leave"
+
+[node name="Footer" type="HBoxContainer" parent="Center/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="Settings" type="Button" parent="Center/Menu/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Settings"
+icon = ExtResource("ui_gear")
+
+[node name="Controls" type="Button" parent="Center/Menu/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Controls"
+icon = ExtResource("ui_controls")
+
+[node name="Skins" type="Button" parent="Center/Menu/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Skins"
+icon = ExtResource("ui_skins")
+
+[node name="Quit" type="Button" parent="Center/Menu/Footer"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+text = "Quit"
+icon = ExtResource("ui_close")
 
 [node name="Status" type="Label" parent="Center/Menu"]
 unique_name_in_owner = true
 layout_mode = 2
-theme_override_font_sizes/font_size = 18
+theme_type_variation = &"Caption"
 horizontal_alignment = 1
 autowrap_mode = 3

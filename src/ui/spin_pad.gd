@@ -38,6 +38,6 @@ func set_spin(v: Vector2) -> void:
 
 func _emit_at(pos: Vector2) -> void:
 	var c := size * 0.5
-	var r := minf(c.x, c.y) - 2.0
+	var r := minf(c.x, c.y) - 4.0  # SpinDisc._draw's radius
 	var v := (pos - c) / r
 	changed.emit(Vector2(v.x, -v.y).limit_length(1.0))

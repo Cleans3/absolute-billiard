@@ -143,16 +143,21 @@ Local settings live in a separate file and are never networked. `Cash` is crew-s
 src/
 ├── core/            NetManager.gd (autoload) · Transport.gd · LobbyCode.gd
 │                    SaveManager.gd (static) · BallMotion.gd (shared dead-reckoning)
+│                    Settings.gd (static, user://settings.cfg: options + key bindings)
 ├── gameplay/        Table.tscn (contains PhysicsSim.gd) · Ball.tscn · BallEventCodec.gd
 │                    Bar.tscn · Camera.tscn · Prop.tscn
 ├── levels/          Lobby.tscn (boot scene) · MainLevel.tscn
 ├── resources/       BallType/ · Drink/ · Effect/ · Event/ · ShopItem/ · net_config.tres
-├── ui/              LobbyUI.tscn · StreamUI.tscn · ShopUI.tscn · HUD.tscn
+├── ui/              LobbyUI.tscn · HUD.tscn · TouchControls.tscn · UIRouter + UIModal (modal screens:
+│                    PhaseScreen · EventVote · PauseMenu · SettingsScreen · ControlsScreen · SkinsScreen)
+│                    theme/game_theme.tres (the one project Theme, built by tools/build_ui_theme.gd)
 ├── shaders/         fog_plane.gdshader · neon.gdshader
 ├── debug/           dev-only overlay (DebugRoot.tscn, HUD/freecam/gizmos/spec panel/shot
 │                    console/timescale/rack presets, src/debug/README.md); NetGraph.tscn ·
 │                    SimDiff.gd (M3 reconstruction check) still to come
-└── tools/           bake_lightmaps.gd · pack_release.sh
+├── tools/           bake_lightmaps.gd · pack_release.sh · ui_art.py (draws assets/ui/*.svg)
+assets/ui/           hand-drawn SVG sprites (panels, buttons, icons, touch widgets, menu art)
+assets/fonts/        Barlow Condensed SemiBold + OFL.txt (the one UI font)
 deploy/noray/        docker-compose.yml · .env.example
 tests/               physics fixtures (D1) · codec round-trip · migration
 ```

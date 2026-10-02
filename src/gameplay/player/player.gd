@@ -85,6 +85,8 @@ func bind(level: Node) -> void:
 	cue.effects = level.get_node_or_null("EffectManager")
 	cue.controls = _controls
 	cue.player = self
+	add_to_group(Settings.GROUP)
+	_on_settings_changed()
 	cue.fired.connect(_on_fired)
 	_rd.shooter_changed.connect(_on_shooter_changed)
 	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
@@ -125,11 +127,12 @@ func bind(level: Node) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if UIRouter.blocking():  # a modal owns the input (Esc is UIRouter's: it opens Pause)
+		return
 	if event is InputEventMouseMotion:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and mode != Mode.CUE:
-			look(-event.relative.x * mouse_sensitivity, -event.relative.y * mouse_sensitivity)
-	elif event.is_action_pressed(&"ui_cancel"):
-		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+			var k := mouse_sensitivity * float(Settings.value(&"mouse_sens"))
+			look(-event.relative.x * k, -event.relative.y * k * _y_sign())
 	elif event is InputEventMouseButton and event.pressed:
 		if _controls == null or not _controls.touch:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
@@ -137,6 +140,14 @@ func _unhandled_input(event: InputEvent) -> void:
 		interact()
 	elif event.is_action_pressed(&"cue_mode"):
 		toggle_cue()
+
+
+func _on_settings_changed() -> void:
+	cam.fov = float(Settings.value(&"fov"))
+
+
+func _y_sign() -> float:
+	return -1.0 if Settings.value(&"invert_y") else 1.0
 
 
 func look(yaw_rad: float, pitch_rad: float) -> void:
@@ -161,10 +172,12 @@ func _physics_process(delta: float) -> void:
 		return
 	if not is_on_floor():
 		velocity += get_gravity() * delta
-	if is_on_floor() and (Input.is_action_just_pressed(&"jump") or _jump_queued):
+	if is_on_floor() and ((Input.is_action_just_pressed(&"jump") and not UIRouter.blocking()) or _jump_queued):
 		velocity.y = jump_velocity
 	_jump_queued = false
 	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	if UIRouter.blocking():
+		input = Vector2.ZERO
 	if _controls != null:
 		input = (input + _controls.stick.value).limit_length(1.0)
 	var direction := transform.basis * Vector3(input.x, 0.0, input.y)
@@ -207,7 +220,7 @@ func _scan() -> void:
 
 
 func interact() -> void:
-	if mode == Mode.CUE:
+	if mode == Mode.CUE or UIRouter.blocking():
 		return
 	if mode == Mode.CARRY:
 		place_camera(false)
@@ -267,6 +280,8 @@ func _on_host_away(away: bool) -> void:
 
 
 func toggle_cue() -> void:
+	if UIRouter.blocking():
+		return
 	if mode == Mode.CUE:
 		exit_cue()
 	elif mode == Mode.WALK:
@@ -361,8 +376,8 @@ func _set_mode(m: Mode) -> void:
 
 
 func _toast(text: String) -> void:
-	if _controls != null:
-		_controls.toast(text.substr(0, 1).to_upper() + text.substr(1))
+	if UIRouter.instance != null:
+		UIRouter.instance.toast(text.substr(0, 1).to_upper() + text.substr(1))
 
 
 # --- pose (04 push_player_pose) and puppet avatar -----------------------------------------------------

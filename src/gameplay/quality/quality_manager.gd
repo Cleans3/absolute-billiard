@@ -42,14 +42,26 @@ var _applied_fps := -1
 
 
 func _ready() -> void:
+	add_to_group(Settings.GROUP)
 	if sim != null:
 		sim.shot_started.connect(func(_b: Ball, _i: ShotIntent) -> void: _resting = false)
 		sim.all_resting.connect(func() -> void: _resting = true)
 		_resting = sim.awake == 0
 	_last_input_ms = Time.get_ticks_msec()
 	_prev_us = Time.get_ticks_usec()
+	_on_settings_changed()
+
+
+## Settings.quality: Auto leaves the ladder running, High / Medium / Low pin tier 0 / 1 / 2 (docs/plan/06 P11).
+func _on_settings_changed() -> void:
+	var before := ladder.tier
+	var fixed := Settings.quality_tier()
+	if fixed >= 0:
+		ladder.tier = fixed
 	_apply_tier()
 	_apply_fps()
+	if ladder.tier != before:
+		tier_changed.emit(ladder.tier)
 
 
 func set_battery_mode(on: bool) -> void:
@@ -89,7 +101,7 @@ func _process(_delta: float) -> void:
 		idle = idle_now
 		_apply_fps()
 		_reset_window()
-	if paused or idle:
+	if paused or idle or Settings.quality_tier() >= 0:
 		return
 	_win_us += dt
 	_win_frames += 1
