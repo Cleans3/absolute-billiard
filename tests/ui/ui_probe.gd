@@ -276,7 +276,7 @@ func _phase_and_pause() -> void:
 	var pause: PauseMenu = load("res://src/ui/PauseMenu.tscn").instantiate()
 	var settings: SettingsScreen = load("res://src/ui/SettingsScreen.tscn").instantiate()
 	var controls: ControlsScreen = load("res://src/ui/ControlsScreen.tscn").instantiate()
-	var bartender := UIModal.new()  # stands in for BartenderMenu: a ui_modal at the default priority
+	var bartender: BartenderMenu = load("res://src/ui/BartenderMenu.tscn").instantiate()  # no economy: the shelf stays empty
 	var vote: EventVote = load("res://src/ui/EventVote.tscn").instantiate()
 	for n in [phase, pause, settings, controls, bartender, vote]:
 		root.add_child(n)
