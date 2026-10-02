@@ -429,7 +429,7 @@ func _interact() -> void:
 	_stand_at(Vector3(-1.0, 0.05, 3.0))
 	await _physics(6)
 	_check(player.prompt == "", "no prompt out of reach: '%s'" % player.prompt)
-	_stand_at(Vector3(5.5, 0.05, 4.6))
+	_stand_at(Vector3(3.5, 0.05, 2.5))  # customer side of the counter (bar props at (4.2, 0, 2.5))
 	await _physics(6)
 	_check(player.prompt == "Bar counter", "the three counter props share one prompt: '%s'" % player.prompt)
 	var picker: DrinkPicker = level.get_node("UILayer/DrinkPicker")

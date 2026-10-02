@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## One-shot: regenerates src/gameplay/bar_room/{meshes,materials}/* and BarRoom.tscn (04 §2.2, 07 §2).
-## Static greybox merged by material (8 MeshInstance3D), UV2 unwrapped for LightmapGI, layer-4 collision.
+## Static greybox merged by material (8 MeshInstance3D), UV2 unwrapped for LightmapGI, layer-4 collision, BarRoom script on the root.
 ##   godot --path . --headless -s src/tools/build_bar_room.gd
 ## Then bake with src/tools/bake_lightmaps.gd (needs a GPU window).
 
@@ -9,6 +9,11 @@ const DIR := "res://src/gameplay/bar_room/"
 const HALF := 7.0       # interior half-extent in x and z (matches the old CSG walls)
 const CEIL := 3.6
 const TEXEL := 0.15     # xatlas texel size in metres
+# Bar counter, contract §6: off the east wall so a bartender fits behind it. The aisle floor is x 5.5-6.6.
+const COUNTER_BODY_X := 5.15   # body x 4.85-5.45
+const COUNTER_TOP_X := 5.1     # top x 4.7-5.5 (also the collision box)
+const BACKBAR_X := 6.8         # shelves + cabinet x 6.6-7.0, flush to the east wall
+const STOOL_X := 4.3
 
 var _mats := {}
 
@@ -75,6 +80,7 @@ func _run() -> void:
 	var wall_m := _mat("wall", Color(0.30, 0.17, 0.15), 0.92)
 	var ceil_m := _mat("ceiling", Color(0.11, 0.085, 0.075), 0.95)
 	var wood_m := _mat("wood", Color(0.24, 0.13, 0.06), 0.6)
+	var wainscot_m := _mat("wainscot", Color(0.24, 0.13, 0.06), 0.6)  # own material so a BarSkin can tint it apart from the wood
 	var seat_m := _mat("seat", Color(0.42, 0.09, 0.08), 0.5)
 	var prop_m := _mat("prop", Color(0.16, 0.16, 0.18), 0.4, 0.5)
 	var pink_m := _mat("neon_pink", Color.BLACK, 0.5, 0.0, Color(1.0, 0.15, 0.55), 3.0)
@@ -109,28 +115,30 @@ func _run() -> void:
 
 	# --- wood: bar counter + back shelf + wainscot + tables + door + door frame ---
 	s = _st(wood_m)
+	var sw := _st(wainscot_m)
 	var counter_z0 := 0.5
 	var counter_len := 4.0
 	var cz := counter_z0 + counter_len * 0.5
-	_box(s, Vector3(6.25, 0.5, cz), Vector3(0.6, 1.0, counter_len))            # body
-	_box(s, Vector3(6.2, 1.04, cz), Vector3(0.8, 0.08, counter_len + 0.2))     # top
-	_box(s, Vector3(6.8, 1.55, cz), Vector3(0.4, 0.06, counter_len))           # shelf low
-	_box(s, Vector3(6.8, 2.05, cz), Vector3(0.4, 0.06, counter_len))           # shelf high
+	_box(s, Vector3(COUNTER_BODY_X, 0.5, cz), Vector3(0.6, 1.0, counter_len))  # body
+	_box(s, Vector3(COUNTER_TOP_X, 1.04, cz), Vector3(0.8, 0.08, counter_len + 0.2))  # top
+	_box(s, Vector3(BACKBAR_X, 0.5, cz), Vector3(0.4, 1.0, counter_len))       # back-bar cabinet
+	_box(s, Vector3(BACKBAR_X, 1.55, cz), Vector3(0.4, 0.06, counter_len))     # shelf low
+	_box(s, Vector3(BACKBAR_X, 2.05, cz), Vector3(0.4, 0.06, counter_len))     # shelf high
 	_box(s, Vector3(6.9, 1.6, cz), Vector3(0.2, 3.2, counter_len))             # back-bar panel
 	for wz in [-HALF + 0.03, HALF - 0.03]:
-		_box(s, Vector3(0, 0.55, wz), Vector3(2 * HALF, 1.1, 0.06))            # wainscot N/S
-	_box(s, Vector3(-HALF + 0.03, 0.55, 0), Vector3(0.06, 1.1, 2 * HALF))
+		_box(sw, Vector3(0, 0.55, wz), Vector3(2 * HALF, 1.1, 0.06))           # wainscot N/S
+	_box(sw, Vector3(-HALF + 0.03, 0.55, 0), Vector3(0.06, 1.1, 2 * HALF))
 	for tp in [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4), Vector3(-2.8, 0.0, 5.6)]:
 		_cyl(s, tp + Vector3(0, 0.98, 0), 0.5, 0.06, 18)                       # round table top
 	_box(s, Vector3(0, 1.15, -HALF + 0.05), Vector3(2 * dw - 0.1, 2.3, 0.08))  # door slab (closed)
 	_box(s, Vector3(0, 2.36, -HALF + 0.06), Vector3(2 * dw + 0.3, 0.12, 0.1))  # door frame head
-	var wood_mesh := _bake_mesh("wood", [s])
+	var wood_mesh := _bake_mesh("wood", [s, sw])
 
 	# --- seats: bar stools at the counter, one at the origin (kick_stool), round-table stools ---
 	s = _st(seat_m)
 	var stools: Array[Vector3] = [Vector3(0, 0, 0)]
 	for z in [1.0, 2.0, 3.0, 4.0]:
-		stools.append(Vector3(5.45, 0, z))
+		stools.append(Vector3(STOOL_X, 0, z))
 	for tp in [Vector3(-5.2, 0, 2.6), Vector3(-5.2, 0, 4.4), Vector3(-2.8, 0, 5.6)]:
 		stools.append(tp + Vector3(0.75, 0, 0))
 		stools.append(tp + Vector3(-0.75, 0, 0))
@@ -179,6 +187,7 @@ func _run() -> void:
 	# --- scene ---
 	var root_n := Node3D.new()
 	root_n.name = "BarRoom"
+	root_n.set_script(load("res://src/gameplay/bar_room/bar_room.gd"))  # apply_skin lives there; emitted here so a regen keeps it
 	var geo := _add(root_n, Node3D.new(), "Geometry")
 	for e in [["Floor", floor_mesh], ["Walls", walls_mesh], ["Ceiling", ceil_mesh], ["Wood", wood_mesh],
 			["Seats", seat_mesh], ["Props", prop_mesh], ["Neon", neon_mesh], ["Screens", screen_mesh]]:
@@ -190,11 +199,10 @@ func _run() -> void:
 
 	_build_collision(root_n, counter_z0, counter_len, stools)
 	_build_lights(root_n)
-	_build_fog(root_n)
 	_build_env(root_n)
 
 	var lm := LightmapGI.new()
-	lm.quality = LightmapGI.BAKE_QUALITY_MEDIUM
+	lm.quality = LightmapGI.BAKE_QUALITY_HIGH
 	lm.bounces = 2
 	lm.interior = true
 	lm.texel_scale = 1.0
@@ -237,7 +245,8 @@ func _build_collision(root_n: Node3D, cz0: float, clen: float, stools: Array[Vec
 	_shape(body, Vector3(0, CEIL * 0.5, -HALF - 0.5), Vector3(2 * HALF + 2, CEIL, 1.0))
 	_shape(body, Vector3(-HALF - 0.5, CEIL * 0.5, 0), Vector3(1.0, CEIL, 2 * HALF))
 	_shape(body, Vector3(HALF + 0.5, CEIL * 0.5, 0), Vector3(1.0, CEIL, 2 * HALF))
-	_shape(body, Vector3(6.3, 0.55, cz0 + clen * 0.5), Vector3(0.8, 1.1, clen + 0.2))  # counter
+	_shape(body, Vector3(COUNTER_TOP_X, 0.55, cz0 + clen * 0.5), Vector3(0.8, 1.1, clen + 0.2))  # counter
+	_shape(body, Vector3(BACKBAR_X, 1.6, cz0 + clen * 0.5), Vector3(0.4, 3.2, clen))   # back bar: bounds the aisle (x 5.5-6.6)
 	_shape(body, Vector3(6.55, 0.95, 5.8), Vector3(0.75, 1.9, 1.1))                    # jukebox
 	for p in stools:
 		_shape(body, p + Vector3(0, 0.4, 0), Vector3(0.44, 0.8, 0.44))
@@ -271,13 +280,13 @@ func _build_lights(root_n: Node3D) -> void:
 	spot.shadow_bias = 0.04
 	spot.light_bake_mode = Light3D.BAKE_DYNAMIC
 	_add(root_n, spot, "TableLamp")
-	_light(root_n, "BarFill", Vector3(4.6, 2.6, 2.5), Color(1.0, 0.7, 0.4), 0.8, 6.0, Light3D.BAKE_DYNAMIC)
-	_light(root_n, "BakedNeonPink", Vector3(-6.0, 2.2, 1.5), Color(1.0, 0.15, 0.55), 6.0, 7.0, Light3D.BAKE_STATIC)
-	_light(root_n, "BakedNeonCyan", Vector3(0.0, 2.6, -6.2), Color(0.1, 0.85, 1.0), 6.0, 8.0, Light3D.BAKE_STATIC)
-	_light(root_n, "BakedJukebox", Vector3(5.6, 1.4, 5.8), Color(1.0, 0.6, 0.15), 5.0, 4.0, Light3D.BAKE_STATIC)
-	_light(root_n, "BakedTV", Vector3(0.0, 2.1, 6.0), Color(0.45, 0.6, 1.0), 4.0, 6.0, Light3D.BAKE_STATIC)
-	_light(root_n, "BakedRoomWarm", Vector3(0.0, 3.2, 1.5), Color(1.0, 0.75, 0.5), 2.0, 12.0, Light3D.BAKE_STATIC)
-	var probes := [["ReflectTable", Vector3(0, 1.8, -3.5), Vector3(9.0, 3.5, 7.0)], ["ReflectBar", Vector3(4.5, 1.8, 3.5), Vector3(6.0, 3.5, 7.0)]]
+	_light(root_n, "BarFill", Vector3(3.5, 2.6, 2.5), Color(1.0, 0.7, 0.4), 3.0, 6.0, Light3D.BAKE_DYNAMIC)
+	_light(root_n, "BakedNeonPink", Vector3(-6.0, 2.2, 1.5), Color(1.0, 0.15, 0.55), 24.0, 7.0, Light3D.BAKE_STATIC)
+	_light(root_n, "BakedNeonCyan", Vector3(0.0, 2.6, -6.2), Color(0.1, 0.85, 1.0), 24.0, 8.0, Light3D.BAKE_STATIC)
+	_light(root_n, "BakedJukebox", Vector3(5.6, 1.4, 5.8), Color(1.0, 0.6, 0.15), 12.0, 4.0, Light3D.BAKE_STATIC)
+	_light(root_n, "BakedTV", Vector3(0.0, 2.1, 6.0), Color(0.45, 0.6, 1.0), 24.0, 6.0, Light3D.BAKE_STATIC)
+	_light(root_n, "BakedRoomWarm", Vector3(0.0, 3.2, 1.5), Color(1.0, 0.75, 0.5), 28.0, 12.0, Light3D.BAKE_STATIC)
+	var probes := [["ReflectTable", Vector3(0, 1.8, -3.5), Vector3(9.0, 3.5, 7.0)], ["ReflectBar", Vector3(4.0, 1.8, 3.5), Vector3(6.0, 3.5, 7.0)]]
 	for p in probes:
 		var rp := ReflectionProbe.new()
 		rp.position = p[1]
@@ -288,28 +297,6 @@ func _build_lights(root_n: Node3D) -> void:
 		rp.intensity = 0.6
 		rp.cull_mask = 1
 		_add(root_n, rp, p[0])
-
-
-func _build_fog(root_n: Node3D) -> void:
-	var sm := ShaderMaterial.new()
-	sm.shader = load("res://src/shaders/fog_plane.gdshader")
-	ResourceSaver.save(sm, DIR + "materials/fog_plane.tres")
-	sm.take_over_path(DIR + "materials/fog_plane.tres")
-	var holder := _add(root_n, Node3D.new(), "FogPlanes")
-	var i := 0
-	for y in [0.9, 1.7, 2.5]:
-		var mi := MeshInstance3D.new()
-		var q := QuadMesh.new()
-		q.size = Vector2(9.0, 7.0)
-		q.orientation = PlaneMesh.FACE_Y
-		mi.mesh = q
-		mi.material_override = sm
-		mi.position = Vector3(0, y, -3.5)
-		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		mi.gi_mode = GeometryInstance3D.GI_MODE_DISABLED
-		mi.set_instance_shader_parameter("phase", 13.0 * i)
-		_add(holder, mi, "Fog%d" % i)
-		i += 1
 
 
 func _build_env(root_n: Node3D) -> void:

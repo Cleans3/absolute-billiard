@@ -1,0 +1,16 @@
+[gd_resource type="Resource" script_class="BarSkin" load_steps=2 format=3]
+
+[ext_resource type="Script" uid="uid://yvwco1n02ue5" path="res://src/resources/skins/bar_skin.gd" id="world_skin"]
+
+[resource]
+script = ExtResource("world_skin")
+id = &"neon_night"
+display_name = "Neon Night"
+wall_color = Color(0.06, 0.07, 0.16, 1)
+wainscot_color = Color(0.04, 0.04, 0.11, 1)
+floor_color = Color(0.05, 0.05, 0.07, 1)
+wood_color = Color(0.1, 0.08, 0.17, 1)
+seat_color = Color(0.08, 0.3, 0.55, 1)
+felt_color = Color(0.04, 0.18, 0.34, 1)
+neon_a = Color(0.45, 0.2, 1.0, 1)
+neon_b = Color(0.1, 1.0, 0.65, 1)
