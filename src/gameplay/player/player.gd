@@ -1,13 +1,15 @@
 class_name Player
 extends CharacterBody3D
-## First-person walker with three modes (08 §2.2): WALK, CUE (aim and strike), CARRY (holding a camera rig).
-## Yaw rotates the body, pitch rotates Head only — keeping them split is what stops the capsule tipping over.
-## Local player: bound to the level once (`bind`), reads keys and TouchControls. Puppet: a remote peer's avatar,
-## fed by `apply_pose` and interpolated 100 ms behind (04 push_player_pose).
+## First-person walker with four modes (08 §2.2): WALK, CUE (aim and strike), CARRY (holding a camera rig),
+## RAGDOLL (knocked limp for a few seconds, 06 P15). Yaw rotates the body, pitch rotates Head only — keeping them
+## split is what stops the capsule tipping over. Every Player wears a `Humanoid`; the local one hides its head from
+## its own camera. Local player: bound to the level once (`bind`), reads keys and TouchControls. Puppet: a remote
+## peer's avatar, fed by `apply_pose` and interpolated 100 ms behind (04 push_player_pose).
 
-enum Mode { WALK, CUE, CARRY }
+enum Mode { WALK, CUE, CARRY, RAGDOLL }
 
 signal mode_changed(mode: Mode)
+signal got_up  ## a knock ended: input is back, the body stands at the pelvis
 
 const POSE_BYTES := 16
 const INTERP_DELAY_MSEC := 100
@@ -16,9 +18,16 @@ const EYE_M := 1.6
 const REACH_M := 2.0                 # same number WorldInteractions validates
 const PLACE_AHEAD_M := 1.5
 const BAR_KINDS: Array[StringName] = [&"bar_buy", &"bar_serve", &"throw_drink"]  # one counter, one menu
-const SEAT_COLOURS: Array[Color] = [
-	Color("e0534a"), Color("4a90e0"), Color("e0c14a"), Color("5ab86a"),
+const SEAT_SKINS: Array[CharacterSkin] = [
+	preload("res://src/resources/skins/characters/seat_red.tres"),
+	preload("res://src/resources/skins/characters/seat_blue.tres"),
+	preload("res://src/resources/skins/characters/seat_yellow.tres"),
+	preload("res://src/resources/skins/characters/seat_green.tres"),
 ]
+const KNOCK_SEC := 2.0
+const TAG_Y := 2.05                  # name tag height, above a top hat
+const HARD_LAND_MPS := 7.0           # [tune] fall speed that knocks you over on landing
+const LIMP_GRACE_MSEC := 3000        # a puppet waits this long past its timer for the owner to stand
 
 @export var speed := 3.5             # [tune]
 @export var jump_velocity := 4.5
@@ -50,19 +59,29 @@ var _floor_y := 0.0
 var _pose := PackedByteArray()
 var _samples: Array[PackedFloat64Array] = []  # puppet: [msec, x, y, z, yaw, pitch, mode]
 var _puppet_mode := Mode.WALK
-var _avatar: Node3D
 var _avatar_cue: MeshInstance3D
-var _avatar_head: MeshInstance3D
+var _tag: Label3D
+var humanoid: Humanoid  # every Player wears one; the local one hides its head from `cam`
+var _getup_msec := 0                 # RAGDOLL: when the knock ends (local clock)
+var _cam_from := Transform3D.IDENTITY
+var _cam_blend := 1.0                # < 1: the camera is settling from the head bone back onto Head
+var _airborne := false
 
 @onready var head: Node3D = $Head
 @onready var cam: Camera3D = $Head/headCam
 @onready var cue: CueController = $Head/CueController
 @onready var _probe: ShapeCast3D = $InteractProbe
+@onready var _body: CollisionShape3D = $Body
 
 
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF  # camera is driven from _process
 	_pose.resize(POSE_BYTES)
+	humanoid = Humanoid.new()
+	humanoid.name = "Humanoid"
+	add_child(humanoid)
+	humanoid.apply_skin(SEAT_SKINS[0])
+	add_to_group(&"players")
 	set_physics_process(false)
 	set_process(false)
 	set_process_unhandled_input(false)
@@ -72,6 +91,8 @@ func _ready() -> void:
 func bind(level: Node) -> void:
 	is_local = true
 	cam.make_current()  # claim the view: the first Camera3D in tree (Debug's freecam) is current otherwise
+	cam.cull_mask &= ~Humanoid.HEAD_LAYER  # neck down only: the head and hat stay (they still cast shadows)
+	humanoid.set_first_person(true)
 	var table: Table = level.get_node("Table")
 	_rd = level.get_node("RoundDirector")
 	_sim = table.sim
@@ -146,12 +167,21 @@ func _y_sign() -> float:
 
 
 func look(yaw_rad: float, pitch_rad: float) -> void:
+	if mode == Mode.RAGDOLL:
+		return
 	rotate_y(yaw_rad)
 	head.rotation.x = clampf(head.rotation.x + pitch_rad, -PITCH_LIMIT, PITCH_LIMIT)
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if is_local:
+		humanoid.set_look(0.0, head.rotation.x)
+		if mode == Mode.RAGDOLL:
+			cam.global_transform = cam.global_transform.interpolate_with(humanoid.eye_transform(), 1.0 - exp(-25.0 * delta))
+			if Time.get_ticks_msec() >= _getup_msec:
+				_end_knock()
+		elif _cam_blend < 1.0:
+			_settle_cam(delta)
 		if _controls != null and mode != Mode.CUE:
 			_controls.set_clock(shot_clock_text())
 			var d := _controls.look.consume()
@@ -163,7 +193,7 @@ func _process(_delta: float) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	if mode == Mode.CUE:
+	if mode == Mode.CUE or mode == Mode.RAGDOLL:
 		return
 	if not is_on_floor():
 		velocity += get_gravity() * delta
@@ -178,7 +208,15 @@ func _physics_process(delta: float) -> void:
 	var direction := transform.basis * Vector3(input.x, 0.0, input.y)
 	velocity.x = direction.x * speed
 	velocity.z = direction.z * speed
+	var fall := velocity.y
 	move_and_slide()
+	if _airborne and is_on_floor() and fall < -HARD_LAND_MPS:
+		var shove := Vector3(direction.x * 2.0, 1.5, direction.z * 2.0)
+		knock(shove, KNOCK_SEC)
+		var slot := get_parent()
+		if slot != null and slot.has_method(&"broadcast_knock"):  # the owner decides a fall: everyone else's puppet goes limp too
+			slot.call(&"broadcast_knock", shove, KNOCK_SEC)
+	_airborne = not is_on_floor()
 	_scan()
 
 
@@ -215,7 +253,7 @@ func _scan() -> void:
 
 
 func interact() -> void:
-	if mode == Mode.CUE or UIRouter.blocking():
+	if mode == Mode.CUE or mode == Mode.RAGDOLL or UIRouter.blocking():
 		return
 	if mode == Mode.CARRY:
 		place_camera(false)
@@ -365,6 +403,9 @@ func _cue_ball() -> Ball:
 
 func _set_mode(m: Mode) -> void:
 	mode = m
+	if m != Mode.RAGDOLL:
+		humanoid.stance = m as Humanoid.Stance  # same order
+	humanoid.set_body_hidden(is_local and m == Mode.CUE)
 	if _controls != null:
 		_controls.set_mode(m)
 	mode_changed.emit(m)
@@ -375,11 +416,82 @@ func _toast(text: String) -> void:
 		UIRouter.instance.toast(text.substr(0, 1).to_upper() + text.substr(1))
 
 
+# --- knock: triggered ragdoll (06 P15) ----------------------------------------------------------------
+
+## Go limp for `seconds`: leave CUE / CARRY cleanly (a carried rig is put down at the feet), hand the body to
+## physics with `impulse` (a velocity change, m/s), stand up where the pelvis lies. The local camera rides the
+## head bone meanwhile. A knock while limp adds the shove and extends the time.
+func knock(impulse: Vector3, seconds: float) -> void:
+	var until := Time.get_ticks_msec() + int(seconds * 1000.0)
+	if mode == Mode.RAGDOLL:
+		humanoid.ragdoll(impulse)
+		_getup_msec = maxi(_getup_msec, until)
+		return
+	if is_local:
+		exit_cue()
+		if mode == Mode.CARRY:
+			place_camera(true)
+		if _bartender != null and _bartender.is_open():
+			_bartender.close()
+		cam.top_level = true  # keeps its world transform; _process drives it from the head bone
+		_cam_blend = 1.0
+	_getup_msec = until
+	velocity = Vector3.ZERO
+	_body.set_deferred(&"disabled", true)
+	if _avatar_cue != null:
+		_avatar_cue.hide()
+	_puppet_mode = Mode.RAGDOLL  # makes the next pose restyle the puppet
+	humanoid.ragdoll(impulse)
+	_set_mode(Mode.RAGDOLL)
+
+
+func is_ragdoll() -> bool:
+	return humanoid.is_ragdoll()
+
+
+## Stand where the pelvis lies. A puppet resyncs to the owner's latest pose instead and drops the stale ones.
+func _end_knock() -> void:
+	var at := humanoid.pelvis_position()
+	at.y = global_position.y
+	humanoid.get_up()
+	if not is_local and not _samples.is_empty():
+		var s: PackedFloat64Array = _samples.back()
+		at = Vector3(s[1], s[2], s[3])
+		_samples = [s]
+	global_position = at
+	if _tag != null:
+		_tag.position = Vector3(0.0, TAG_Y, 0.0)
+	velocity = Vector3.ZERO
+	_body.set_deferred(&"disabled", false)
+	_airborne = false
+	_set_mode(Mode.WALK)
+	if is_local:
+		_cam_from = cam.global_transform
+		_cam_blend = 0.0
+		if _cameras != null:
+			_sync_carry()  # a rig the host did not take off us is still ours
+	got_up.emit()
+
+
+## The camera eases from the head bone back onto Head.
+func _settle_cam(delta: float) -> void:
+	_cam_blend = minf(1.0, _cam_blend + delta / Humanoid.BLEND_SEC)
+	if _cam_blend >= 1.0:
+		cam.top_level = false
+		cam.transform = Transform3D.IDENTITY
+	else:
+		cam.global_transform = _cam_from.interpolate_with(head.global_transform, smoothstep(0.0, 1.0, _cam_blend))
+
+
 # --- pose (04 push_player_pose) and puppet avatar -----------------------------------------------------
 
 ## pos 3×f32 | yaw u16 (0..2π) | u16 = mode << 14 | pitch (14 bit, ±π/2). 16 B, trusted (friends-only, 04 §6).
+## Mode 3 = RAGDOLL: the position is then the pelvis, where puppets resync when the owner stands.
 func pack_pose() -> PackedByteArray:
 	var p := global_position
+	if mode == Mode.RAGDOLL:
+		var pelvis := humanoid.pelvis_position()
+		p = Vector3(pelvis.x, p.y, pelvis.z)
 	_pose.encode_float(0, p.x)
 	_pose.encode_float(4, p.y)
 	_pose.encode_float(8, p.z)
@@ -404,46 +516,31 @@ func apply_pose(blob: PackedByteArray) -> void:
 		_samples.pop_front()
 
 
-## Turn this Player into a remote peer's avatar: no camera, no cue, no input; body + head + tag + cue stick.
-func make_puppet(display_name: String, colour: Color) -> void:
+func set_skin(skin: CharacterSkin) -> void:
+	humanoid.apply_skin(skin)
+
+
+static func skin_for_seat(seat: int) -> CharacterSkin:
+	return SEAT_SKINS[seat % SEAT_SKINS.size()]
+
+
+## Turn this Player into a remote peer's avatar: no camera, no cue, no input; the humanoid + tag + cue stick.
+func make_puppet(display_name: String, skin: CharacterSkin) -> void:
 	is_local = false
 	cam.queue_free()
 	cue.queue_free()
 	set_physics_process(false)
 	set_process(true)
-	var mat := StandardMaterial3D.new()
-	mat.albedo_color = colour
-	_avatar = Node3D.new()
-	add_child(_avatar)
-	var body := MeshInstance3D.new()
-	var capsule := CapsuleMesh.new()
-	capsule.radius = 0.3
-	capsule.height = 1.75
-	capsule.radial_segments = 12
-	capsule.rings = 4
-	body.mesh = capsule
-	body.material_override = mat
-	body.position.y = 0.875
-	_avatar.add_child(body)
-	_avatar_head = MeshInstance3D.new()
-	var sphere := SphereMesh.new()
-	sphere.radius = 0.13
-	sphere.height = 0.26
-	sphere.radial_segments = 12
-	sphere.rings = 6
-	_avatar_head.mesh = sphere
-	_avatar_head.material_override = mat
-	head.add_child(_avatar_head)
-	_avatar_head.position.z = -0.1
-	var tag := Label3D.new()
-	tag.text = display_name
-	tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
-	tag.fixed_size = true
-	tag.pixel_size = 0.0009
-	tag.font_size = 32
-	tag.outline_size = 8
-	tag.position.y = 2.05
-	add_child(tag)
+	humanoid.apply_skin(skin)
+	_tag = Label3D.new()
+	_tag.text = display_name
+	_tag.billboard = BaseMaterial3D.BILLBOARD_ENABLED
+	_tag.fixed_size = true
+	_tag.pixel_size = 0.0009
+	_tag.font_size = 32
+	_tag.outline_size = 8
+	_tag.position.y = TAG_Y
+	add_child(_tag)
 	_avatar_cue = MeshInstance3D.new()
 	var stick := CylinderMesh.new()
 	stick.top_radius = 0.008
@@ -456,6 +553,10 @@ func make_puppet(display_name: String, colour: Color) -> void:
 
 
 func _puppet_step() -> void:
+	if mode == Mode.RAGDOLL:
+		_tag.global_position = humanoid.pelvis_position() + Vector3(0.0, 0.8, 0.0)  # the name follows the body down
+		_puppet_limp()
+		return
 	if _samples.is_empty():
 		return
 	var t := Time.get_ticks_msec() - INTERP_DELAY_MSEC
@@ -468,13 +569,28 @@ func _puppet_step() -> void:
 	_show(a, b, clampf((t - a[0]) / span, 0.0, 1.0))
 
 
+## A limp puppet stands when its timer is out and the owner's latest pose says it stands too (or after a grace, so
+## a silent owner cannot pin it down).
+func _puppet_limp() -> void:
+	var now := Time.get_ticks_msec()
+	var owner_limp := not _samples.is_empty() and int(_samples.back()[6]) == Mode.RAGDOLL
+	if (now >= _getup_msec and not owner_limp) or now >= _getup_msec + LIMP_GRACE_MSEC:
+		_end_knock()
+
+
 func _show(a: PackedFloat64Array, b: PackedFloat64Array, w: float) -> void:
+	var m := int((b if w >= 0.5 else a)[6]) as Mode
+	if m == Mode.RAGDOLL and mode != Mode.RAGDOLL:
+		knock(Vector3.ZERO, 0.0)  # the owner is limp; stands when the owner does (a knock RPC may add time)
+	if mode == Mode.RAGDOLL:
+		return  # limp: the stream's position is ignored, `_end_knock` resyncs
 	global_position = Vector3(a[1], a[2], a[3]).lerp(Vector3(b[1], b[2], b[3]), w)
 	rotation.y = lerp_angle(a[4], b[4], w)
 	head.rotation.x = lerpf(a[5], b[5], w)
-	var m := int((b if w >= 0.5 else a)[6]) as Mode
+	humanoid.set_look(0.0, head.rotation.x)
 	if m != _puppet_mode and _avatar_cue != null:
 		_puppet_mode = m
+		humanoid.stance = m as Humanoid.Stance
 		_avatar_cue.visible = m == Mode.CUE
 		if m == Mode.CUE:  # tip on the ball spot in front of the shooter, cue lying along the aim line
 			var reach := CueController.BACK_M - 0.06

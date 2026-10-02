@@ -23,13 +23,15 @@ func _ready() -> void:
 	player = PLAYER.instantiate()
 	player.name = "Player"
 	add_child(player)
+	var who := _roster_entry()
+	var skin := Player.skin_for_seat(int(who.get("seat", 0)))
 	if is_local():
+		player.set_skin(skin)
 		local_player_ready.emit(player)
 	else:
-		# Puppet (08 §2.6): avatar only, driven by the pose stream, no input, cue or camera.
+		# Puppet (08 §2.6): the humanoid, driven by the pose stream, no input, cue or camera.
 		set_process(false)
-		var who := _roster_entry()
-		player.make_puppet(str(who.get("name", "P%d" % peer_id)), Player.SEAT_COLOURS[int(who.get("seat", 0)) % Player.SEAT_COLOURS.size()])
+		player.make_puppet(str(who.get("name", "P%d" % peer_id)), skin)
 
 
 func is_local() -> bool:
@@ -51,6 +53,18 @@ func push_player_pose(blob: PackedByteArray) -> void:
 	if blob.size() != POSE_BYTES or multiplayer.get_remote_sender_id() != peer_id:
 		return
 	player.apply_pose(blob)
+
+
+## The owner's own knock (a hard landing, 08 §2.7) told to everyone else; their puppet of it goes limp too.
+@rpc("any_peer", "call_remote", "reliable", 3)
+func push_player_knock(impulse: Vector3, seconds: float) -> void:
+	if multiplayer.get_remote_sender_id() != peer_id:
+		return
+	player.knock(impulse, seconds)
+
+
+func broadcast_knock(impulse: Vector3, seconds: float) -> void:
+	push_player_knock.rpc(impulse, seconds)
 
 
 ## Where this slot's walker is right now (the puppet's rendered position on remote peers).

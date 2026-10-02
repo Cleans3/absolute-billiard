@@ -194,6 +194,8 @@ func _apply(peer_id: int, w: WorldInteraction, target_id: int, payload: Dictiona
 			Effect.Target.PLAYER, Effect.Target.CUE, Effect.Target.VIEW:
 				subject = effects.current_shooter()
 		effects.apply(w.effect.id, peer_id, subject)
+	if w.id == &"throw_drink":
+		_soak_shooter(peer_id)
 	for p in w.payoffs:
 		if p.condition == &"always":
 			_pay(p)
@@ -201,6 +203,14 @@ func _apply(peer_id: int, w: WorldInteraction, target_id: int, payload: Dictiona
 			_pending.append(p)
 	if w.id == &"move_camera":
 		camera_move_requested.emit(peer_id, target_id, payload)
+
+
+## A thrown drink hits the shooter: knocked away from the thrower (06 P15). Nobody soaks themselves.
+func _soak_shooter(thrower: int) -> void:
+	var spawner := get_tree().get_first_node_in_group(&"player_spawner")  # by group, see RoundDirector._detonate
+	var shooter := effects.current_shooter()
+	if spawner != null and shooter != thrower:
+		spawner.call(&"knock_away", shooter, player_position_source.call(thrower))
 
 
 func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:

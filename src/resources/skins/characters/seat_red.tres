@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="CharacterSkin" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/skins/character_skin.gd" id="1_skin"]
+
+[resource]
+script = ExtResource("1_skin")
+id = &"seat_red"
+display_name = "Red"
+body_color = Color(0.8784, 0.3255, 0.2902, 1)
+accent_color = Color(0.1686, 0.1686, 0.2000, 1)
+skin_color = Color(0.9098, 0.7059, 0.5412, 1)
+hat = &"none"
