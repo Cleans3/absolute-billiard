@@ -18,9 +18,10 @@ const PROPS: Array = [
 	[&"lean_on_rail", Vector3(1.3, 0.0, -1.33), 6, "Lean on the rail"],  # rail_s_e
 	[&"heckle", Vector3(-5.0, 0.0, 3.5), 0, "Heckle"],
 	[&"chalk_the_cue", Vector3(2.4, 0.0, -1.2), 0, "Chalk the cue"],
-	[&"throw_drink", Vector3(5.5, 0.0, 4.6), 0, "Throw a drink"],
-	[&"bar_buy", Vector3(5.5, 0.0, 4.6), 0, "Buy a drink"],
-	[&"bar_serve", Vector3(5.5, 0.0, 4.6), 0, "Serve a drink"],
+	# the counter props: customer side of the counter (x 4.7-5.5), the bartender stands behind it at (6.0, 0, 2.5)
+	[&"throw_drink", Vector3(4.2, 0.0, 2.5), 0, "Throw a drink"],
+	[&"bar_buy", Vector3(4.2, 0.0, 2.5), 0, "Buy a drink"],
+	[&"bar_serve", Vector3(4.2, 0.0, 2.5), 0, "Serve a drink"],
 ]
 
 

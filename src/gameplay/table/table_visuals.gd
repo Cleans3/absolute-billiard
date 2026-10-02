@@ -60,8 +60,8 @@ static func _merge_by_material(parent: Node3D) -> void:
 	var merged: Array[MeshInstance3D] = []
 	for c in parent.get_children():
 		var mi := c as MeshInstance3D
-		if mi == null or not mi.material_override is StandardMaterial3D or String(mi.name).begins_with("Liner_"):
-			continue  # liners keep their node: Table slides them with the oscillating pockets
+		if mi == null or not mi.material_override is StandardMaterial3D or String(mi.name).begins_with("Liner_") or mi.name == &"Cloth":
+			continue  # liners keep their node: Table slides them with the oscillating pockets; the cloth so a skin can recolour it
 		var color := (mi.material_override as StandardMaterial3D).albedo_color
 		if not groups.has(color):
 			var st := SurfaceTool.new()
@@ -79,6 +79,13 @@ static func _merge_by_material(parent: Node3D) -> void:
 		out.mesh = (groups[color] as SurfaceTool).commit()
 		out.material_override = mats[color]
 		parent.add_child(out)
+
+
+## Recolours the cloth after `build` (BarSkin felt, 06 P18); the cloth is the one visual that is never merged.
+static func set_cloth_color(parent: Node3D, color: Color) -> void:
+	var cloth := parent.get_node_or_null(^"Cloth") as MeshInstance3D
+	if cloth != null:
+		(cloth.material_override as StandardMaterial3D).albedo_color = color
 
 
 static func _material(color: Color) -> StandardMaterial3D:

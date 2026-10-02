@@ -30,9 +30,12 @@ Checked against 4.7's renderer comparison: Mobile has **no** SDFGI, VoxelGI, SSI
 | Neon, jukebox, TV, bottle shelf, pocket rims | Emissive materials. Emission feeds the lightmap bake, so a neon sign lights the wall around it for free. |
 | The one light that must move | Table lamp: single `SpotLight3D`, `bake_mode = DYNAMIC`, shadows on, tight range. Budget is **one shadow-casting light** `[tune]`. |
 | Wet bar top, chrome, cue tips | Baked `ReflectionProbe` per room zone (bar, table, booth) instead of SSR. Mobile allows 8 per mesh, so three zones is comfortable. |
-| Haze | `WorldEnvironment` depth fog (`fog_enabled`, low `fog_density`, warm `fog_light_color`) plus a hand-placed **fog plane**: 2–3 camera-facing quads in the lamp cone, unshaded additive shader, scrolling noise, edges faded by view angle rather than a depth-texture read. ~3 draw calls, no framebuffer sampling. |
+| Haze | `WorldEnvironment` depth fog only (`fog_enabled`, low `fog_density`, warm `fog_light_color`). The hand-placed fog-plane quads are gone (06 P13): they sat at eye height and smeared the table. |
+| Dark gradients | `viewport/hdr_2d = true`. The Mobile 3D buffer is RGBA8 *linear*, which posterises a dim room into 13-level-wide sRGB steps near black (the "blotchy" bake); `hdr_2d` makes it RGB10_A2, the same 4 B/px. |
 | Neon bloom | Glow on, low quality, additive `[tune]` — measure at M0; it is the first thing cut if the frame budget slips. |
 | Clean ball silhouettes | MSAA 2× `[tune]`. There is no temporal AA to lean on here, so edges are paid for in MSAA or not at all. |
+
+**Bar layout (06 P17) and skins (P18).** The counter stands off the east wall: body x 4.85–5.45, top and collision x 4.7–5.5, so a clear aisle runs x 5.5–6.6 behind it (the bartender's stand point is (6.0, 0, 2.5), facing −X). The back bar (cabinet, shelves, bottles, x 6.6–7.0) keeps the wall and has collision, so the aisle is bounded. Customer stools stand at x 4.3 and the counter `Interactable`s at (4.2, 0, 2.5). `BarRoom.tscn` (root script `bar_room.gd`, emitted by `build_bar_room.gd`) exposes `apply_skin(BarSkin)`: it sets the shared wall / wainscot / floor / wood / seat materials and the two neon emissions in place, once, with no per-frame work; the lightmap bake is kept, so bounce colours stay the classic ones. `Table.set_felt_color(c)` recolours the cloth (the one table visual that is never merged). Skins are `src/resources/skins/bars/*.tres`.
 
 ### 2.3 Transport
 `NetManager` (the only autoload) owns exactly one `MultiplayerPeer` and hands it to `multiplayer.multiplayer_peer`. Nothing else in the codebase constructs a peer. Transport is an enum:
@@ -151,7 +154,7 @@ src/
 ├── ui/              LobbyUI.tscn · HUD.tscn · TouchControls.tscn · UIRouter + UIModal (modal screens:
 │                    PhaseScreen · EventVote · PauseMenu · SettingsScreen · ControlsScreen · SkinsScreen)
 │                    theme/game_theme.tres (the one project Theme, built by tools/build_ui_theme.gd)
-├── shaders/         fog_plane.gdshader · neon.gdshader
+├── shaders/         player_view.gdshader · neon.gdshader
 ├── debug/           dev-only overlay (DebugRoot.tscn, HUD/freecam/gizmos/spec panel/shot
 │                    console/timescale/rack presets, src/debug/README.md); NetGraph.tscn ·
 │                    SimDiff.gd (M3 reconstruction check) still to come

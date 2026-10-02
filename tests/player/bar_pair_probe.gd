@@ -5,7 +5,7 @@ extends SceneTree
 ##   tests/net/pair.sh tests/player/bar_pair_probe.gd
 ## Prints `BARPAIR HOST OK` / `BARPAIR CLIENT OK`.
 
-const COUNTER := Vector3(5.5, 0.05, 4.6)
+const COUNTER := Vector3(3.5, 0.05, 2.5)  # customer side of the counter (bar props at (4.2, 0, 2.5))
 
 var role := ""
 var port := 0
