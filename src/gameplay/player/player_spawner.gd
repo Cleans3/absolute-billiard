@@ -7,6 +7,7 @@ signal local_player_spawned(player: CharacterBody3D)
 
 const SLOT := preload("res://src/gameplay/player/PlayerSlot.tscn")
 const SEAT_SPACING := 1.0
+const SPAWN_ROW := Vector3(-1.5, 0.0, 1.2)  ## seat 0's spot: open floor between the table and the tables, clear of kick_stool at the origin
 const NOWHERE := Vector3(INF, INF, INF)  ## get_player_position() for an unknown peer: fails any reach test
 const KNOCK_SEC := 2.0
 const SHOVE_MPS := 3.5         ## [tune] horizontal speed of a thrown drink's knock
@@ -102,6 +103,6 @@ func _spawn_all() -> void:
 func _make_slot(data: Dictionary) -> Node:
 	var slot: PlayerSlot = SLOT.instantiate()
 	slot.peer_id = data.peer_id
-	slot.position = Vector3(data.seat * SEAT_SPACING, 0.0, 0.0)
+	slot.position = SPAWN_ROW + Vector3(data.seat * SEAT_SPACING, 0.0, 0.0)
 	slot.local_player_ready.connect(local_player_spawned.emit)
 	return slot
