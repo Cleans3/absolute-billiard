@@ -116,6 +116,11 @@ func _router() -> void:
 	router.toast("Voted", &"good")
 	_check(toast.text == "Voted" and toast.theme_type_variation == &"ToastGood", "newest toast replaces the old")
 
+	a.open()
+	_check(not toast.visible, "a toast hides when a modal opens")
+	router.toast("under the dim", &"info")
+	_check(not toast.visible, "and none shows while one is open")
+	a.close()
 	for n in [a, b, pause, vote, router, loop]:
 		n.free()
 	await process_frame

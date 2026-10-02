@@ -67,6 +67,6 @@ func _on_offer(round_index: int, _tier: int, event_ids: Array[StringName]) -> vo
 
 func _vote(id: StringName, display_name: String) -> void:
 	scheduler.submit_event_vote.rpc_id(1, id)
+	close()  # first: the router drops toasts while a modal is open
 	if UIRouter.instance != null:
 		UIRouter.instance.toast("Voted: %s" % display_name, &"good")
-	close()

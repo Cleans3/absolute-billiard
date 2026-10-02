@@ -73,8 +73,10 @@ func is_modal_open() -> bool:
 	return current != null and is_instance_valid(current) and current.visible
 
 
-## Info / good / bad: one line, newest wins.
+## Info / good / bad: one line, newest wins. Not shown while a modal is open (it would sit under the dim).
 func toast(text: String, kind: StringName = &"info") -> void:
+	if is_modal_open():
+		return
 	_toast_label.theme_type_variation = &"Toast" + String(kind).capitalize()
 	_toast_label.text = text
 	_toast_label.show()
@@ -179,6 +181,8 @@ func _hidden(m: Control) -> void:
 
 
 func _open_state_changed() -> void:
+	if is_modal_open():
+		_toast_label.hide()
 	_update_mouse()
 	modal_changed.emit(is_modal_open())
 
