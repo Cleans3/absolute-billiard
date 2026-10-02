@@ -1,7 +1,8 @@
 extends SceneTree
-## Two-peer bar probe (run through tests/net/pair.sh): the client serves the host a drink from the counter
-## picker (the host sees the Effect and the Cash leave), then tries to grab a camera rig the host is carrying
-## and stays in WALK (mirrored held_by), and grabs it once the host has placed it.
+## Two-peer bar probe (run through tests/net/pair.sh): the client serves the host a drink from the Bartender's
+## shelf (the host sees the Effect, the Cash and one stock unit leave; the client sees the stock mirror), the host's
+## scratch fine reaches the client as `fined` and a negative Cash balance, then the client tries to grab a camera rig
+## the host is carrying and stays in WALK (mirrored held_by), and grabs it once the host has placed it.
 ##   tests/net/pair.sh tests/player/bar_pair_probe.gd
 ## Prints `BARPAIR HOST OK` / `BARPAIR CLIENT OK`.
 
@@ -99,6 +100,7 @@ func _host() -> void:
 	var client_id := int(nm.get_roster()[1].peer_id)
 	var spawner = level.get_node("PlayerSpawner")
 	econ.add_cash(1000, &"test")
+	econ.set_stock(econ.stock_key, [&"beer", &"bar_nuts", &"house_special"] as Array[StringName], [3, 3, 1] as Array[int])
 	var beer := FxCatalog.drink(&"beer")
 	var seen: Array[Vector2i] = []  # [target, owner]
 	fx.effect_applied.connect(func(id: StringName, target: int, owner_id: int, _d: float) -> void:
@@ -113,6 +115,16 @@ func _host() -> void:
 		_fail("beer Effect landed as %s, expected target 1 owner %d" % [seen, client_id])
 	if econ.cash != 1000 - ShopCatalog.item(&"beer").cost_cash:
 		_fail("host Cash %d after the serve" % econ.cash)
+	if econ.stock_left(0) != 2:
+		_fail("beer has %d units left on the host's shelf, expected 2" % econ.stock_left(0))
+	# scratch fine (06 P16): Quota 600 → $60, taken from a thin purse so Cash goes negative everywhere
+	var fines: Array = []
+	econ.fined.connect(func(reason: StringName, amount: int) -> void: fines.append([reason, amount]))
+	econ.add_cash(-940, &"test")
+	rd.cue_respawned.emit(&"scratch")
+	if econ.cash != -50 or fines != [[&"scratch", 60]]:
+		_fail("host fine: cash %d, fined %s" % [econ.cash, fines])
+	_flag("host_fined")
 	# camera rig: the host carries it, the client cannot take it, then it is placed and the client can
 	world.clock = func() -> int: return _fake_ms
 	var rig := cams.rigs[0]
@@ -135,20 +147,29 @@ func _host() -> void:
 
 
 func _client() -> void:
-	var picker: DrinkPicker = level.get_node("UILayer/DrinkPicker")
+	var menu: BartenderMenu = level.get_node("UILayer/BartenderMenu")
 	var controls: TouchControls = level.get_node("UILayer/TouchControls")
 	controls.touch = true
+	var fines: Array = []
+	econ.fined.connect(func(reason: StringName, amount: int) -> void: fines.append([reason, amount]))
 	await _wait_flag("host_ready")
 	await _until(func() -> bool: return econ.cash >= 1000, "mirrored Cash", 10.0)
+	await _until(func() -> bool: return econ.stock_size() == 3 and econ.stock_left(2) == 1, "the host's shelf mirrored", 10.0)
 	_stand_at(COUNTER)
-	await _until(func() -> bool: return player.prompt == "Bar counter", "counter prompt", 5.0)
+	await _until(func() -> bool: return player.prompt == "Bartender", "Bartender prompt", 5.0)
 	_flag("client_at_bar")
 	await _wait_flag("host_saw_bar")
 	player.interact()
-	if not picker.is_open():
-		_fail("picker did not open")
-	picker.target_peer = 1
-	picker._rows[&"beer"].pressed.emit()
+	if not menu.is_open():
+		_fail("the Bartender menu did not open")
+	menu.target_peer = 1
+	menu.drink_button(&"beer").pressed.emit()
+	await _until(func() -> bool: return econ.stock_left(0) == 2, "the sale mirrored to this shelf", 10.0)
+	await _wait_flag("host_fined")
+	await _until(func() -> bool: return econ.cash == -50, "the negative balance mirrored", 10.0)
+	if fines != [[&"scratch", 60]]:
+		_fail("client fined signals %s, expected one $60 scratch" % [fines])
+	menu.close()
 	# rig: the host is carrying rig 1; ours is a request the host ignores
 	await _wait_flag("host_carrying")
 	var rig := cams.rigs[0]

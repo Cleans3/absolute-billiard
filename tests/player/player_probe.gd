@@ -420,6 +420,18 @@ func _stand_at(pos: Vector3) -> void:
 	player.rotation.y = 0.0
 
 
+## Every Label / Button text under `node`, joined: what a player can read on the cards.
+func _all_text(node: Node) -> String:
+	var out := ""
+	if node is Label:
+		out += (node as Label).text + "\n"
+	elif node is Button:
+		out += (node as Button).text + "\n"
+	for c in node.get_children():
+		out += _all_text(c)
+	return out
+
+
 func _interact() -> void:
 	await _physics(2)
 	_stand_at(Vector3(6.0, 0.05, 5.5))
@@ -431,44 +443,51 @@ func _interact() -> void:
 	_check(player.prompt == "", "no prompt out of reach: '%s'" % player.prompt)
 	_stand_at(Vector3(5.5, 0.05, 4.6))
 	await _physics(6)
-	_check(player.prompt == "Bar counter", "the three counter props share one prompt: '%s'" % player.prompt)
-	var picker: DrinkPicker = level.get_node("UILayer/DrinkPicker")
-	var shop: ShopMenu = level.get_node("UILayer/ShopMenu")
+	_check(player.prompt == "Bartender", "the three counter props share one prompt: '%s'" % player.prompt)
+	var menu: BartenderMenu = level.get_node("UILayer/BartenderMenu")
 	var econ: EconomyManager = level.get_node("EconomyManager")
 	var world: WorldInteractions = level.get_node("WorldInteractions")
+	_check(menu.is_in_group(&"ui_modal") and not menu.is_open(), "the Bartender menu is a closed ui_modal")
 	player.interact()
-	_check(picker.is_open() and picker.kind == &"bar_serve", "Interact at the counter opens the drink picker")
-	_check(picker._rows.size() == ShopCatalog.in_category(&"drink").size(), "one row per drink")
-	for id: StringName in picker._rows:
-		var row: Button = picker._rows[id]
-		_check(row.custom_minimum_size.y >= 48.0, "row %s is touch-sized" % id)
-	picker.open(&"throw_drink")
-	_check(picker._rows[&"beer"].disabled, "throw rows grey out without Cash")
+	_check(menu.is_open() and menu.visible and menu.kind == &"bar_serve", "Interact at the counter opens the Bartender")
+	var shelf: Array[StringName] = [&"beer", &"energy_drink", &"static_shot", &"moonshine", &"bar_nuts"]
+	econ.set_stock(econ.stock_key, shelf, [3, 2, 1, 1, 3] as Array[int])
+	_check(menu._cards.get_child_count() == shelf.size(), "one card per offer")
+	for id in shelf:
+		_check(menu.drink_button(id).custom_minimum_size.y >= 48.0, "card %s is touch-sized" % id)
+	menu.set_mode(&"throw_drink")
+	_check(menu.drink_button(&"beer").disabled, "throw cards grey out without Cash")
 	econ.add_cash(1000, &"test")
-	picker.open(&"bar_serve")
-	_check(not picker._rows[&"beer"].disabled, "serve row beer is enabled with Cash: %s" % picker._rows[&"beer"].text)
-	_check(picker._rows[&"energy_drink"].disabled, "intermission-only drink greyed while a Round is live")
+	menu.set_mode(&"bar_serve")
+	_check(not menu.drink_button(&"beer").disabled, "serve card beer is enabled with Cash: %s" % menu.drink_button(&"beer").text)
+	_check(menu.drink_button(&"energy_drink").disabled, "intermission-only drink greyed while a Round is live")
 	var bought: Array[StringName] = []
 	econ.item_purchased.connect(func(id: StringName, _b: int) -> void: bought.append(id))
 	var cash0 := econ.cash
-	picker._rows[&"beer"].pressed.emit()
+	menu.drink_button(&"beer").pressed.emit()
 	await _frames(2)
-	_check(not picker.is_open(), "a pick closes the picker")
+	_check(menu.is_open(), "a serve keeps the Bartender open so the stock can be watched")
 	_check(bought == [&"beer"] and econ.cash == cash0 - ShopCatalog.item(&"beer").cost_cash, "serve went to the host: drink bought (%s)" % [bought])
+	_check(econ.stock_left(0) == 2 and "2 left" in _all_text(menu._cards), "the card shows one unit fewer")
+	var sold: Array[StringName] = [&"beer"]
+	econ.set_stock(econ.stock_key, sold, [0] as Array[int])
+	_check(menu.drink_button(&"beer").disabled and menu.drink_button(&"beer").text == "Sold out" and "SOLD OUT" in _all_text(menu._cards), "a sold-out offer stays visible, greyed")
+	econ.set_stock(econ.stock_key, shelf, [3, 2, 1, 1, 3] as Array[int])
 	var rejected: Array[StringName] = []
 	world.interaction_rejected.connect(func(_k: StringName, r: StringName) -> void: rejected.append(r))
-	picker.open(&"throw_drink")
-	picker._rows[&"beer"].pressed.emit()
+	menu.set_mode(&"throw_drink")
+	menu.drink_button(&"beer").pressed.emit()
 	await _frames(2)
 	_check(rejected == [&"shooter_cant_grief"], "throw reached the host's hostile rules: %s" % [rejected])
-	picker.open(&"bar_serve")
-	picker.shop_requested.emit()
-	_check(shop._panel.visible, "picker's Shop button opens the ShopMenu")
-	shop.close()
-	picker.open(&"bar_serve")
+	_check(not menu.is_open(), "a throw closes the Bartender")
+	_check(econ.stock_left(0) == 3, "a refused throw takes nothing off the shelf")
+	player.interact()
+	menu.set_mode(&"bar_serve")
+	_check(menu.upgrade_button(&"heavy_shaft") != null and menu.upgrade_button(&"heavy_shaft").disabled, "the Upgrades tab lists the fixed rows, closed mid-Round")
+	_check(menu.upgrade_button(&"heavy_shaft").custom_minimum_size.y >= 48.0, "upgrade buttons are touch-sized")
 	_stand_at(Vector3(-1.0, 0.05, 3.0))
 	await _physics(6)
-	_check(not picker.is_open(), "walking away closes the picker")
+	_check(not menu.is_open(), "walking away closes the Bartender")
 	# no two Interactables closer than 1 m (except the counter's own three)
 	var props := get_nodes_in_group(&"interactable")
 	for i in props.size():

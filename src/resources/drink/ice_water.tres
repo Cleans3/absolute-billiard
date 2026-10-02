@@ -1,18 +1,19 @@
-[gd_resource type="Resource" script_class="Drink" format=3]
+[gd_resource type="Resource" script_class="Drink" load_steps=5 format=3]
 
-[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_lhs1g"]
-[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_a8ftj"]
-[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_ccf7w"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
 
-[sub_resource type="Resource" id="Resource_81an4"]
-script = ExtResource("1_lhs1g")
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
 id = &"ice_water_clear"
 clears_tag = &"booze"
 
 [resource]
-script = ExtResource("3_ccf7w")
+script = ExtResource("3_drink")
 id = &"ice_water"
-effects = Array[ExtResource("1_lhs1g")]([SubResource("Resource_81an4")])
+display_name = "Ice Water"
+description = "Sobers you up: ends every booze effect on you."
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0")])
 mid_round = true
-roll_weights = PackedFloat32Array()
 cost_cash = 40

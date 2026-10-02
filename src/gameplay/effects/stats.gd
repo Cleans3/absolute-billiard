@@ -10,6 +10,7 @@ const ALL: Array[StringName] = [
 	&"player_view_light_level", &"player_view_fog_density", &"player_view_shake_amp",
 	&"stream_camera_bonus_mult", &"stream_viewer_gain_mult", &"stream_hype_gain_mult",
 	&"round_time_add_sec",
+	&"player_stumble_per_min",
 ]
 
 ## Value of a stat with no live modifier.
@@ -20,7 +21,7 @@ const BASE := {
 	&"rule_call_pocket": 0.0,
 	&"player_view_light_level": 1.0, &"player_view_fog_density": 0.0, &"player_view_shake_amp": 0.0,
 	&"stream_camera_bonus_mult": 1.0, &"stream_viewer_gain_mult": 1.0, &"stream_hype_gain_mult": 1.0,
-	&"round_time_add_sec": 0.0,
+	&"round_time_add_sec": 0.0, &"player_stumble_per_min": 0.0,  # PLAYER target: the host knocks that peer down this often (P15)
 }
 
 ## Post-resolution floors, applied only when at least one modifier touched the stat.

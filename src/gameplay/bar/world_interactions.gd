@@ -156,11 +156,11 @@ func _spawner_position(peer_id: int) -> Vector3:
 ## Cost is the last gate: HYPE/VIEWERS are checked then taken here, CASH is one atomic try_spend_cash.
 func _spend(peer_id: int, w: WorldInteraction, payload: Dictionary) -> StringName:
 	var cost := w.cost
-	if w.id == &"throw_drink":  # its price is the thrown drink's
+	if w.id == &"throw_drink":  # it buys the thrown drink off the shelf
 		var drink := FxCatalog.drink(payload.get(&"drink_id", &""))
 		if drink == null:
 			return &"bad_payload"
-		return &"" if economy.try_spend_cash(drink.cost_cash, w.id) else &"cant_afford"
+		return economy.try_throw(drink.id)  # takes a unit off the Bartender's shelf and pays its price
 	if cost == null:
 		return &""
 	match cost.kind:

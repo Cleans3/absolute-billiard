@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="Drink" load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
+
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
+stat = &"stream_viewer_gain_mult"
+op = 1
+value = 1.1
+
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
+id = &"pretzels_viewers"
+target = 6
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_drink")
+id = &"pretzels"
+display_name = "Pretzels"
+description = "A chatty crowd means bigger viewer gains."
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0")])
+mid_round = true
+cost_cash = 25

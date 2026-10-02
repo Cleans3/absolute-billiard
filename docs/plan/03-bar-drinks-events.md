@@ -26,6 +26,7 @@ Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. O
 | player view (difficulty) | `player_view_light_level`, `player_view_fog_density`, `player_view_shake_amp` | **client-local, owner's screen only** |
 | stream (income) | `stream_camera_bonus_mult`, `stream_viewer_gain_mult`, `stream_hype_gain_mult` | host → `StreamManager` (02) |
 | round | `round_time_add_sec` | host → `GameLoop` (02) |
+| player | `player_stumble_per_min` (base `0`, target `PLAYER`) | host → `PlayerSpawner.knock` (06 P15): the drinker is knocked down this many times a minute, then gets up after ~2 s. Mystery Drinks' debuff (§3.5) |
 
 `cue_aim_wobble_deg` **floors at 0** and `shot_clock_sec` at `4.0 [tune]` after resolution — but only when at least one modifier touched the stat, so an untouched stat returns its base (`shot_clock_sec` base `0` = no clock, `ADD 8` = an 8 s clock). A stacked pile of "steadier" effects can never produce negative wobble, and 01 never reads a negative angle. `player_view_*` is deliberately split from `stream_camera_*`: darkening the shooter's screen is difficulty, dimming the broadcast is income, and the old single `camera_visibility` conflated them.
 `cue_aim_wobble_deg` depends on the deferred Player module (how a wobbling aim is even presented on touch) — **flagged**; every catalog entry below works without it.
@@ -54,14 +55,14 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | field | type | notes |
 |---|---|---|
 | `id` | `StringName` | matches the `ShopItem` id |
+| `display_name`, `description` | `String` | the card's title and its one flavour line |
+| `tier` | `DrinkTier.Tier` | `COMMON \| UNCOMMON \| RARE \| EPIC \| LEGENDARY \| MYSTERY` (02 §2): how often the Bartender stocks it and how it is framed (06 P17) |
 | `effects` | `Array[Effect]` | upside and downside are separate entries in one array |
 | `reward_mult` | `float` | this drink's factor in `Drink_Mult` (§3.1), default `1.0` |
 | `serve_target` | `enum {SELF, NAMED_PLAYER}` | a non-shooter can buy at the bar and serve the shooter — that is the team play |
 | `mid_round` | `bool` | buyable from the bar during a live Round (Drinks only; everything else is Intermission-only per P3) |
-| `roll_on_use` | `bool` | `mystery_shot` only — see §3.5 |
-| `roll_table`, `roll_weights` | `Array[Resource]` (`Drink`s), `PackedFloat32Array` | `roll_on_use` outcomes and their odds; typed `Resource` because a self-typed `Array[Drink]` leaks the script at exit |
 | `neighbour_reward_mult` | `float` | `!= 1.0`: the seat-left player (`NetManager.seat_order()`, wrapping) gets this factor for the Round. Takes no drink slot |
-| `night_limit` | `int` | `0` = unlimited; per player per Night (`moonshine` = 1) |
+| `night_limit` | `int` | `0` = unlimited; per player per Night (the Legendary Drinks = 1) |
 | `cost_cash` | `int` | catalog price `[tune]` — 02's `ShopItem` may override; `throw_drink` spends it |
 
 ### 2.5 `Event` (`Resource`)
@@ -108,9 +109,9 @@ That product is the whole contract with 02, consumed at Shot resolution as the `
 - A timed hazard nobody chose is beaten by not shooting; a hazard the crew *bought* for a stated multiplier is a bet. That is the whole reason the scheduler roll table is gone.
 
 ### 3.3 Drinks
-- Bought as `ShopItem`s (02) at the bar: during Intermission, or mid-Round for `mid_round` drinks, by walking to the bar NPC (P3) — no menu teleport.
+- Bought as `ShopItem`s (02) from the Bartender NPC's random shelf (06 P17, 02 §3.6): during Intermission, or mid-Round for `mid_round` drinks, by walking to the counter — no menu teleport. A Drink that is not on the current shelf, or is sold out, cannot be bought.
 - Max `3 [tune]` live Drinks per player; a 4th is refused with the reason named (`serve_drink` returns `drink_cap` and emits `drink_refused`; also `intermission_only`, `night_limit`), not silently dropped. Re-buying a live drink refreshes it and needs no slot: nothing accumulates. A drink whose Effects have all ended (`ice_water`, timers) stops counting for its slot and its `reward_mult`.
-- `mid_round` drinks (`beer`, `whiskey_shot`, `ice_water`, `neighbours_round`, `bar_nuts` `[tune]`) may be bought during a live Round; the rest are Intermission-only.
+- `mid_round` drinks (the `mid` column of §3.5 `[tune]`) may be bought during a live Round; the rest are Intermission-only.
 - Drink effects hard-reset at Round end. Persisting them across the Intermission would make the shop screen the place you play the game.
 - Every downside must change **how you play**, never just how accurate you are: call-your-pocket, no english, a heavy cue ball, a shot clock, or a buff handed to the player on your left. A wobble slider is a difficulty setting wearing a drink's name.
 
@@ -126,21 +127,42 @@ Guard, four layers, all cheap. Gate order on the host: toggle → live Round →
 Payoff is the other half: a bumped shot that still drops is drama, and the stream pays for drama. That is why the costs are refundable-with-interest on `shot_potted` rather than flat.
 
 ### 3.5 Drink catalog (content for 02's `ShopItem`s)
-| id | cost `[tune]` | `reward_mult` | upside | downside — changes how you play |
-|---|---:|---:|---|---|
-| `beer` | $50 | 1.05 | `cue_power_mult MUL 1.10` | `cue_spin_radius_mult MUL 0.0` — no english at all |
-| `whiskey_shot` | $90 | 1.20 | — | `rule_call_pocket ADD 1` — name the pocket or it does not score |
-| `energy_drink` | $120 | 1.00 | `round_time_add_sec ADD 20` | `shot_clock_sec ADD 8` — every shot on a clock |
-| `tequila_line` | $150 | 1.30 | — | `rule_call_pocket ADD 1`, `shot_clock_sec ADD 10` |
-| `ice_water` | $40 | 1.00 | clears the `booze` `exclusive_group`, ends its downsides early | drops the cleared drinks' `reward_mult` with them |
-| `house_special` | $200 | 1.40 | `cue_power_mult MUL 1.15` | `cue_ball_mass_mult MUL 1.6` — heavy rock, every position shot re-learned |
-| `flaming_shot` | $180 | 1.25 | `cue_power_mult MUL 1.35` | `cushion_restitution_mult MUL 1.25` — rails come alive, safeties die |
-| `neighbours_round` | $70 | 1.00 | gives the player on your left `reward_mult 1.25` for the Round | you get `stream_hype_gain_mult MUL 1.2` and nothing else |
-| `bar_nuts` | $20 | 1.00 | `stream_hype_gain_mult MUL 1.15` | none — the cheap utility rung |
-| `mystery_shot` | $60 | rolled | rolled on use (§below) | rolled on use |
-| `moonshine` | $300 | 1.60 | `cue_power_mult MUL 1.25` | `cue_ball_mass_mult MUL 1.5` + `rule_call_pocket ADD 1`; `1 per Night [tune]` |
+26 Drinks on six tiers (06 P17). Every tier holds at least 3 Drinks, Mystery 5. Price scales with tier; `reward` is the Drink's `reward_mult`; `mid` = `mid_round`. Upside and downside read exactly as the card prints them (`StatText`: buffs green, debuffs red). Round-length Drinks (`round_time_add_sec`) are Intermission-only because the timer arms at Round start.
 
-`mystery_shot` rolls **on use, not on purchase** — buying an unknown is a shop decision, drinking one is a table decision, and only the second is interesting. The shop shows the odds table before you buy: `40%` a `1.5` reward with a heavy cue ball, `35%` a `1.2` reward with a shot clock, `20%` a flat `1.0` with no downside, `5%` a `2.0` reward with call-pocket *and* no english `[tune]`. The roll is host-side and broadcast as ordinary `apply_effect`s of the outcome's Effects; the client never picks its own outcome. Outcomes (`mystery_heavy/clock/flat/wild`) carry mass `×1.6`, `shot_clock ADD 8`, nothing, and call-pocket + no english.
+| id | tier | cost `[tune]` | reward | mid | upside | downside — changes how you play |
+|---|---|---:|---:|---|---|---|
+| `beer` | Common | $50 | 1.05 | yes | Cue power +10% | English: none |
+| `bar_nuts` | Common | $20 | 1.00 | yes | Hype gains +15% | — |
+| `ice_water` | Common | $40 | 1.00 | yes | Ends booze effects | — |
+| `soda_pop` | Common | $35 | 1.00 | no | Round time +10 s | — |
+| `pretzels` | Common | $25 | 1.00 | yes | Viewer gains +10% | — |
+| `pickle_juice` | Common | $35 | 1.00 | yes | Cue power +6% | English -20% |
+| `whiskey_shot` | Uncommon | $90 | 1.20 | yes | — | Call your pocket |
+| `energy_drink` | Uncommon | $120 | 1.00 | no | Round time +20 s | Shot clock: 8 s |
+| `neighbours_round` | Uncommon | $70 | 1.00 | yes | Hype gains +20%, Left neighbour earns x1.25 | — |
+| `pale_ale` | Uncommon | $75 | 1.10 | yes | Cue power +8% | Rail bounce +10% |
+| `rum_and_cola` | Uncommon | $100 | 1.15 | yes | Viewer gains +20% | Cue power -10% |
+| `tequila_line` | Rare | $150 | 1.30 | no | — | Call your pocket, Shot clock: 10 s |
+| `flaming_shot` | Rare | $180 | 1.25 | no | Cue power +35% | Rail bounce +25% |
+| `vodka_tonic` | Rare | $130 | 1.20 | no | Cue power +20% | Shot clock: 10 s |
+| `green_fairy` | Rare | $160 | 1.30 | no | Hype gains +35% | Screen fog +0.25 |
+| `house_special` | Epic | $200 | 1.40 | no | Cue power +15% | Cue ball weight +60% |
+| `tiki_torch` | Epic | $240 | 1.45 | no | Pocket size +20% | Rail bounce +30% |
+| `blue_lagoon` | Epic | $220 | 1.40 | no | Viewer gains +40%, Hype gains +25% | English -50% |
+| `moonshine` | Legendary | $300 | 1.60 | no | Cue power +25%; 1 per Night | Cue ball weight +50%, Call your pocket |
+| `dragons_breath` | Legendary | $400 | 1.80 | no | Cue power +50%, Viewer gains +50%; 1 per Night | Cue ball weight +60% |
+| `gold_flake_champagne` | Legendary | $500 | 2.00 | no | Round time +30 s, Pocket size +20%; 1 per Night | — |
+| `static_shot` | Mystery | $80 | 1.50 | yes | Cue power +10% | Stumbles +2/min |
+| `back_alley_brew` | Mystery | $110 | 1.60 | no | Viewer gains +50% | Screen light -50%, Stumbles +1/min |
+| `void_juice` | Mystery | $120 | 1.80 | no | Cue power +25% | Call your pocket, English: none |
+| `cursed_cola` | Mystery | $70 | 1.50 | no | Round time +25 s | Cue ball weight +50% |
+| `quantum_ale` | Mystery | $100 | 1.30 | no | Pocket size +30%, Hype gains +60% | Pocket drift +0.06 m, Shot clock: 10 s |
+
+**Mystery (06 P17).** The Mystery tier is the old `mystery_shot` made honest: a red card with glitching text that shows **at least one buff and one debuff** (a `reward_mult` above 1 counts as a buff; the debuff is always a real stat Effect; a probe fails any Mystery Drink that shows only one side). The buyer decides whether the buff is worth the cost; there is no roll. `player_stumble_per_min` (§2.2) is the signature debuff: `static_shot` knocks the drinker down twice a minute and `back_alley_brew` once.
+
+**`mystery_shot` is retired.** Its roll-on-use design hid the effects until the drink was drunk, which P17's "shows one buff and one debuff" forbids, so the Drink, its four outcome Drinks and the `roll_on_use` / `roll_table` / `roll_weights` fields and `EffectManager._roll` are gone. Its outcomes live on as explicit Mystery Drinks: `cursed_cola` (heavy cue ball, long Round), `void_juice` (call-pocket and no english for the biggest reward), `static_shot` and `quantum_ale` (a shot clock with a wide, drifting pocket).
+
+**Targets.** Cue and rule stats ride a `CUE` Effect (per drinker, resolved for the current shooter); `stream_*` ride a `STREAM` Effect; `player_view_*` a `VIEW` Effect (the drinker's own screen); `round_time_add_sec` and `player_stumble_per_min` a `PLAYER` Effect. A `TABLE` target must not be used on a Drink: the Drink's Effects carry the drinker as `target_id`, which `TABLE` reads as a rail id. `pocket_radius_mult` / `pocket_oscillation_m` are read crew-wide (`ALL_PEERS`), so a `CUE` Effect with them reshapes the pockets for everyone this Round.
 
 ### 3.6 Event catalog — hazards that change the task, plus two opportunities
 | id | tier | `reward_mult` | `min_night` | `scripted_first` | `round_time_add_sec` | effect |
@@ -160,7 +182,7 @@ The two opportunity Events carry `reward_mult 1.0` on purpose: the crew trades a
 | id | prop | hostile | cost | payoff | effect (`duration_sec`) | cooldown |
 |---|---|---|---|---|---|---:|
 | `bump_table` | table | yes | hype `-0.10` | viewers `+80` on `shot_potted` | `table_tilt_deg ADD 1.5` (`-2`, dies with the shot) | 20 s |
-| `throw_drink` | bar | yes | the drink's `cost_cash` | viewers `+60` always | `player_view_shake_amp ADD 0.4` on the shooter (`-2`) | 15 s |
+| `throw_drink` | bar | yes | the drink's `cost_cash` and one unit off the Bartender's shelf (`EconomyManager.try_throw`; `sold_out` / `not_stocked` refuse) | viewers `+60` always | `player_view_shake_amp ADD 0.4` on the shooter (`-2`) | 15 s |
 | `move_camera` | camera | no | — | `stream_camera_bonus_mult` re-scored on the pot (P2: best view of the potted pocket wins) | none — it moves a `Camera` node | 5 s |
 | `kick_stool` | stool | yes | hype `-0.05` | viewers `+40` always | `shot_clock_sec ADD 6` on the shooter (`-2`) — stance is blocked, re-address the ball | 30 s |
 | `jukebox` | jukebox | no | cash `-$40` | — | `stream_hype_gain_mult MUL 1.25` (`-1`, whole Round) | 1 per Round |
@@ -188,7 +210,8 @@ Per D7 there is no autoload here — these are children of `MainLevel`, so "new 
 - `src/ui/ViewOverlay.tscn` + `src/shaders/player_view.gdshader` — one `ColorRect`, one shader, three uniforms; hidden (no pass) while nothing is active.
 - `src/gameplay/bar/interactable.gd` — `Area3D` + prompt on every prop; holds a `WorldInteraction`, enforces cooldown and the §3.4 guard client-side for responsiveness, host-side for truth.
 - `src/resources/effect/effect.gd`, `stat_mod.gd`, `drink.gd`, `event.gd`, `world_interaction.gd` — `.tres` instances under `src/resources/{drink,event,world}/`.
-- `src/ui/EventVote.tscn` — the three-card Intermission vote. Bar purchase UI belongs to 02's `Shop`.
+- `src/ui/EventVote.tscn` — the three-card Intermission vote. The bar purchase UI is 02's `BartenderMenu` (it prints `src/gameplay/effects/stat_text.gd`'s `StatText` lines for every Drink).
+- `src/gameplay/effects/stat_text.gd` — `StatText`: a `StatMod` / `Drink` → text lines tagged buff / debuff / neutral; every `Stats.ALL` entry needs a row.
 
 ## 5. Interfaces to other modules
 
@@ -237,7 +260,7 @@ Still open: `aim_wobble` presentation (needs Player); who prices each pot for `p
 | Feature | In MVP (Phase 1) | Post-MVP / Later |
 |---|---|---|
 | Effect / StatMod schema | Full, with the const stat list asserted at load | Conditional effects, effect chaining |
-| Drinks | 11 above, `visual_hook` tags only | Mixing/crafting, per-drink shaders inside the §3.8 budget |
+| Drinks | 26 above on six tiers, `visual_hook` tags only | Mixing/crafting, per-drink shaders inside the §3.8 budget |
 | Events | 8 above, pre-Round vote | Narrative Event chains, tier 3 for Endless |
 | World interaction | 9 above, guard §3.4 | Physical prop throwing, per-peer shooter mute (needs Player module) |
 | Composition | `Drink_Mult × Event_Mult`, caps 2.0 / 3.0 | Per-Night dynamic caps |

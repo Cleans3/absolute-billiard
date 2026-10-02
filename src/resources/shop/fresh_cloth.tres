@@ -26,6 +26,8 @@ effects = Array[ExtResource("3_effect")]([SubResource("Effect_1")])
 [resource]
 script = ExtResource("1_item")
 id = &"fresh_cloth"
+display_name = "Fresh Cloth"
+description = "Faster cloth: balls roll a little longer."
 category = &"table"
 cost_cash = 350
 payload = SubResource("Delta_1")

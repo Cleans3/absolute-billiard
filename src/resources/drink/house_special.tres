@@ -1,41 +1,43 @@
-[gd_resource type="Resource" script_class="Drink" format=3]
+[gd_resource type="Resource" script_class="Drink" load_steps=8 format=3]
 
-[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_qameb"]
-[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_dnrcd"]
-[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_6txvt"]
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_effect"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/drink.gd" id="3_drink"]
 
-[sub_resource type="Resource" id="Resource_7hjls"]
-script = ExtResource("2_dnrcd")
+[sub_resource type="Resource" id="Mod_0_0"]
+script = ExtResource("2_mod")
 stat = &"cue_power_mult"
 op = 1
 value = 1.15
 
-[sub_resource type="Resource" id="Resource_suxsh"]
-script = ExtResource("1_qameb")
+[sub_resource type="Resource" id="Effect_0"]
+script = ExtResource("1_effect")
 id = &"house_power"
 target = 1
-stat_modifiers = Array[ExtResource("2_dnrcd")]([SubResource("Resource_7hjls")])
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0_0")])
 duration_sec = -1.0
 tag = &"booze"
 
-[sub_resource type="Resource" id="Resource_6hrbu"]
-script = ExtResource("2_dnrcd")
+[sub_resource type="Resource" id="Mod_1_0"]
+script = ExtResource("2_mod")
 stat = &"cue_ball_mass_mult"
 op = 1
 value = 1.6
 
-[sub_resource type="Resource" id="Resource_ucvxc"]
-script = ExtResource("1_qameb")
+[sub_resource type="Resource" id="Effect_1"]
+script = ExtResource("1_effect")
 id = &"house_heavy"
 target = 1
-stat_modifiers = Array[ExtResource("2_dnrcd")]([SubResource("Resource_6hrbu")])
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_1_0")])
 duration_sec = -1.0
 tag = &"booze"
 
 [resource]
-script = ExtResource("3_6txvt")
+script = ExtResource("3_drink")
 id = &"house_special"
-effects = Array[ExtResource("1_qameb")]([SubResource("Resource_suxsh"), SubResource("Resource_ucvxc")])
+display_name = "House Special"
+description = "The bartender's secret: a heavy rock and a heavier hit."
+tier = 3
+effects = Array[ExtResource("1_effect")]([SubResource("Effect_0"), SubResource("Effect_1")])
 reward_mult = 1.4
-roll_weights = PackedFloat32Array()
 cost_cash = 200
