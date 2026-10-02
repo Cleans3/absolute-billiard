@@ -9,7 +9,7 @@ extends Control
 signal modal_changed(open: bool)
 
 const TOAST_SEC := 2.6
-const TOAST_REGION := Rect2(-300.0, 108.0, 600.0, 44.0)  ## x from screen centre; the one fixed toast slot (docs 08 §2.7)
+const TOAST_REGION := Rect2(-300.0, 108.0, 600.0, 44.0)  ## x from screen centre; the one fixed toast slot (docs 08 §2.8)
 
 ## The router of the running scene: Player / CueController gate input through `UIRouter.blocking()`.
 static var instance: UIRouter

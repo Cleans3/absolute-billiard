@@ -3,7 +3,7 @@ extends Control
 ## label is rewritten once a second, everything else when its own signal fires. Reads the same mirrored state on every
 ## peer. The phase screens live in PhaseScreen, notices in UIRouter's single toast line; the seed is on the F1 debug panel.
 ## The whole HUD hides while a modal is open.
-## Fixed regions (docs 08 §2.7): stat bar x[140, W-140] y[8, 64]; payout x[240, W-240] y[576, 636].
+## Fixed regions (docs 08 §2.8): stat bar x[140, W-140] y[8, 64]; payout x[240, W-240] y[576, 636].
 
 const FEED_SECS := 4.0
 const ICONS := "res://assets/ui/icon_%s.svg"

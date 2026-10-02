@@ -97,7 +97,7 @@ func _ready() -> void:
 	_bind_router.call_deferred()
 
 
-## Hidden under a modal: the screens own every touch while one is open (docs 08 §2.7).
+## Hidden under a modal: the screens own every touch while one is open (docs 08 §2.8).
 func _bind_router() -> void:
 	if UIRouter.instance != null:
 		UIRouter.instance.modal_changed.connect(_on_modal_changed)
