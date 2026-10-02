@@ -393,7 +393,7 @@ func _pose() -> void:
 	player._set_mode(Player.Mode.WALK)
 	var puppet: Player = load("res://src/gameplay/player/Player.tscn").instantiate()
 	level.add_child(puppet)
-	puppet.make_puppet("Tester", Color.RED)
+	puppet.make_puppet("Tester", Player.skin_for_seat(0))
 	puppet.apply_pose(blob.duplicate())
 	_check(puppet.global_position.distance_to(Vector3(1.25, 0.5, -2.5)) < 0.001, "pose position round trip")
 	_check(_near(puppet.rotation.y, 1.0, TAU / 65536.0 * 1.5), "pose yaw round trip: %f" % puppet.rotation.y)

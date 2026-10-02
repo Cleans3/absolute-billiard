@@ -21,6 +21,7 @@
 [ext_resource type="Script" path="res://src/gameplay/camera/cameras.gd" id="17_cameras"]
 [ext_resource type="PackedScene" path="res://src/ui/TouchControls.tscn" id="19_touch"]
 [ext_resource type="PackedScene" path="res://src/ui/BartenderMenu.tscn" id="econ_bartender"]
+[ext_resource type="PackedScene" path="res://src/gameplay/bar/Bartender.tscn" id="rag_bartender"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -89,6 +90,9 @@ sim = NodePath("../Table/PhysicsSim")
 
 [node name="Bar" type="Node3D" parent="."]
 script = ExtResource("14_bar")
+
+[node name="Bartender" parent="Bar" instance=ExtResource("rag_bartender")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 2.5)
 
 [node name="Cameras" type="Node3D" parent="." node_paths=PackedStringArray("table", "economy", "world", "round_director", "spawner")]
 script = ExtResource("17_cameras")
