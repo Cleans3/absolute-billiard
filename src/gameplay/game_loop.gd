@@ -91,6 +91,11 @@ func night_at(index: int) -> NightConfig:
 	return _endless[index - nights.size()]
 
 
+## The demand of the Night at `index` (Buyout on the final one), for a board that looks past the current Night.
+func ask_for(index: int) -> int:
+	return economy.demand_for(night_at(index), index == nights.size() - 1)
+
+
 func start_campaign() -> void:
 	if nights.is_empty():
 		push_error("GameLoop.start_campaign: `nights` is empty")

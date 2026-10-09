@@ -1,9 +1,10 @@
 class_name SpinOverlay
 extends Control
 ## The enlarged cue ball (08 §2.3): about 60% of the screen height, tap or drag sets the hit point, Reset centres it, OK or a
-## tap outside the card closes. It owns no value: it reads the small pad's, and every pick goes out through the pad's
-## `changed` (the Player wires that to CueController.set_spin).
+## tap outside the card closes it. It owns no value: it reads the small pad's, and every pick goes out through the pad's
+## `changed` (the Player wires that to CueController.set_spin). The card starts below the HUD and the shot clock, which stay visible.
 
+const CARD_TOP := 108.0  ## clear of the HUD bar (y < 64) and the shot clock (y 64-104)
 const FACE_FRAC := 0.6  ## of the screen height
 const CARD_HALF_W_FRAC := 0.55  ## of the screen height
 const MASSE_SPIN := 0.60  ## Ball.MASSE_MIN_SPIN, named in the caption
@@ -11,10 +12,9 @@ const MASSE_SPIN := 0.60  ## Ball.MASSE_MIN_SPIN, named in the caption
 var pad: SpinPad  ## the small control this one enlarges
 var face: SpinPad  ## the picking face
 var _card := Rect2()
-var _title: Label
 var _readout: Label
-var _reset: TouchButton
-var _ok: TouchButton
+var _reset: Button
+var _ok: Button
 
 
 func _init() -> void:
@@ -25,14 +25,14 @@ func _init() -> void:
 	face.pick = true
 	face.mouse_filter = Control.MOUSE_FILTER_STOP
 	add_child(face)
-	_title = _label(&"Heading", "Hit point")
-	_readout = _label(&"HudLabel", "")
-	_reset = TouchButton.new()
-	_reset.text = "Reset"
-	add_child(_reset)
-	_ok = TouchButton.new()
-	_ok.text = "OK"
-	add_child(_ok)
+	_readout = Label.new()
+	_readout.theme_type_variation = &"HudLabel"
+	_readout.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_readout.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_readout.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_readout)
+	_reset = _button("Reset", &"")
+	_ok = _button("OK", &"PrimaryButton")
 	_ok.pressed.connect(close)
 	resized.connect(_layout)
 
@@ -97,17 +97,15 @@ static func describe(spin: Vector2, miscue: float) -> String:
 func _layout() -> void:
 	var h := size.y
 	var half_w := h * CARD_HALF_W_FRAC
-	_card = Rect2(size.x * 0.5 - half_w, h * 0.05, half_w * 2.0, h * 0.9)
+	_card = Rect2(size.x * 0.5 - half_w, CARD_TOP, half_w * 2.0, h - CARD_TOP - 24.0)
 	var side := h * FACE_FRAC
 	face.size = Vector2(side, side)
-	face.position = Vector2(size.x * 0.5 - side * 0.5, h * 0.5 - side * 0.5 + h * 0.015)
-	_title.position = Vector2(_card.position.x, _card.position.y + 8.0)
-	_title.size = Vector2(_card.size.x, 44.0)
-	_readout.position = Vector2(_card.position.x, face.position.y + side + 8.0)
+	face.position = Vector2(size.x * 0.5 - side * 0.5, _card.position.y + 8.0)
+	_readout.position = Vector2(_card.position.x, face.position.y + side + 4.0)
 	_readout.size = Vector2(_card.size.x, 36.0)
 	var bw := 190.0
 	var bh := 72.0
-	var by := _card.end.y - bh - 14.0
+	var by := _card.end.y - bh - 12.0
 	_reset.position = Vector2(size.x * 0.5 - bw - 16.0, by)
 	_reset.size = Vector2(bw, bh)
 	_ok.position = Vector2(size.x * 0.5 + 16.0, by)
@@ -119,11 +117,10 @@ func _draw() -> void:
 	draw_style_box(get_theme_stylebox(&"panel", &"PanelContainer"), _card)
 
 
-func _label(variation: StringName, text: String) -> Label:
-	var l := Label.new()
-	l.theme_type_variation = variation
-	l.text = text
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(l)
-	return l
+func _button(text: String, variation: StringName) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.theme_type_variation = variation
+	b.focus_mode = Control.FOCUS_NONE
+	add_child(b)
+	return b

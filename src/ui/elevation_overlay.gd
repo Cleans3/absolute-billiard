@@ -3,11 +3,14 @@ extends Control
 ## The enlarged cue-angle control (08 §2.3): a side view of the cue ball with a protractor, 0-80 degrees, drag anywhere
 ## round the ball to set the angle in whole degrees, +/- 1 for the last bit. Jump (30) and Masse (45) are marked; a range the cue
 ## cannot use right now is shaded and the cue it really gets is drawn bright over the one asked for. It owns no value: it
-## reads the small ElevationPad and every pick goes out through the pad's `changed`.
+## reads the small ElevationPad and every pick goes out through the pad's `changed`. The card starts below the HUD and the
+## shot clock, which stay visible.
 
+const CARD_TOP := 108.0  ## clear of the HUD bar (y < 64) and the shot clock (y 64-104)
 const CARD_HALF_W_FRAC := 0.8  ## of the screen height
-const RADIUS_FRAC := 0.58
+const RADIUS_FRAC := 0.6
 const BALL_FRAC := 0.07
+const BAND := 22.0  ## width of the shaded range ring
 const TICK_STEP := 10
 
 var pad: ElevationPad
@@ -15,27 +18,25 @@ var _card := Rect2()
 var _pivot := Vector2.ZERO
 var _radius := 0.0
 var _finger := -1
-var _title: Label
 var _readout: Label
 var _reason: Label
-var _plus: TouchButton
-var _minus: TouchButton
-var _reset: TouchButton
-var _ok: TouchButton
+var _plus: Button
+var _minus: Button
+var _reset: Button
+var _ok: Button
 
 
 func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	visible = false
 	set_anchors_preset(Control.PRESET_FULL_RECT)
-	_title = _label(&"Heading")
-	_title.text = "Cue angle"
-	_readout = _label(&"HudLabel")
+	_readout = _label(&"Heading")
 	_reason = _label(&"HudDanger")
-	_plus = _button("+1°")
-	_minus = _button("-1°")
-	_reset = _button("Reset")
-	_ok = _button("OK")
+	_reason.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_plus = _button("+1°", &"")
+	_minus = _button("-1°", &"")
+	_reset = _button("Reset", &"")
+	_ok = _button("OK", &"PrimaryButton")
 	_ok.pressed.connect(close)
 	resized.connect(_layout)
 
@@ -96,9 +97,10 @@ func _sync() -> void:
 	if pad == null:
 		return
 	_readout.text = "%d°" % roundi(pad.value)
-	_reason.text = reason(pad.cap)
+	var reason_text := reason(pad.cap)
 	if pad.effective() < pad.value - 0.01:
-		_readout.text += "   shot uses %d°" % roundi(pad.effective())
+		reason_text = "The shot uses %d°. %s" % [roundi(pad.effective()), reason_text]
+	_reason.text = reason_text
 	queue_redraw()
 
 
@@ -107,27 +109,25 @@ static func reason(cap: float) -> String:
 	if cap >= ElevationPad.MAX_DEG:
 		return ""
 	if cap < Ball.JUMP_MIN_ELEVATION_DEG:
-		return "Jump shots are locked: the cue stops at %d°" % roundi(cap)
-	return "Masse is locked: hard English (%d%%+) stops the cue at %d°" % [roundi(Ball.MASSE_MIN_SPIN * 100.0), roundi(cap)]
+		return "Jump shots are locked: the cue stops at %d°." % roundi(cap)
+	return "Masse is locked: hard English (%d%%+) stops the cue at %d°." % [roundi(Ball.MASSE_MIN_SPIN * 100.0), roundi(cap)]
 
 
 func _layout() -> void:
 	var h := size.y
 	var half_w := minf(h * CARD_HALF_W_FRAC, size.x * 0.5 - 16.0)
-	_card = Rect2(size.x * 0.5 - half_w, h * 0.05, half_w * 2.0, h * 0.9)
+	_card = Rect2(size.x * 0.5 - half_w, CARD_TOP, half_w * 2.0, h - CARD_TOP - 24.0)
 	_radius = h * RADIUS_FRAC
-	_pivot = Vector2(_card.position.x + 36.0 + _radius, _card.end.y - h * 0.2)
-	_title.position = _card.position + Vector2(0.0, 8.0)
-	_title.size = Vector2(_card.size.x, 44.0)
-	_readout.position = _title.position + Vector2(0.0, 50.0)
-	_readout.size = Vector2(_card.size.x, 34.0)
-	_reason.position = _readout.position + Vector2(0.0, 36.0)
-	_reason.size = Vector2(_card.size.x, 34.0)
-	var col_x := _pivot.x + h * BALL_FRAC + 40.0
+	_pivot = Vector2(_card.position.x + 120.0 + _radius, _card.end.y - 80.0)
+	var col_x := _pivot.x + h * BALL_FRAC + 50.0
 	var col_w := _card.end.x - col_x - 24.0
+	_readout.position = Vector2(col_x, _card.position.y + 14.0)
+	_readout.size = Vector2(col_w, 50.0)
+	_reason.position = Vector2(col_x, _card.position.y + 70.0)
+	_reason.size = Vector2(col_w, 100.0)
 	var bh := 72.0
 	var gap := 14.0
-	var y := _card.position.y + h * 0.3
+	var y := _card.position.y + 200.0
 	_minus.position = Vector2(col_x, y)
 	_minus.size = Vector2((col_w - gap) * 0.5, bh)
 	_plus.position = Vector2(col_x + (col_w + gap) * 0.5, y)
@@ -148,22 +148,22 @@ func _draw() -> void:
 	var brass := get_theme_color(&"brass_light", &"Game")
 	var cream := get_theme_color(&"cream", &"Game")
 	var font := get_theme_default_font()
-	var band := 22.0
 	var cap := pad.cap
 	# the usable range, then the shut one
-	draw_arc(_pivot, _radius, _a(0.0), _a(cap), 48, Color(cyan, 0.4), band)
+	draw_arc(_pivot, _radius, _a(0.0), _a(cap), 48, Color(cyan, 0.4), BAND)
 	if cap < ElevationPad.MAX_DEG:
-		draw_arc(_pivot, _radius, _a(cap), _a(ElevationPad.MAX_DEG), 32, Color(pink, 0.45), band)
-	# the table plane through the ball, ticks and the two thresholds
+		draw_arc(_pivot, _radius, _a(cap), _a(ElevationPad.MAX_DEG), 32, Color(pink, 0.45), BAND)
+	# the table plane through the ball, then the degree ticks
 	draw_line(_pivot - Vector2(_radius + 40.0, 0.0), _pivot, Color(cream, 0.35), 2.0)
 	for deg in range(0, int(ElevationPad.MAX_DEG) + 1, TICK_STEP):
 		var d := _dir(deg)
-		draw_line(_pivot + d * (_radius - band * 0.5 - 8.0), _pivot + d * (_radius + band * 0.5 + 6.0), Color(cream, 0.7), 2.0)
-		draw_string(font, _pivot + d * (_radius + band * 0.5 + 34.0) - Vector2(14.0, -8.0), str(deg), HORIZONTAL_ALIGNMENT_CENTER, 28.0, 22, Color(cream, 0.8))
+		draw_line(_pivot + d * (_radius - BAND * 0.5 - 8.0), _pivot + d * (_radius + BAND * 0.5 + 6.0), Color(cream, 0.7), 2.0)
+		draw_string(font, _pivot + d * (_radius + BAND * 0.5 + 34.0) + Vector2(-14.0, 8.0), str(deg), HORIZONTAL_ALIGNMENT_CENTER, 28.0, 22, Color(cream, 0.8))
+	# the two thresholds: a long brass tick and its name out beyond the numbers
 	for mark: Array in [[Ball.JUMP_MIN_ELEVATION_DEG, "Jump"], [Ball.MASSE_MIN_ELEVATION_DEG, "Masse"]]:
 		var d := _dir(mark[0])
-		draw_line(_pivot + d * (_radius - band - 12.0), _pivot + d * (_radius + band * 0.5 + 10.0), brass, 4.0)
-		draw_string(font, _pivot + d * (_radius - band - 20.0) - Vector2(46.0, 0.0), mark[1], HORIZONTAL_ALIGNMENT_CENTER, 92.0, 22, brass)
+		draw_line(_pivot + d * (_radius - BAND - 10.0), _pivot + d * (_radius + BAND * 0.5 + 12.0), brass, 4.0)
+		draw_string(font, _pivot + d * (_radius + BAND * 0.5 + 84.0) + Vector2(-45.0, 8.0), mark[1], HORIZONTAL_ALIGNMENT_CENTER, 90.0, 26, brass)
 	# the ball, then the cue: what was asked (ghost) and what the shot gets (bright)
 	var br := size.y * BALL_FRAC
 	draw_circle(_pivot, br, Color(cream, 0.95))
@@ -196,14 +196,15 @@ static func _a(deg: float) -> float:
 func _label(variation: StringName) -> Label:
 	var l := Label.new()
 	l.theme_type_variation = variation
-	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(l)
 	return l
 
 
-func _button(text: String) -> TouchButton:
-	var b := TouchButton.new()
+func _button(text: String, variation: StringName) -> Button:
+	var b := Button.new()
 	b.text = text
+	b.theme_type_variation = variation
+	b.focus_mode = Control.FOCUS_NONE
 	add_child(b)
 	return b

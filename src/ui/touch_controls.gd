@@ -85,17 +85,17 @@ func _ready() -> void:
 		if UIRouter.instance != null:
 			UIRouter.instance.open_pause())
 	root.add_child(_btn_pause)
-	_prompt_label = _label(root, 0.5, 1.0, -200, -76, 200, -36)
-	_status = _label(root, 0.5, 0.0, -160, 64, 160, 104)
-	_away = _label(root, 0.5, 0.0, -300, 232, 300, 272)
-	_away.text = "Host away, waiting…"
-	_away.hide()
-	spin_overlay = _add(root, SpinOverlay.new())  # last: above every widget and label
+	spin_overlay = _add(root, SpinOverlay.new())  # above every widget, below the labels: the shot clock stays readable
 	spin_overlay.bind(spin_pad)
 	spin_pad.opened.connect(_open_overlay.bind(spin_overlay))
 	elevation_overlay = _add(root, ElevationOverlay.new())
 	elevation_overlay.bind(elevation)
 	elevation.opened.connect(_open_overlay.bind(elevation_overlay))
+	_prompt_label = _label(root, 0.5, 1.0, -200, -76, 200, -36)
+	_status = _label(root, 0.5, 0.0, -160, 64, 160, 104)
+	_away = _label(root, 0.5, 0.0, -300, 232, 300, 272)
+	_away.text = "Host away, waiting…"
+	_away.hide()
 	mirror = bool(Settings.value(&"touch_mirror"))  # the setter lays out
 	_layout()
 	_apply()

@@ -103,7 +103,7 @@ func _spin() -> void:
 	_tap(ov, Vector2(5, 5))
 	_check(not ov.visible, "a tap outside the card closes it")
 	_tap(tc.spin_pad, Vector2(60, 60))
-	_tap(ov, Vector2(640, 5 + 36))  # inside the card, off the ball and the buttons: nothing happens
+	_tap(ov, Vector2(300, 300))  # inside the card, off the ball and the buttons: nothing happens
 	_check(ov.visible, "a tap on the card's margin does not close it")
 	ov._ok.pressed.emit()
 	_check(not ov.visible, "OK closes it")
@@ -158,7 +158,7 @@ func _elevation() -> void:
 	cue._push_ui()
 	_check(not cue.cue_spec.jump_unlocked and _near(tc.elevation.cap, Ball.effective_elevation(80.0, Vector2.ZERO, cue.cue_spec)), "cap = Ball.effective_elevation (%f)" % tc.elevation.cap)
 	_check(_near(tc.elevation.cap, 29.0) and _near(tc.elevation.effective(), 29.0), "Jump locked: the cue is capped at 29 with 80 asked")
-	_check(ov._reason.text.begins_with("Jump shots are locked") and ov._readout.text.contains("shot uses 29"), "the overlay names the lock and the angle the shot uses: %s / %s" % [ov._reason.text, ov._readout.text])
+	_check(ov._reason.text.contains("Jump shots are locked") and ov._reason.text.contains("shot uses 29"), "the overlay names the lock and the angle the shot uses: %s / %s" % [ov._reason.text, ov._readout.text])
 	var intent := cue.build_intent(1.0)
 	_check(_near(Ball.effective_elevation(intent.elevation_deg, intent.spin_offset, cue.cue_spec), tc.elevation.effective()), "what the overlay shows is what Ball.strike uses")
 	var spec := cue.cue_spec
@@ -167,7 +167,7 @@ func _elevation() -> void:
 	_check(_near(tc.elevation.cap, 80.0) and ov._reason.text == "", "Jump unlocked, soft English: nothing is shut")
 	cue.set_spin(Vector2(0.7, 0.0))
 	cue._push_ui()
-	_check(_near(tc.elevation.cap, 44.0) and ov._reason.text.begins_with("Masse is locked") and ov._reason.text.contains("44"), "hard English without Masse caps at 44: %s" % ov._reason.text)
+	_check(_near(tc.elevation.cap, 44.0) and ov._reason.text.contains("Masse is locked") and ov._reason.text.contains("44"), "hard English without Masse caps at 44: %s" % ov._reason.text)
 	spec.masse_unlocked = true
 	cue._push_ui()
 	_check(_near(tc.elevation.cap, 80.0), "Masse unlocked: open again")
