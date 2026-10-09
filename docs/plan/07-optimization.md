@@ -65,7 +65,7 @@ Mobile has **no** SSAO, SSR, SSIL, SDFGI, volumetric fog, TAA, FSR2 or auto-expo
 | metric | budget |
 |---|---|
 | draw calls / frame | `≤ 120 [tune]` |
-| unique materials in the bar | `≤ 12 [tune]` |
+| unique materials in the bar | `≤ 12 [tune]` (the `perf_bar` room fixture; MainLevel's dynamic props — blackboard 2, GO LIVE pedestal 2, mirror 1 — sit outside it and are covered by the draw-call gate, `perf_mirror` p95 ≤ 100, adhoc-1010a) |
 | visible triangles | `≤ 60k [tune]` |
 | realtime lights | `3 [tune]`, of which **1** casts shadows |
 | fullscreen post passes | `1 [tune]` |
