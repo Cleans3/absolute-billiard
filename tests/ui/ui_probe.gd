@@ -358,11 +358,14 @@ func _layout() -> void:
 		_check(tc.mirror, "the touch mirror setting reaches TouchControls")
 		Settings.set_value(&"touch_mirror", false)
 		_check(not tc.mirror, "and back")
-		for chip: Label in [hud._night, hud._round, hud._time, hud._shots, hud._cash, hud._quota, hud._viewers, hud._hype]:
-			chip.text += "0"  # a size worse than the real ones
+		var labels := hud.find_children("*", "Label", true, false)
+		_check(labels.size() == 6, "%s the HUD is lean: cash, quota, clock, shots, fps, payout (got %d labels)" % [size, labels.size()])
+		hud._time.text = "12:34"  # sizes worse than the real ones
+		hud._shots.text = "Shots 12"
+		hud._quota.text = "/ $125000"
 		hud._fps.text = "120 fps"
 		Settings.set_value(&"show_fps", true)
-		hud._cash.text = "-$1250"
+		hud._cash.text = "-$12500"
 		hud._payout.text = "Combo x1.15  +$1250"
 		router.toast("Can't buy Whiskey (no_cash) at all", &"bad")
 		tc._away.show()
@@ -394,7 +397,7 @@ func _layout() -> void:
 
 func _check_layout(vp: SubViewport, hud: Control, tc: TouchControls, router: UIRouter, tag: String) -> void:
 	var items := {
-		"stats": hud.get_node("%Plate"), "payout": hud._payout, "toast": router.get_child(0),
+		"money": hud.get_node("%Money"), "round": hud.get_node("%Clock"), "fps": hud._fps, "payout": hud._payout, "toast": router.get_child(0),
 		"clock": tc._status, "prompt": tc._prompt_label, "away": tc._away,
 		"jump": tc._btn_jump, "interact": tc._btn_interact, "shoot": tc._btn_shoot, "back": tc._btn_back,
 		"place": tc._btn_place, "drop": tc._btn_drop, "pause": tc._btn_pause,
@@ -411,6 +414,9 @@ func _check_layout(vp: SubViewport, hud: Control, tc: TouchControls, router: UIR
 		var r := c.get_global_rect()
 		rects[k] = r
 		_check(screen.encloses(r), "%s: %s inside the screen %s" % [tag, k, r])
+	var bar := Rect2(140.0, 8.0, vp.size.x - 280.0, 56.0)  # docs 08 §2.8: both HUD groups live in the top bar
+	for k in ["money", "round"]:
+		_check(bar.encloses(rects[k]), "%s: %s %s inside the top bar %s" % [tag, k, rects[k], bar])
 	var keys := rects.keys()
 	for i in keys.size():
 		for j in range(i + 1, keys.size()):

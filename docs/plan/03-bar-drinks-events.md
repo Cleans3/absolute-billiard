@@ -219,6 +219,7 @@ Per D7 there is no autoload here — these are children of `MainLevel`, so "new 
 - `effect_applied(effect_id: StringName, target: int, owner_peer_id: int, duration_sec: float)`
 - `effect_expired(effect_id: StringName, target: int, owner_peer_id: int)`
 - `reward_multiplier_changed(new_value: float)`
+- `live_changed()` — any Effect, Drink or Event came or went; read side `live_drinks() -> [{drink, peer_id, gift}]`, `live_events() -> [Event]` (the wall Blackboard, 08 §2.8)
 - `drink_refused(drink_id, peer_id, reason)`, `shooter_changed(peer_id)`, `visual_hook_started/stopped(tag)`
 
 Timers live here, not in `PhysicsSim`: `-2` expires on `RoundDirector.shot_ended`, `-1` on `GameLoop.round_ended`, seconds on a local countdown — every peer expires from its own signals, so there is no expiry RPC. `PhysicsSim` is only a sink (`stat_source`, `set_stat`, `set_rail_restitution_mult`, `set_tilt_direction`).

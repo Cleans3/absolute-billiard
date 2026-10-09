@@ -1,6 +1,10 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://src/ui/hud.gd" id="1_hud"]
+[ext_resource type="Script" path="res://src/ui/fill_bar.gd" id="2_bar"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_cash.svg" id="3_cash"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_clock.svg" id="4_clock"]
+[ext_resource type="Texture2D" path="res://assets/ui/icon_shots.svg" id="5_shots"]
 
 [node name="HUD" type="Control"]
 layout_mode = 3
@@ -12,29 +16,121 @@ grow_vertical = 2
 mouse_filter = 2
 script = ExtResource("1_hud")
 
-[node name="Top" type="MarginContainer" parent="."]
-layout_mode = 1
-anchors_preset = 10
-anchor_right = 1.0
-offset_bottom = 64.0
-grow_horizontal = 2
-mouse_filter = 2
-theme_override_constants/margin_left = 140
-theme_override_constants/margin_top = 8
-theme_override_constants/margin_right = 140
-
-[node name="Plate" type="PanelContainer" parent="Top"]
+[node name="Money" type="PanelContainer" parent="."]
 unique_name_in_owner = true
-layout_mode = 2
+layout_mode = 0
+offset_left = 140.0
+offset_top = 8.0
+offset_right = 140.0
+offset_bottom = 8.0
 mouse_filter = 2
-size_flags_horizontal = 4
-size_flags_vertical = 0
 theme_type_variation = &"PanelPlate"
 
-[node name="Stats" type="HBoxContainer" parent="Top/Plate"]
+[node name="Rows" type="VBoxContainer" parent="Money"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 2
+
+[node name="Line" type="HBoxContainer" parent="Money/Rows"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"ChipBox"
+
+[node name="Icon" type="TextureRect" parent="Money/Rows/Line"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("3_cash")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Cash" type="Label" parent="Money/Rows/Line"]
 unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
+theme_type_variation = &"HudLabel"
+text = "$0"
+
+[node name="Quota" type="Label" parent="Money/Rows/Line"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"Caption"
+text = "/ $0"
+
+[node name="QuotaBar" type="Control" parent="Money/Rows"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 8)
+layout_mode = 2
+mouse_filter = 2
+script = ExtResource("2_bar")
+
+[node name="Clock" type="PanelContainer" parent="."]
+unique_name_in_owner = true
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -140.0
+offset_top = 8.0
+offset_right = -140.0
+offset_bottom = 8.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_type_variation = &"PanelPlate"
+
+[node name="Line" type="HBoxContainer" parent="Clock"]
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"ChipBox"
+
+[node name="ClockIcon" type="TextureRect" parent="Clock/Line"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("4_clock")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Time" type="Label" parent="Clock/Line"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"HudLabel"
+text = "0:00"
+
+[node name="Gap" type="Control" parent="Clock/Line"]
+custom_minimum_size = Vector2(10, 0)
+layout_mode = 2
+mouse_filter = 2
+
+[node name="ShotsIcon" type="TextureRect" parent="Clock/Line"]
+custom_minimum_size = Vector2(30, 30)
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+texture = ExtResource("5_shots")
+expand_mode = 1
+stretch_mode = 5
+
+[node name="Shots" type="Label" parent="Clock/Line"]
+unique_name_in_owner = true
+layout_mode = 2
+mouse_filter = 2
+theme_type_variation = &"HudLabel"
+text = "Shots 0"
+
+[node name="Fps" type="Label" parent="."]
+unique_name_in_owner = true
+layout_mode = 0
+offset_left = 140.0
+offset_top = 68.0
+offset_right = 300.0
+offset_bottom = 96.0
+mouse_filter = 2
+theme_type_variation = &"HudLabel"
 
 [node name="Payout" type="Label" parent="."]
 unique_name_in_owner = true

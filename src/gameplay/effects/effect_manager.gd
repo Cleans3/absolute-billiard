@@ -11,6 +11,7 @@ signal shooter_changed(peer_id: int)
 signal drink_refused(drink_id: StringName, peer_id: int, reason: StringName)
 signal visual_hook_started(tag: StringName)
 signal visual_hook_stopped(tag: StringName)
+signal live_changed  ## any Effect, Drink or Event came or went (the Blackboard re-reads `live_drinks` / `live_events`)
 
 const MAX_LIVE_DRINKS := 3  # [tune] per player
 const DRINK_MULT_CAP := 2.0  # [tune]
@@ -283,6 +284,22 @@ func live_count() -> int:
 	return _live.size()
 
 
+## The Drinks in effect as [{drink: Drink, peer_id: int, gift: bool}]; a neighbour's gift is listed under the player it lands on.
+func live_drinks() -> Array[Dictionary]:
+	var out: Array[Dictionary] = []
+	for r in _drinks:
+		out.append({drink = r.drink, peer_id = r.peer_id, gift = r.gift})
+	return out
+
+
+## The Events running this Round (cleared when it ends).
+func live_events() -> Array[Event]:
+	var out: Array[Event] = []
+	for a in _events:
+		out.append(a.event)
+	return out
+
+
 func _remove(le: LiveEffect) -> void:
 	_live.erase(le)
 	var hook := le.effect.visual_hook
@@ -337,6 +354,7 @@ func _on_round_ended(_reason: StringName, _round_points: int) -> void:
 
 
 func _changed() -> void:
+	live_changed.emit()
 	_refresh_table_stats()
 	var reward := get_reward_multiplier()
 	if not is_equal_approx(reward, _last_reward):

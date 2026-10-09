@@ -159,7 +159,6 @@ func _loop() -> void:
 	var hud := HUD_SCENE.instantiate()
 	hud.game_loop = loop
 	hud.economy = economy
-	hud.stream = stream
 	root.add_child(hud)
 	var phase_screen: PhaseScreen = PHASE_SCENE.instantiate()
 	phase_screen.game_loop = loop

@@ -83,6 +83,17 @@ func apply_mass_mult(m: float) -> void:
 	mass = _base_mass * m
 
 
+## The cue angle a strike really uses: a locked technique clamps the cue below its threshold instead of failing the
+## shot. The touch overlay (08 §2.3) asks the same function, so what it shows is what the ball gets.
+static func effective_elevation(deg: float, spin: Vector2, cue: CueSpec) -> float:
+	var elevation := maxf(deg, 0.0)
+	if not cue.jump_unlocked:
+		elevation = minf(elevation, JUMP_MIN_ELEVATION_DEG - 1.0)
+	if not cue.masse_unlocked and spin.length() >= MASSE_MIN_SPIN:
+		elevation = minf(elevation, MASSE_MIN_ELEVATION_DEG - 1.0)
+	return elevation
+
+
 func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	var aim := intent.aim_dir.normalized()
 	var power := clampf(intent.power, 0.0, 1.0)
@@ -91,12 +102,7 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 		power *= sim.stat(&"cue_power_mult", intent.shooter_id, 1.0)
 		spin_radius = sim.stat(&"cue_spin_radius_mult", intent.shooter_id, spin_radius)
 	var spin := intent.spin_offset.limit_length(1.0)
-	var elevation := maxf(intent.elevation_deg, 0.0)
-	# locked techniques clamp the cue below their threshold instead of failing the shot
-	if not cue.jump_unlocked:
-		elevation = minf(elevation, JUMP_MIN_ELEVATION_DEG - 1.0)
-	if not cue.masse_unlocked and spin.length() >= MASSE_MIN_SPIN:
-		elevation = minf(elevation, MASSE_MIN_ELEVATION_DEG - 1.0)
+	var elevation := effective_elevation(intent.elevation_deg, spin, cue)
 	intent.jump = cue.jump_unlocked and power >= 0.70 and elevation >= JUMP_MIN_ELEVATION_DEG
 	intent.masse = cue.masse_unlocked and elevation >= MASSE_MIN_ELEVATION_DEG and spin.length() >= MASSE_MIN_SPIN
 	if spin.length() > cue.miscue_threshold:
