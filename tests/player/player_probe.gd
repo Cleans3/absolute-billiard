@@ -63,6 +63,12 @@ func _drag(node: Control, index: int, from: Vector2, to: Vector2) -> void:
 	node._gui_input(e)
 
 
+## The one place a probe waits for the level to be playable after pressing Solo: MainLevel loads on a thread
+## behind the loading screen.
+func _until_playable() -> void:
+	await SoloSupport.until_playable(self)
+
+
 func _run() -> void:
 	await process_frame
 	SaveManager.root = "user://test_player"
@@ -71,7 +77,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await _until_playable()
 	level = current_scene
 	rd = level.get_node("RoundDirector")
 	table = level.get_node("Table")
@@ -147,19 +153,22 @@ func _widgets() -> void:
 	_check(lp.fine, "second finger = fine aim")
 	_touch(lp, 1, Vector2(900, 300), false)
 	_touch(lp, 0, Vector2(700, 320), false)
-	# spin pad
+	# spin pad: a tap opens the enlarged ball (tests/ui/shot_controls_probe.gd has the full overlay drive), a tap on it sets the point
 	var sp := controls.spin_pad
-	sp.size = Vector2(120, 120)
 	var got: Array[Vector2] = []
 	var on_spin := func(v: Vector2) -> void: got.append(v)
 	sp.changed.connect(on_spin)
-	var r := 60.0 - 2.0
-	_touch(sp, 0, Vector2(60 + 0.5 * r, 60 - 0.25 * r), true)
-	_check(got.size() == 1 and _near(got[0].x, 0.5) and _near(got[0].y, 0.25), "spin pad tap: %s" % [got])
-	_touch(sp, 0, Vector2.ZERO, false)
-	_touch(sp, 0, Vector2(60, 60), true)  # second tap inside 300 ms: reset
-	_check(got.back() == Vector2.ZERO, "spin pad double-tap resets")
-	_touch(sp, 0, Vector2.ZERO, false)
+	_touch(sp, 0, Vector2(60, 60), true)
+	_touch(sp, 0, Vector2(60, 60), false)
+	var face := controls.spin_overlay.face
+	_check(controls.spin_overlay.visible and face.size.y > 0.0, "spin pad tap opens the enlarged ball")
+	var r := minf(face.size.x, face.size.y) * 0.5 - 2.0
+	_touch(face, 0, face.size * 0.5 + Vector2(0.5 * r, -0.25 * r), true)
+	_check(got.size() == 1 and _near(got[0].x, 0.5) and _near(got[0].y, 0.25), "enlarged ball tap: %s" % [got])
+	_touch(face, 0, Vector2.ZERO, false)
+	controls.spin_overlay._reset.pressed.emit()
+	_check(got.back() == Vector2.ZERO, "Reset centres the hit point")
+	controls.spin_overlay.close()
 	sp.changed.disconnect(on_spin)
 	# power slider: only from the top, release strikes, under 3% cancels
 	var pw := controls.power
@@ -180,13 +189,18 @@ func _widgets() -> void:
 	_drag(pw, 0, Vector2.ZERO, Vector2(30, 5))
 	_touch(pw, 0, Vector2(30, 5), false)
 	_check(out.size() == 1 and cancels[0] == 1, "dragging back under 3% cancels")
-	# elevation
+	# elevation: the small control opens the enlarged cue angle, a tap on its protractor sets it
 	var el := controls.elevation
-	el.size = Vector2(56, 200)
-	_touch(el, 0, Vector2(20, 150), true)
-	_check(_near(el.value, 20.0), "elevation slider bottom-up: %f" % el.value)
-	_touch(el, 0, Vector2(20, 150), false)
+	_touch(el, 0, Vector2(60, 36), true)
+	_touch(el, 0, Vector2(60, 36), false)
+	var eo := controls.elevation_overlay
+	_check(eo.visible, "elevation tap opens the enlarged cue angle")
+	var tap := eo._pivot + Vector2(-cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0))) * eo._radius * 0.8
+	_touch(eo, 0, tap, true)
+	_check(_near(el.value, 20.0), "elevation protractor tap: %f" % el.value)
+	_touch(eo, 0, tap, false)
 	_check(_near(el.value, 20.0), "elevation holds after release")
+	eo.close()
 	el.set_value(0.0)
 
 
@@ -223,13 +237,44 @@ func _modes() -> void:
 	rd.shooter_changed.emit(99)
 	_check(player.mode == Player.Mode.WALK, "shooter change leaves CUE")
 	rd.current_shooter_id = root.multiplayer.get_unique_id()
+	# stay where you shot (C16): aim west so the pinned spot is east of the ball, 3 m from where the player stood
+	_check(player.enter_cue(), "CUE for the stay-put shot")
+	cue.shot_sink = func(_i: ShotIntent) -> void: pass
+	cue.aim_yaw = PI * 0.5
+	await _frames(2)
+	var pinned := player.global_position
+	cue.fire(0.5)
+	var stayed := player.global_position
+	_check(player.mode == Player.Mode.WALK and stayed.distance_to(home) > 1.5, "fired: the player stays by the shot, not back at %s (now %s)" % [home, stayed])
+	_check(stayed.distance_to(pinned) <= Player.SNAP_MAX_M and player._clear_of_table(stayed), "fired: snapped clear of the table outline within %.1f m of the aim spot (%.2f m)" % [Player.SNAP_MAX_M, stayed.distance_to(pinned)])
+	_check(_near(player.rotation.y, PI * 0.5, 0.01), "fired: yaw kept")
+	_check(_near(stayed.y, 0.0, 0.05), "fired: standing on the floor")
+	sim.shot_rejected.emit(&"balls_moving")  # the host's refusal arrives over the wire: walk back
+	_check(player.global_position.distance_to(home) < 0.01, "a late refusal restores the spot before aiming")
+	player.global_position = stayed
+	sim.shot_rejected.emit(&"balls_moving")
+	_check(player.global_position.distance_to(stayed) < 0.01, "a second refusal moves nobody (nothing pending)")
+	# the host refusing while fire() is still on the stack (host's own shot)
+	player.global_position = home
+	_check(player.enter_cue(), "CUE for the refused shot")
+	cue.shot_sink = func(_i: ShotIntent) -> void: sim.shot_rejected.emit(&"balls_moving")
+	cue.fire(0.5)
+	_check(player.mode == Player.Mode.WALK and player.global_position.distance_to(home) < 0.01, "an inline refusal restores the spot before aiming")
+	cue.shot_sink = real_sink
 	# strike through the real path: touch power slider → request_shot → the host strikes
 	_check(player.enter_cue(), "CUE again for the strike")
+	await _frames(2)
+	var strike_spot := player.global_position
 	controls.power.size = Vector2(72, 500)
 	_touch(controls.power, 0, Vector2(30, 10), true)
 	_drag(controls.power, 0, Vector2.ZERO, Vector2(30, 250))
 	_touch(controls.power, 0, Vector2(30, 250), false)
 	_check(player.mode == Player.Mode.WALK and not cue.active, "strike leaves CUE")
+	_check(player.global_position.distance_to(strike_spot) <= Player.SNAP_MAX_M and player._clear_of_table(player.global_position), "strike: the player stands by the shot")
+	var by_strike := player.global_position
+	_check(not player._verdict_pending, "the host's own accepted strike leaves no verdict pending")
+	sim.shot_rejected.emit(&"balls_moving")  # an unrelated refusal later moves nobody
+	_check(player.global_position.distance_to(by_strike) < 0.001, "...so a later refusal does not walk the player back")
 	_check(fired_intents.size() == 1, "the host struck once (%d)" % fired_intents.size())
 	if fired_intents.size() == 1:
 		_check(_near(fired_intents[0].power, 0.5) and fired_intents[0].shooter_id == root.multiplayer.get_unique_id(), "strike carried the slider power")
@@ -263,14 +308,20 @@ func _parity() -> void:
 	_drag(controls.look, 0, Vector2(600, 300), Vector2(700, 300))
 	_touch(controls.look, 0, Vector2(700, 300), false)
 	_drive_cue(1.0 / 60.0, 1)
-	var sp := controls.spin_pad
-	sp.size = Vector2(120, 120)
-	var r := 58.0
-	_touch(sp, 0, Vector2(60 + 0.3 * r, 60 - 0.5 * r), true)
-	_touch(sp, 0, Vector2.ZERO, false)
-	controls.elevation.size = Vector2(56, 200)
-	_touch(controls.elevation, 0, Vector2(20, 200 * (1.0 - 20.0 / 80.0)), true)
-	_touch(controls.elevation, 0, Vector2.ZERO, false)
+	_touch(controls.spin_pad, 0, Vector2(60, 60), true)
+	_touch(controls.spin_pad, 0, Vector2(60, 60), false)
+	var face := controls.spin_overlay.face
+	var r := minf(face.size.x, face.size.y) * 0.5 - 2.0
+	_touch(face, 0, face.size * 0.5 + Vector2(0.3 * r, -0.5 * r), true)
+	_touch(face, 0, Vector2.ZERO, false)
+	controls.spin_overlay.close()
+	_touch(controls.elevation, 0, Vector2(60, 36), true)
+	_touch(controls.elevation, 0, Vector2(60, 36), false)
+	var eo := controls.elevation_overlay
+	var tap := eo._pivot + Vector2(-cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0))) * eo._radius * 0.8
+	_touch(eo, 0, tap, true)
+	_touch(eo, 0, tap, false)
+	eo.close()
 	controls.power.size = Vector2(72, 500)
 	_touch(controls.power, 0, Vector2(30, 10), true)
 	_drag(controls.power, 0, Vector2.ZERO, Vector2(30, 400))

@@ -15,6 +15,7 @@ signal phase_changed(phase: Phase)
 signal shot_settled(shot_id: String, cash: int, trick_id: StringName, foul: bool)  # HUD payout line
 signal cue_respawned(reason: StringName)  # relayed from RoundDirector for the HUD
 signal state_changed()  # time/shots/round/night fields changed (host after a rule, client after a mirror)
+signal ready_changed()  # GO LIVE: someone (un)pressed it, or the crew changed (host after a rule, client after a mirror)
 
 const SYNC_PERIOD := 1.0  # live-Round round_state heartbeat; phase changes are sent at once
 const STOCK_SALT := 0x5701  # keeps the shelf's seed apart from round_seed's hash of the same three numbers
@@ -34,6 +35,8 @@ var round_index := 0  # 1-based within the Night
 var shots_left := 0
 var time_left := 0.0
 var round_points := 0  # raw points banked this Round
+var ready_peers := PackedInt32Array()  # GO LIVE (02 §3.1): peers who pressed it this Intermission; the host owns the set
+var waiting_peers := PackedInt32Array()  # ... and the peers whose press the start still waits for
 
 var _timer_expired := false  # timer hit 0 mid-shot: end the Round when that shot resolves
 var _endless: Array[NightConfig] = []  # generated Nights 6+, index 0 = Night nights.size()+1
@@ -55,6 +58,10 @@ func _ready() -> void:
 		stream.tip_received.connect(_on_tip_received)
 	if economy != null:
 		economy.quota_evaluated.connect(func(paid: int, _demand: int, game_over: bool) -> void: _last_passed = not game_over)
+	var net := get_node_or_null(^"/root/NetManager")
+	if net != null:  # a peer joining the crew, leaving, or backgrounding changes who GO LIVE waits for
+		net.connect(&"roster_changed", _on_crew_changed)
+		net.connect(&"peers_away_changed", _on_crew_changed)
 
 
 func _process(delta: float) -> void:
@@ -89,6 +96,11 @@ func night_at(index: int) -> NightConfig:
 	while _endless.size() <= index - nights.size():
 		_endless.append(NightConfig.endless(nights[-1], nights.size() + _endless.size() + 1))
 	return _endless[index - nights.size()]
+
+
+## The demand of the Night at `index` (Buyout on the final one), for a board that looks past the current Night.
+func ask_for(index: int) -> int:
+	return economy.demand_for(night_at(index), index == nights.size() - 1)
 
 
 func start_campaign() -> void:
@@ -128,6 +140,19 @@ func advance() -> void:
 		Phase.RECKONING, Phase.CAMPAIGN_WON:
 			night_index += 1
 			_begin_night()
+
+
+## Host. The GO LIVE pedestal (WorldInteractions `go_live`): a press toggles the presser's ready flag; the Round
+## starts once every peer the crew waits on has pressed. A peer that left is dropped, one in the background is not waited on.
+func toggle_ready(peer_id: int) -> void:
+	if not is_host() or phase != Phase.INTERMISSION:
+		return
+	var at := ready_peers.find(peer_id)
+	if at >= 0:
+		ready_peers.remove_at(at)
+	else:
+		ready_peers.append(peer_id)
+	_refresh_ready()
 
 
 ## Identity of this Intermission's Bartender shelf (06 P17): one Night + Round of one campaign always rolls the same drinks.
@@ -265,6 +290,57 @@ func _set_phase(p: Phase) -> void:
 	phase_changed.emit(p)
 	state_changed.emit()
 	_push_state()
+	_reset_ready()
+
+
+# --- GO LIVE ready set ----------------------------------------------------------------------------
+
+## Peer ids of the crew: the roster, or the host alone where no roster exists (unit probes).
+func _crew() -> PackedInt32Array:
+	var net := get_node_or_null(^"/root/NetManager")
+	var ids: PackedInt32Array = net.call(&"seat_order") if net != null else PackedInt32Array()
+	if ids.is_empty():
+		ids.append(1)
+	return ids
+
+
+func _is_away(peer_id: int) -> bool:
+	var net := get_node_or_null(^"/root/NetManager")
+	return net != null and bool(net.call(&"is_peer_away", peer_id))
+
+
+## A new phase clears the ready set; an Intermission starts out waiting on everyone.
+func _reset_ready() -> void:
+	ready_peers = PackedInt32Array()
+	waiting_peers = PackedInt32Array()
+	if phase == Phase.INTERMISSION:
+		for id in _crew():
+			if not _is_away(id):
+				waiting_peers.append(id)
+	ready_changed.emit()
+	_push_ready()
+
+
+func _on_crew_changed() -> void:
+	if is_host() and phase == Phase.INTERMISSION:
+		_refresh_ready()
+
+
+func _refresh_ready() -> void:
+	var crew := _crew()
+	var kept := PackedInt32Array()
+	for id in ready_peers:
+		if crew.has(id):
+			kept.append(id)
+	ready_peers = kept
+	waiting_peers = PackedInt32Array()
+	for id in crew:
+		if not ready_peers.has(id) and not _is_away(id):
+			waiting_peers.append(id)
+	ready_changed.emit()
+	_push_ready()
+	if phase == Phase.INTERMISSION and waiting_peers.is_empty() and not ready_peers.is_empty():
+		advance()
 
 
 # --- mirror to clients (04 §5) -------------------------------------------------------------------
@@ -274,9 +350,15 @@ func _push_state() -> void:
 		round_state.rpc(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
 
 
+func _push_ready() -> void:
+	if is_inside_tree() and multiplayer.is_server():
+		ready_state.rpc(ready_peers, waiting_peers)
+
+
 ## Host: a client came back from the background (RoundDirector.send_full_state); it just needs the numbers.
 func resync_peer(peer_id: int) -> void:
 	round_state.rpc_id(peer_id, night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
+	ready_state.rpc_id(peer_id, ready_peers, waiting_peers)
 
 
 ## Clients: adopt the host's numbers and re-emit the signals the host raised, in the host's order.
@@ -309,6 +391,14 @@ func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p
 			round_started.emit(round_index, time_left, config.hazard_tiers[round_index - 1])
 		Phase.RECKONING:
 			night_ended.emit(_last_passed, economy.demand_for(config, _is_final_night()))
+
+
+## Clients: who has pressed GO LIVE and who the start still waits on (the pedestal shows both).
+@rpc("authority", "call_remote", "reliable", 3)
+func ready_state(ready_ids: PackedInt32Array, waiting_ids: PackedInt32Array) -> void:
+	ready_peers = ready_ids
+	waiting_peers = waiting_ids
+	ready_changed.emit()
 
 
 @rpc("authority", "call_remote", "reliable", 3)

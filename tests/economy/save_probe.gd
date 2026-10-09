@@ -41,7 +41,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await SoloSupport.until_playable(self)
 	await _checkpoint_and_resume()
 	_endless()
 	_cleanup()

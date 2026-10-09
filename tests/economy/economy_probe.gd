@@ -159,7 +159,6 @@ func _loop() -> void:
 	var hud := HUD_SCENE.instantiate()
 	hud.game_loop = loop
 	hud.economy = economy
-	hud.stream = stream
 	root.add_child(hud)
 	var phase_screen: PhaseScreen = PHASE_SCENE.instantiate()
 	phase_screen.game_loop = loop
@@ -172,7 +171,7 @@ func _loop() -> void:
 
 	loop.start_campaign()
 	_check(loop.phase == GameLoop.Phase.INTERMISSION and stream.viewers == 100, "Night 1 opens in Intermission, viewers = base")
-	_check(phase_screen.visible and phase_screen.get_node("%Next").visible, "PhaseScreen: Intermission screen + host Next button")
+	_check(not phase_screen.visible, "PhaseScreen: the Intermission has no screen (players press GO LIVE in the bar)")
 	loop.advance()
 	_check(loop.phase == GameLoop.Phase.ROUND_LIVE and loop.shots_left == 10, "advance() starts Round 1 with 10 shots")
 	_check(not phase_screen.visible, "PhaseScreen: closes while a Round is live")
@@ -203,6 +202,7 @@ func _loop() -> void:
 	_check(reasons[-1] == &"cleared" and loop.phase == GameLoop.Phase.RECKONING, "table_cleared ends Round 3 -> Reckoning")
 	await process_frame  # end_round is deferred out of RoundDirector's own signal emit
 	_check(over == [true] and director.ended == 3, "Night 1 passed; end_round ran for each Round")
+	_check(phase_screen.visible and phase_screen.get_node("%Next").visible and phase_screen.get_node("%Next").text == "Next Night", "PhaseScreen: the Reckoning still offers the host Next Night")
 	var banked := economy.cash
 	loop.advance()
 	_check(loop.phase == GameLoop.Phase.INTERMISSION and stream.viewers == 250, "Night 2 opens, viewers reset to its base")

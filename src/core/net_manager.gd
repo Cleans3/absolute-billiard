@@ -7,7 +7,10 @@ enum Transport { ENET_DIRECT, ENET_NORAY, STEAM }
 signal session_started(is_host: bool)
 signal roster_changed()
 signal session_failed(reason: StringName)
-signal session_ended(reason: StringName)
+signal session_ended(reason: StringName)  ## reason &"left" = this player left; any other = the session was cut
+signal connect_step_changed(step: StringName)  ## what the connecting wait is on now (`connect_step`); the Lobby words it and times it
+signal peers_away_changed()  ## host: a client's app went to / came back from the background
+signal loading_changed()  ## the host's load count reached us (`loading_done`)
 signal all_peers_ready()  ## host only; main_level.gd starts the campaign on it
 signal app_paused()  ## this app went to the background (phone); PhysicsSim / RoundDirector stop trusting streams
 signal app_resumed()
@@ -15,6 +18,7 @@ signal host_away_changed(away: bool)  ## client: the host's app is in the backgr
 
 const LOBBY := "res://src/levels/Lobby.tscn"
 const MAIN_LEVEL := "res://src/levels/MainLevel.tscn"
+const LOADING_SCREEN := preload("res://src/ui/LoadingScreen.tscn")
 const HOST_ID := 1
 const STEAM_TRANSPORT := "res://src/core/transport_steam.gd"  # loaded by path: phone builds must not parse it
 ## An ENet header naming no peer and carrying no command: every ENet receiver drops it silently.
@@ -32,9 +36,14 @@ var backgrounded := false  ## this app is paused (04 §6): no sends, streams ign
 var host_away := false  ## client mirror of the host's `backgrounded`
 
 var last_notice := &""  ## why the last session ended; the Lobby shows it once via take_notice()
+var connect_step := &""  ## relay | lookup | direct | tunnel | steam while a host/join is in flight, else empty
+var host_away_since_msec := 0  ## client: when the host's app went to the background
+var loading_done := PackedInt32Array()  ## peers whose MainLevel is up while a session loads (the host's barrier, mirrored)
 
 var _roster: Array[Dictionary] = []  # {peer_id, name, seat, ready, char_skin, bar_skin}; host writes, clients mirror
 var _level_ready: Dictionary = {}  # peer_id -> true, host only, this session
+var _peers_away: Dictionary = {}  # peer_id -> true, host only: that client's app is in the background
+var _loading: LoadingScreen  # the root overlay from start_session until the local player stands in the bar
 var _timeout: SceneTreeTimer
 var _steam: Node  # SteamTransport instance, PC + addon + Steam running only
 var _noray: NorayClient  # keeps the host's control connection (= its lobby registration) alive
@@ -109,8 +118,14 @@ func steam_invite() -> void:
 		_steam.invite_overlay()
 
 
+## Leave a lobby or session, or cancel a host/join still connecting; the Lobby UI resets on `session_ended(&"left")`.
 func leave() -> void:
 	_reset()
+	session_ended.emit(&"left")
+	_show_lobby()
+
+
+func _show_lobby() -> void:
 	if get_tree().current_scene == null or get_tree().current_scene.scene_file_path != LOBBY:
 		get_tree().change_scene_to_file(LOBBY)
 
@@ -121,6 +136,11 @@ func is_host() -> bool:
 
 func get_roster() -> Array[Dictionary]:
 	return _roster
+
+
+## Host: this client's app is in the background, so a ready-up (GO LIVE) does not wait for it.
+func is_peer_away(peer_id: int) -> bool:
+	return _peers_away.has(peer_id)
 
 
 ## Peer ids by seat: host 0, then join order. RoundDirector rotates shooters with it.
@@ -149,6 +169,9 @@ func start_game() -> void:
 
 ## Called by main_level.gd `_ready` on every peer, after it connected `all_peers_ready`.
 func main_level_ready() -> void:
+	if _loading != null:
+		_loading.set_stage(LoadingScreen.Stage.WAITING)
+		_refresh_loading()
 	if is_host():
 		_mark_ready(HOST_ID)
 	else:
@@ -166,11 +189,62 @@ func start_session(p_seed: int) -> void:
 	session_seed = p_seed
 	in_session = true
 	_level_ready.clear()
+	loading_done = PackedInt32Array()
 	if is_host() and multiplayer.multiplayer_peer is ENetMultiplayerPeer:
 		multiplayer.multiplayer_peer.refuse_new_connections = true
 	if is_host() and _steam != null:
 		_steam.lock()
-	get_tree().change_scene_to_file(MAIN_LEVEL)
+	_load_main_level()
+
+
+## Threaded load behind a root overlay (it survives the scene change): "Loading the bar" with the loader's
+## progress, "Building the room" while MainLevel's _ready runs, then "Waiting for players" until the local
+## player stands in the bar (the overlay ends itself). `_gen` stands the load down when the session is left.
+func _load_main_level() -> void:
+	var gen := _gen
+	_close_loading()
+	_loading = LOADING_SCREEN.instantiate()
+	_loading.cancelled.connect(leave)
+	get_tree().root.add_child(_loading)
+	if ResourceLoader.load_threaded_request(MAIN_LEVEL) != OK:
+		_fail(&"load_failed")
+		return
+	var progress := []
+	var status := ResourceLoader.load_threaded_get_status(MAIN_LEVEL, progress)
+	while status == ResourceLoader.THREAD_LOAD_IN_PROGRESS:
+		_loading.set_progress(float(progress[0]))
+		await get_tree().process_frame
+		if gen != _gen:
+			return
+		status = ResourceLoader.load_threaded_get_status(MAIN_LEVEL, progress)
+	if status != ResourceLoader.THREAD_LOAD_LOADED:
+		_fail(&"load_failed")
+		return
+	_loading.set_stage(LoadingScreen.Stage.BUILDING)
+	await get_tree().process_frame  # a frame must draw the new stage before _ready blocks the next ones
+	await get_tree().process_frame
+	if gen != _gen:
+		return
+	get_tree().change_scene_to_packed(ResourceLoader.load_threaded_get(MAIN_LEVEL))
+
+
+func _close_loading() -> void:
+	if _loading != null and is_instance_valid(_loading):
+		_loading.queue_free()
+	_loading = null
+
+
+## Host → everyone: whose MainLevel is up. The overlay words it ("Waiting for players 2/3", who is still loading).
+@rpc("authority", "call_local", "reliable", 3)
+func loading_state(done: PackedInt32Array) -> void:
+	loading_done = done
+	_refresh_loading()
+	loading_changed.emit()
+
+
+func _refresh_loading() -> void:
+	if _loading != null and is_instance_valid(_loading):
+		_loading.set_players(loading_done, _roster)
 
 
 @rpc("authority", "call_remote", "reliable", 3)
@@ -181,6 +255,7 @@ func _push_roster(roster: Array) -> void:
 
 ## Noray host path replaces this with a relay-registered peer; both end in _install_host.
 func _install_host(peer: MultiplayerPeer) -> void:
+	_set_step(&"")
 	multiplayer.multiplayer_peer = peer
 	_roster = [_host_entry()]
 	session_started.emit(true)
@@ -188,6 +263,8 @@ func _install_host(peer: MultiplayerPeer) -> void:
 
 
 func _install_client(peer: MultiplayerPeer) -> void:
+	if connect_step == &"":
+		_set_step(&"direct")  # join_direct / the Steam join come straight here
 	multiplayer.multiplayer_peer = peer
 	_timeout = get_tree().create_timer(config.timeout_sec)
 	_timeout.timeout.connect(func() -> void:
@@ -213,6 +290,7 @@ func _init_steam() -> void:
 
 func _host_steam() -> void:
 	var gen := _gen
+	_set_step(&"steam")
 	var peer: MultiplayerPeer = await _steam.host(config.max_players, config.timeout_sec)
 	if gen != _gen:
 		return
@@ -227,6 +305,7 @@ func join_steam(lobby_id: int) -> void:
 	_reset()
 	transport = Transport.STEAM
 	var gen := _gen
+	_set_step(&"steam")
 	var peer: MultiplayerPeer = await _steam.join(lobby_id, config.timeout_sec)
 	if gen != _gen:
 		return
@@ -306,6 +385,7 @@ func _join_noray(code: String) -> void:
 	if nc == null or gen != _gen:
 		return
 	_noray = nc
+	_set_step(&"lookup")
 	nc.send("connect " + oid)
 	var target := await nc.wait_command("connect", config.timeout_sec)
 	if gen != _gen:
@@ -314,6 +394,7 @@ func _join_noray(code: String) -> void:
 		_fail(&"unknown_code")
 		return
 	# Direct first (our outbound packet punches our own NAT, the host punches back).
+	_set_step(&"direct")
 	var sep := target.rfind(":")
 	if await _try_client(target.substr(0, sep), int(target.substr(sep + 1)), nc.local_port, config.direct_try_sec, gen):
 		return
@@ -323,6 +404,7 @@ func _join_noray(code: String) -> void:
 	# behind any NAT. Noray's own relay is not used: it cannot reach a host behind a symmetric NAT.
 	var tun := NorayClient.new()
 	var answer := ""
+	_set_step(&"tunnel")
 	if await tun.open(_tunnel_host(), config.tunnel_tcp_port, config.timeout_sec):
 		tun.send("join " + oid)
 		answer = await tun.wait_command("tunnel", config.timeout_sec)
@@ -368,6 +450,7 @@ func _try_client(address: String, port: int, local_port: int, timeout: float, ge
 func _noray_register() -> NorayClient:
 	var gen := _gen
 	var nc := NorayClient.new()
+	_set_step(&"relay")
 	var ok: bool = await nc.open(config.relay_host, config.relay_tcp_port, config.timeout_sec) \
 		and await nc.register_host(config.timeout_sec) \
 		and await nc.register_remote(config.relay_host, config.relay_udp_port, config.timeout_sec)
@@ -383,6 +466,7 @@ func _noray_register() -> NorayClient:
 
 func _mark_ready(peer_id: int) -> void:
 	_level_ready[peer_id] = true
+	loading_state.rpc(PackedInt32Array(_level_ready.keys()))  # before the barrier clears the set
 	_check_barrier()
 
 
@@ -425,12 +509,17 @@ func _on_peer_disconnected(peer_id: int) -> void:
 			break
 	for i in _roster.size():
 		_roster[i].seat = i
+	if _peers_away.erase(peer_id):
+		peers_away_changed.emit()
 	roster_changed.emit()
 	_push_roster.rpc(_roster)
+	if not _level_ready.is_empty():
+		loading_state.rpc(PackedInt32Array(_level_ready.keys()))
 	_check_barrier()
 
 
 func _on_connected_to_server() -> void:
+	_set_step(&"")
 	_relax_timeout(HOST_ID)
 	var pick := SkinCatalog.local_pick()
 	register_skins.rpc_id(HOST_ID, pick.char_skin, pick.bar_skin)  # ahead of peer_ready on the same channel: the roster is final before slots spawn
@@ -471,6 +560,9 @@ func set_backgrounded(value: bool) -> void:
 	backgrounded = value
 	if is_host() and not multiplayer.get_peers().is_empty():
 		_host_away_rpc.rpc(value)
+	elif not is_host() and multiplayer.multiplayer_peer != null \
+			and multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+		peer_away.rpc_id(HOST_ID, value)  # best effort, the phone may freeze right after: GO LIVE stops waiting on it
 	if value:
 		app_paused.emit()
 	else:
@@ -479,8 +571,29 @@ func set_backgrounded(value: bool) -> void:
 
 @rpc("authority", "call_remote", "reliable", 3)
 func _host_away_rpc(away: bool) -> void:
+	if away and not host_away:
+		host_away_since_msec = Time.get_ticks_msec()
 	host_away = away
 	host_away_changed.emit(away)
+
+
+## Client → host: this app went to / came back from the background (04 §6).
+@rpc("any_peer", "call_remote", "reliable", 3)
+func peer_away(away: bool) -> void:
+	if not is_host():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if away:
+		_peers_away[id] = true
+	else:
+		_peers_away.erase(id)
+	peers_away_changed.emit()
+
+
+## "Host away" banner text: the wait so far and the time ENet gives the host before it drops (config.peer_timeout_min_ms).
+func host_away_text() -> String:
+	var waited := (Time.get_ticks_msec() - host_away_since_msec) / 1000
+	return "Host away %d s · connection drops in ~%d s" % [waited, maxi(config.peer_timeout_min_ms / 1000 - waited, 0)]
 
 
 ## ENet default (5 s min / 30 s max) would drop a phone that spent 30 s in the background.
@@ -498,11 +611,17 @@ func _fail(reason: StringName) -> void:
 	session_failed.emit(reason)
 
 
+func _set_step(step: StringName) -> void:
+	if step != connect_step:
+		connect_step = step
+		connect_step_changed.emit(step)
+
+
 func _end(reason: StringName) -> void:
 	_reset()
 	last_notice = reason
 	session_ended.emit(reason)
-	leave()
+	_show_lobby()
 
 
 func _reset() -> void:
@@ -520,6 +639,10 @@ func _reset() -> void:
 		_tunnel = null
 	_roster = []
 	_level_ready.clear()
+	_peers_away.clear()
+	loading_done = PackedInt32Array()
+	_close_loading()
+	connect_step = &""
 	lobby_code = ""
 	in_session = false
 	backgrounded = false

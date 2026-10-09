@@ -13,7 +13,20 @@ const REASONS := {
 	host_failed = "Couldn't open the lobby.",
 	join_failed = "Couldn't join.",
 	host_left = "The host left the lobby.",
+	load_failed = "Couldn't load the bar.",
 }
+## What the connecting wait is on, by NetManager.connect_step.
+const STEPS := {
+	relay = "reaching the relay",
+	lookup = "looking up the lobby",
+	direct = "trying a direct link",
+	tunnel = "switching to the relay tunnel",
+	steam = "waiting for Steam",
+}
+
+var _connecting := false
+var _connect_msec := 0
+var _connect_shown := -1
 
 @onready var _home: Array[Control] = [%Host, %JoinRow, %AdvancedToggle, %Solo, %Footer]
 @onready var _resume_screen: Array[Control] = [%ResumeScroll, %ResumeBack]
@@ -39,11 +52,13 @@ func _ready() -> void:
 	%Controls.visible = not OS.has_feature("mobile")  # no keyboard to rebind on a phone
 	%Quit.visible = OS.has_feature("pc")
 	%Share.pressed.connect(_on_share)
-	%Start.pressed.connect(NetManager.start_game)
+	%Start.pressed.connect(_on_start)
 	%Leave.pressed.connect(NetManager.leave)
+	%Cancel.pressed.connect(NetManager.leave)  # aborts the relay registration / join in flight (NetManager._gen)
 	NetManager.session_started.connect(func(_h: bool) -> void: _show_room())
 	NetManager.roster_changed.connect(_refresh_room)
 	NetManager.session_failed.connect(_on_failed)
+	NetManager.session_ended.connect(_on_ended)
 	%Leave.pressed.connect(func() -> void: SaveManager.pending_resume = null)
 	_status.text = REASONS.get(NetManager.take_notice(), "")
 	_set_home(true)
@@ -62,11 +77,44 @@ func _notification(what: int) -> void:
 			%Join.pressed.emit()
 
 
+func _process(_delta: float) -> void:
+	if not _connecting:
+		return
+	var secs := (Time.get_ticks_msec() - _connect_msec) / 1000
+	if secs != _connect_shown:
+		_connect_shown = secs
+		_status.text = "Connecting: %s… %d s" % [STEPS.get(NetManager.connect_step, "starting"), secs]
+
+
+## Esc / the phone's Back: out of the lobby, out of a connect, back from the resume list. Settings etc. keep their own Esc.
+func _input(event: InputEvent) -> void:
+	if not event.is_action_pressed(&"ui_cancel") or UIRouter.blocking():
+		return
+	if %ResumeScroll.visible:
+		%ResumeBack.pressed.emit()
+	elif _connecting or %Roster.visible:
+		NetManager.leave()
+	else:
+		return
+	get_viewport().set_input_as_handled()
+
+
 func _busy(action: Callable) -> void:
-	_status.text = "Connecting…"
+	_connecting = true
+	_connect_msec = Time.get_ticks_msec()
+	_connect_shown = -1
+	%Cancel.visible = true
+	_status.text = "Connecting: starting… 0 s"
 	for b: BaseButton in [%Host, %Steam, %Join, %JoinIP, %HostLan, %Solo]:
 		b.disabled = true
+	%Cancel.grab_focus()
 	action.call()
+
+
+func _on_start() -> void:
+	%Start.disabled = true
+	_status.text = "Starting: sending everyone to the bar (%d player%s)" % [NetManager.get_roster().size(), "" if NetManager.get_roster().size() == 1 else "s"]
+	NetManager.start_game()
 
 
 func _on_join_ip() -> void:
@@ -77,8 +125,16 @@ func _on_join_ip() -> void:
 
 func _on_failed(reason: StringName) -> void:
 	SaveManager.pending_resume = null
-	_status.text = REASONS.get(reason, "Failed: %s" % reason)
 	_set_home(true)
+	_status.text = REASONS.get(reason, "Failed: %s" % reason)
+
+
+## Left the lobby, cancelled a connect, or the host left: back to the main menu, host controls reset.
+func _on_ended(_reason: StringName) -> void:
+	SaveManager.pending_resume = null
+	_set_home(true)
+	_status.text = REASONS.get(NetManager.take_notice(), "")
+	%Host.grab_focus()
 
 
 func _open_group(group: StringName) -> void:
@@ -88,6 +144,9 @@ func _open_group(group: StringName) -> void:
 
 
 func _set_home(on: bool) -> void:
+	_connecting = false
+	%Cancel.visible = false
+	%Start.disabled = false
 	for c in _home:
 		c.visible = on
 	%AdvancedRow.visible = on and %AdvancedToggle.button_pressed
@@ -165,8 +224,10 @@ func _refresh_room() -> void:
 	for e in NetManager.get_roster():
 		lines.append("%d. %s%s%s" % [e.seat + 1, e.name, " (host)" if e.seat == 0 else "", " (you)" if e.peer_id == me else ""])
 	%Roster.text = "\n".join(lines)
-	if not NetManager.is_host():
-		_status.text = "Waiting for the host to start…"
+	if NetManager.is_host() and SaveManager.pending_resume != null:
+		return  # _show_room already says which Night this lobby resumes
+	var crew := "%d/%d players" % [NetManager.get_roster().size(), NetManager.config.max_players]
+	_status.text = ("Waiting for the host to start · " if not NetManager.is_host() else "In the lobby · ") + crew
 
 
 func _on_share() -> void:

@@ -27,7 +27,10 @@
 [ext_resource type="PackedScene" path="res://src/ui/TouchControls.tscn" id="19_touch"]
 [ext_resource type="PackedScene" path="res://src/ui/BartenderMenu.tscn" id="econ_bartender"]
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Bartender.tscn" id="rag_bartender"]
+[ext_resource type="PackedScene" path="res://src/gameplay/bar/Blackboard.tscn" id="hud_blackboard"]
 [ext_resource type="Script" path="res://src/gameplay/bar_room/bar_skin_director.gd" id="skins_director"]
+[ext_resource type="Script" path="res://src/gameplay/player/lean_feedback.gd" id="lean_fb"]
+[ext_resource type="PackedScene" path="res://src/gameplay/bar/Mirror.tscn" id="mirror_scene"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -96,6 +99,18 @@ game_loop = NodePath("../GameLoop")
 round_director = NodePath("../RoundDirector")
 table = NodePath("../Table")
 
+[node name="LeanFeedback" type="Node3D" parent="." node_paths=PackedStringArray("world", "effects", "table", "spawner")]
+script = ExtResource("lean_fb")
+world = NodePath("../WorldInteractions")
+effects = NodePath("../EffectManager")
+table = NodePath("../Table")
+spawner = NodePath("../PlayerSpawner")
+
+[node name="Mirror" parent="." node_paths=PackedStringArray("shell", "table") instance=ExtResource("mirror_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.9, 1.4, -3.8)
+shell = NodePath("../BarRoom")
+table = NodePath("../Table")
+
 [node name="QualityManager" type="Node" parent="." node_paths=PackedStringArray("sim")]
 script = ExtResource("17_quality")
 sim = NodePath("../Table/PhysicsSim")
@@ -105,6 +120,13 @@ script = ExtResource("14_bar")
 
 [node name="Bartender" parent="Bar" instance=ExtResource("rag_bartender")]
 transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, 6, 0, 2.5)
+
+[node name="Blackboard" parent="." node_paths=PackedStringArray("game_loop", "economy", "stream", "effects") instance=ExtResource("hud_blackboard")]
+transform = Transform3D(0, 0, -1, 0, 1, 0, 1, 0, 0, 6.95, 1.95, -3.5)
+game_loop = NodePath("../GameLoop")
+economy = NodePath("../EconomyManager")
+stream = NodePath("../StreamManager")
+effects = NodePath("../EffectManager")
 
 [node name="Cameras" type="Node3D" parent="." node_paths=PackedStringArray("table", "economy", "world", "round_director", "spawner")]
 script = ExtResource("17_cameras")
@@ -116,10 +138,9 @@ spawner = NodePath("../PlayerSpawner")
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 
-[node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy", "stream") instance=ExtResource("10_hud")]
+[node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy") instance=ExtResource("10_hud")]
 game_loop = NodePath("../../GameLoop")
 economy = NodePath("../../EconomyManager")
-stream = NodePath("../../StreamManager")
 
 [node name="UIRouter" type="Control" parent="UILayer" node_paths=PackedStringArray("game_loop")]
 layout_mode = 3

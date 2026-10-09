@@ -19,6 +19,11 @@ func _ready() -> void:
 	monitoring = false
 
 
+## Seconds until the local cooldown lets this prop be used again (0 = ready).
+func cooldown_left_sec() -> float:
+	return maxf(float(_cooldown_until_msec - Time.get_ticks_msec()) / 1000.0, 0.0)
+
+
 func effective_kind() -> StringName:
 	return interaction.id if interaction != null else kind
 

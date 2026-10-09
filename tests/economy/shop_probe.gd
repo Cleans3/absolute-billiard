@@ -55,7 +55,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await SoloSupport.until_playable(self)
 	var level := current_scene
 	eco = level.get_node("EconomyManager")
 	loop = level.get_node("GameLoop")

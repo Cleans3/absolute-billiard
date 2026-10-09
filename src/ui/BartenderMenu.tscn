@@ -34,9 +34,31 @@ layout_mode = 2
 
 [node name="Title" type="Label" parent="Panel/Box/Head"]
 layout_mode = 2
-size_flags_horizontal = 3
 theme_type_variation = &"Heading"
 text = "Bartender"
+
+[node name="TabDrinks" type="Button" parent="Panel/Box/Head"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(150, 56)
+layout_mode = 2
+toggle_mode = true
+text = "Drinks"
+
+[node name="TabUpgrades" type="Button" parent="Panel/Box/Head"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(170, 56)
+layout_mode = 2
+toggle_mode = true
+text = "Upgrades"
+
+[node name="Status" type="Label" parent="Panel/Box/Head"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_type_variation = &"Caption"
+horizontal_alignment = 1
+clip_text = true
 
 [node name="Cash" type="Label" parent="Panel/Box/Head"]
 unique_name_in_owner = true
@@ -54,6 +76,7 @@ unique_name_in_owner = true
 layout_mode = 2
 size_flags_vertical = 3
 current_tab = 0
+tabs_visible = false
 
 [node name="Drinks" type="VBoxContainer" parent="Panel/Box/Tabs"]
 layout_mode = 2
@@ -101,10 +124,3 @@ metadata/_tab_index = 1
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-
-[node name="Status" type="Label" parent="Panel/Box"]
-unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 28)
-layout_mode = 2
-theme_type_variation = &"Caption"
-horizontal_alignment = 1
