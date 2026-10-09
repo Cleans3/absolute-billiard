@@ -4,20 +4,31 @@ extends UIModal
 ## Drinks = the host's random shelf as tier-framed cards (serve a crewmate, or throw one at the shooter);
 ## Upgrades = the fixed ball / cue / camera / table rows. A Drink tap is only reported (`picked`): the Player sends
 ## the host-validated world interaction. Upgrades ask the host through request_purchase. The UIRouter owns the mouse.
+## The panel never changes size (polish 2, C11): the cards are fixed-size Controls that clip their content, every
+## variable string is clipped or wrapped to a bounded slot, and tests/ui/shop_probe.gd measures it in every state.
 
 signal picked(kind: StringName, drink_id: StringName, target_peer: int)
 
 const FRAME_DIR := "res://assets/ui/bartender/"
-const CARD_SIZE := Vector2(216, 372)
+const CARD_SIZE := Vector2(216, 468)  # 5 cards + gaps = 1136 of the panel's 1144 px; 468 of its 480 px with the tab bar hidden
+const ICON_SIZE := 68
 const FRAME_MARGIN := 28  # 9-slice corner of the frame SVGs
 const ROW_HEIGHT := 64
+const ROW_ICON := 56  # + the 4 px plate margin each side = ROW_HEIGHT
+const ROW_RIM := Color("C9A24B")
+const UPGRADE_BUTTON_WIDTH := 300  # fits "Opens between Rounds"
 const BUTTON_HEIGHT := 52  # touch-sized
 const CATEGORY_TITLES := {&"ball": "Balls", &"cue": "Cue", &"camera": "Cameras", &"table": "Table"}
+## Why a button is greyed, short enough for a card button (the shop probe measures every entry).
 const REASON_TEXT := {
 	&"cant_afford": "Can't afford", &"sold_out": "Sold out", &"not_stocked": "Not stocked",
-	&"intermission_only": "Between Rounds", &"closed": "Between Rounds", &"locked": "Locked", &"owned": "Owned",
+	&"intermission_only": "Break only", &"closed": "Break only", &"locked": "Locked", &"owned": "Owned",
 	&"once_per_night": "Once a Night", &"night_limit": "Night limit", &"drink_cap": "3 drinks max",
-	&"needs_live": "Live Round only", &"unknown_item": "Unknown",
+	&"needs_live": "Live only", &"unknown_item": "Unknown",
+}
+## The timing reasons say when the item opens: the card's gate line, an Upgrade row's button, the status line.
+const WHEN_TEXT := {
+	&"intermission_only": "Opens between Rounds", &"closed": "Opens between Rounds", &"needs_live": "Opens in a live Round",
 }
 
 @export var economy: EconomyManager
@@ -26,6 +37,7 @@ const REASON_TEXT := {
 var kind := &"bar_serve"  # bar_serve | throw_drink
 var target_peer := 0  ## 0 = me
 var _frames: Dictionary = {}  # DrinkTier.Tier -> StyleBox
+var _plates: Dictionary = {}  # rim Color -> StyleBox of the icon plate
 var _glitch := GlitchEffect.new()
 var _targets: Dictionary = {}  # peer id -> Button
 var _drink_buttons: Dictionary = {}  # drink id -> Buy / Throw button of its card
@@ -33,6 +45,8 @@ var _upgrade_buttons: Dictionary = {}  # item id -> Buy button of its row
 
 @onready var _cash: Label = %Cash
 @onready var _tabs: TabContainer = %Tabs
+@onready var _tab_drinks: Button = %TabDrinks
+@onready var _tab_upgrades: Button = %TabUpgrades
 @onready var _serve: Button = %Serve
 @onready var _throw: Button = %Throw
 @onready var _target_row: HBoxContainer = %Targets
@@ -47,7 +61,17 @@ func _ready() -> void:
 	%Close.pressed.connect(close)
 	_serve.pressed.connect(set_mode.bind(&"bar_serve"))
 	_throw.pressed.connect(set_mode.bind(&"throw_drink"))
+	var tab_group := ButtonGroup.new()  # the tab bar is hidden (it cost a row of the card height): two buttons in the head
+	for b: Button in [_tab_drinks, _tab_upgrades]:
+		b.button_group = tab_group
+		b.pressed.connect(func() -> void: set_tab(b.get_index() - _tab_drinks.get_index()))
 	_tabs.tab_changed.connect(func(_i: int) -> void: _refresh())
+	var net := get_tree().root.get_node_or_null(^"NetManager")  # by path: probes compile before autoloads
+	if net != null:
+		net.connect(&"roster_changed", func() -> void:
+			if visible:
+				_build_targets()
+				_refresh())
 	if economy != null:
 		economy.cash_changed.connect(func(_b: int, _d: int, _r: StringName) -> void: _refresh())
 		economy.owned_changed.connect(_refresh)
@@ -58,8 +82,11 @@ func _ready() -> void:
 	hide()
 
 
+## Always opens on Drinks / Serve / "You": nothing from the last visit stays selected.
 func open() -> void:
 	_status.text = ""
+	kind = &"bar_serve"
+	target_peer = 0
 	_tabs.current_tab = 0
 	show()
 	_build_targets()
@@ -72,8 +99,14 @@ func close() -> void:
 
 func set_mode(k: StringName) -> void:
 	kind = k
+	if k == &"throw_drink":
+		target_peer = 0  # the target row is hidden in Throw: nothing hidden stays selected
 	_build_targets()
 	_refresh()
+
+
+func set_tab(i: int) -> void:
+	_tabs.current_tab = i
 
 
 ## The Buy / Throw button of a shelf card, null when that drink is not on the shelf (probes press it).
@@ -86,18 +119,24 @@ func upgrade_button(item_id: StringName) -> Button:
 
 
 func _pick(drink_id: StringName) -> void:
-	var target := target_peer if target_peer != 0 else multiplayer.get_unique_id()
+	var target := target_peer if kind == &"bar_serve" and target_peer != 0 else multiplayer.get_unique_id()
 	picked.emit(kind, drink_id, target)
 	if kind == &"throw_drink":
 		close()  # you want to watch it land
 
 
 func _on_rejected(item_id: StringName, reason: StringName) -> void:
-	_status.text = "%s: %s" % [_name_of(item_id), REASON_TEXT.get(reason, String(reason).replace("_", " "))]
+	_status.text = "%s: %s" % [_name_of(item_id), _refusal(reason)]
+
+
+## The long wording of a refusal: when it opens for a timing reason, else the short reason.
+func _refusal(reason: StringName) -> String:
+	return WHEN_TEXT.get(reason, REASON_TEXT.get(reason, String(reason).replace("_", " ")))
 
 
 func _build_targets() -> void:
 	for c in _target_row.get_children():
+		_target_row.remove_child(c)
 		c.queue_free()
 	_targets.clear()
 	_target_row.visible = kind == &"bar_serve"
@@ -105,10 +144,12 @@ func _build_targets() -> void:
 		return
 	var me := multiplayer.get_unique_id()
 	var roster: Array = get_tree().root.get_node(^"NetManager").call(&"get_roster")  # by path: probes compile before autoloads
-	if target_peer == 0:
-		target_peer = me
+	if target_peer == 0 or not roster.any(func(e: Dictionary) -> bool: return e.peer_id == target_peer):
+		target_peer = me  # never a crewmate who has left
 	for e: Dictionary in roster:
 		var b := _button("You" if e.peer_id == me else str(e.name))
+		b.clip_text = true  # a long crew name must not widen the row, and with it the panel
+		b.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		b.toggle_mode = true
 		b.pressed.connect(func() -> void:
 			target_peer = e.peer_id
@@ -123,6 +164,8 @@ func _refresh() -> void:
 		return
 	_cash.text = "Cash $%d" % economy.cash
 	_cash.theme_type_variation = &"Danger" if economy.cash < 0 else &""
+	_tab_drinks.button_pressed = _tabs.current_tab == 0
+	_tab_upgrades.button_pressed = _tabs.current_tab == 1
 	_serve.button_pressed = kind == &"bar_serve"
 	_throw.button_pressed = kind == &"throw_drink"
 	for pid: int in _targets:
@@ -156,6 +199,9 @@ func _why_not(drink_id: StringName) -> StringName:
 	return why
 
 
+## A plain Control of CARD_SIZE (so its minimum is exactly that, whatever the text wants) clipping a framed column:
+## icon, tier, name, the flavour line(s), effect lines, then price / stock, the gate line and the button. The flavour
+## takes the height the effect lines leave over, in whole lines (`_flavour`), so a drink with five effects shows none.
 func _card(i: int) -> Control:
 	var id := economy.stock_id(i)
 	var d := FxCatalog.drink(id)
@@ -163,17 +209,22 @@ func _card(i: int) -> Control:
 	var why := _why_not(id)
 	var glitch := d.tier == DrinkTier.Tier.MYSTERY
 	var tint := DrinkTier.colour(d.tier)
-	var card := PanelContainer.new()
+	var card := Control.new()
 	card.custom_minimum_size = CARD_SIZE
-	card.add_theme_stylebox_override(&"panel", _frame(d.tier))
+	card.clip_contents = true
 	if left <= 0:
 		card.modulate = Color(1.0, 1.0, 1.0, 0.45)  # sold out stays on the shelf, greyed
+	var frame := PanelContainer.new()
+	frame.set_anchors_preset(Control.PRESET_FULL_RECT)
+	frame.add_theme_stylebox_override(&"panel", _frame(d.tier))
+	card.add_child(frame)
 	var box := VBoxContainer.new()
 	box.theme_type_variation = &"TightBox"
-	card.add_child(box)
+	frame.add_child(box)
+	box.add_child(_icon(IconCatalog.drink(d), tint))
 	box.add_child(_text(DrinkTier.label(d.tier).to_upper(), &"Caption", tint, glitch))
 	box.add_child(_text(d.display_name, &"CardName", tint, glitch))
-	box.add_child(_text(d.description, &"Caption", Color(0.82, 0.84, 0.88), glitch))
+	box.add_child(_flavour(d.description))
 	for l in StatText.lines(d):
 		var line := _label("%s %s" % ["+" if l.kind == StatText.Kind.BUFF else ("-" if l.kind == StatText.Kind.DEBUFF else "*"), l.text], &"Caption", HORIZONTAL_ALIGNMENT_LEFT, true)
 		if l.kind == StatText.Kind.BUFF:
@@ -181,23 +232,68 @@ func _card(i: int) -> Control:
 		elif l.kind == StatText.Kind.DEBUFF:
 			line.add_theme_color_override(&"font_color", StatText.DEBUFF_COLOUR)
 		box.add_child(line)
-	var fill := Control.new()
-	fill.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	box.add_child(fill)
-	if not d.mid_round:
-		box.add_child(_label("Between Rounds only", &"Caption", HORIZONTAL_ALIGNMENT_CENTER))
+	if WHEN_TEXT.has(why):  # a timing refusal says when it opens, on the card; the button stays Buy / Throw, greyed
+		box.add_child(_label(WHEN_TEXT[why], &"Caption", HORIZONTAL_ALIGNMENT_CENTER))
 	var foot := HBoxContainer.new()
 	var price := _label("$%d" % d.cost_cash)
 	price.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.add_child(price)
 	foot.add_child(_label("SOLD OUT" if left <= 0 else "%d left" % left, &"Caption", HORIZONTAL_ALIGNMENT_RIGHT))
 	box.add_child(foot)
-	var buy := _button(("Buy" if kind == &"bar_serve" else "Throw") if why == &"" else REASON_TEXT.get(why, String(why)))
+	var buy := _card_button(("Buy" if kind == &"bar_serve" else "Throw") if why == &"" or WHEN_TEXT.has(why) else REASON_TEXT.get(why, String(why)))
 	buy.disabled = why != &""
 	buy.pressed.connect(_pick.bind(id))
 	_drink_buttons[id] = buy
 	box.add_child(buy)
 	return card
+
+
+## The flavour line in a slot that takes the spare height: it shows as many whole lines as fit, ellipsis on the last.
+func _flavour(text: String) -> Control:
+	var slot := Control.new()
+	slot.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	slot.clip_contents = true
+	var l := _label(text, &"Caption", HORIZONTAL_ALIGNMENT_CENTER, true)
+	l.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	l.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	l.add_theme_color_override(&"font_color", Color(0.82, 0.84, 0.88))
+	slot.add_child(l)
+	slot.resized.connect(func() -> void:
+		var gap := l.get_theme_constant(&"line_spacing")
+		var lines := floori((slot.size.y + gap) / (l.get_line_height() + gap))
+		l.visible = lines > 0
+		l.max_lines_visible = maxi(lines, 1))
+	return slot
+
+
+## The icon on a tier-rimmed plate: the rim colour comes from the Drink's tier, so no icon file carries it.
+func _icon(tex: Texture2D, rim: Color, size := ICON_SIZE) -> Control:
+	var plate := PanelContainer.new()
+	plate.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	plate.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	plate.add_theme_stylebox_override(&"panel", _plate(rim))
+	var r := TextureRect.new()
+	r.texture = tex
+	r.custom_minimum_size = Vector2(size, size)
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(r)
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return plate
+
+
+func _plate(rim: Color) -> StyleBox:
+	if _plates.has(rim):
+		return _plates[rim]
+	var f := StyleBoxFlat.new()
+	f.bg_color = Color(0.03, 0.03, 0.05, 0.92)
+	f.border_color = rim
+	f.set_border_width_all(3)
+	f.set_corner_radius_all(16)
+	f.set_content_margin_all(4)
+	_plates[rim] = f
+	return f
 
 
 ## One style box per tier from its SVG frame; a flat bordered box stands in when the SVG is not imported.
@@ -221,7 +317,7 @@ func _frame(tier: DrinkTier.Tier) -> StyleBox:
 		f.set_border_width_all(3)
 		f.set_corner_radius_all(10)
 		sb = f
-	sb.set_content_margin_all(FRAME_MARGIN - 8)
+	sb.set_content_margin_all(FRAME_MARGIN - 12)
 	_frames[tier] = sb
 	return sb
 
@@ -263,6 +359,7 @@ func _upgrade_row(it: ShopItem) -> Control:
 	var why := economy.can_buy(it.id)
 	var row := HBoxContainer.new()
 	row.custom_minimum_size.y = ROW_HEIGHT
+	row.add_child(_icon(IconCatalog.upgrade(it), ROW_RIM, ROW_ICON))
 	var text := VBoxContainer.new()
 	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	text.add_child(_label(it.display_name))
@@ -271,8 +368,9 @@ func _upgrade_row(it: ShopItem) -> Control:
 	var price := _label("$%d" % it.cost_cash, &"", HORIZONTAL_ALIGNMENT_RIGHT)
 	price.custom_minimum_size.x = 84
 	row.add_child(price)
-	var buy := _button("Buy" if why == &"" else REASON_TEXT.get(why, String(why)))
-	buy.custom_minimum_size.x = 170  # one column whatever the refusal text says
+	var buy := _button("Buy" if why == &"" else _refusal(why))
+	buy.custom_minimum_size.x = UPGRADE_BUTTON_WIDTH  # one column whatever the refusal text says
+	buy.clip_text = true
 	buy.disabled = why != &""
 	buy.pressed.connect(_buy_upgrade.bind(it.id))
 	row.add_child(buy)
@@ -300,6 +398,13 @@ func _label(text: String, variation := &"", align := HORIZONTAL_ALIGNMENT_LEFT, 
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART if wrap else TextServer.AUTOWRAP_OFF
 	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
+
+
+## A card is ~190 px of text wide: tighter padding and a size smaller than a plain button.
+func _card_button(text: String) -> Button:
+	var b := _button(text)
+	b.theme_type_variation = &"CardButton"
+	return b
 
 
 func _button(text: String) -> Button:

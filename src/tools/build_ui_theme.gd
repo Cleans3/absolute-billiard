@@ -3,7 +3,7 @@ extends SceneTree
 ##   python3 src/tools/ui_art.py && godot --path . --headless --import
 ##   godot --path . --headless -s src/tools/build_ui_theme.gd
 ## Styling lives here and nowhere else: scenes carry no font-size / colour overrides, they pick a type variation
-## (HudLabel, Title, Heading, Caption, ToastInfo|Good|Bad, PrimaryButton, FlatButton, PanelInset, PanelPlate).
+## (HudLabel, Title, Heading, Caption, ToastInfo|Good|Bad, PrimaryButton, CardButton, FlatButton, PanelInset, PanelPlate).
 
 const OUT := "res://src/ui/theme/game_theme.tres"
 const UI := "res://assets/ui/"
@@ -94,6 +94,9 @@ func _buttons() -> void:
 	theme.set_color(&"font_pressed_color", &"PrimaryButton", Color("FFE3F1"))
 	theme.set_color(&"font_outline_color", &"PrimaryButton", Color(0.45, 0.05, 0.25, 0.9))
 	theme.set_constant(&"outline_size", &"PrimaryButton", 4)
+	# CardButton: the Bartender card's Buy / reason button, 176 px of text wide: tighter padding, a size smaller
+	_button_styles(&"CardButton", "btn_normal", "btn_hover", "btn_pressed", "btn_disabled", &"Button", [10, 8, 10, 8])
+	theme.set_font_size(&"font_size", &"CardButton", 26)
 	# FlatButton: text link look (Advanced toggle, small actions)
 	theme.set_type_variation(&"FlatButton", &"Button")
 	var none := StyleBoxEmpty.new()
@@ -119,10 +122,9 @@ func _buttons() -> void:
 	theme.set_color(&"font_disabled_color", &"CheckBox", Color(MUTED, 0.6))
 
 
-func _button_styles(type: StringName, normal: String, hover: String, pressed: String, disabled: String, base := &"") -> void:
+func _button_styles(type: StringName, normal: String, hover: String, pressed: String, disabled: String, base := &"", pad := [24, 10, 24, 10]) -> void:
 	if base != &"":
 		theme.set_type_variation(type, base)
-	var pad := [24, 10, 24, 10]
 	theme.set_stylebox(&"normal", type, _box(normal, 20, pad))
 	theme.set_stylebox(&"hover", type, _box(hover, 20, pad))
 	theme.set_stylebox(&"pressed", type, _box(pressed, 20, pad))

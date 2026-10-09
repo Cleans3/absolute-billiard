@@ -5,6 +5,10 @@ Run from the repo root: python3 src/tools/ui_art.py  -- then `godot --headless -
 Plain SVG only (no filters, no <text>) so the ThorVG rasteriser in Godot renders it exactly."""
 import os
 import re
+import sys
+
+sys.dont_write_bytecode = True  # the icons module sits beside this file: no __pycache__ in src/tools
+import ui_art_icons  # shop + hazard icons (drink/, hazard/, upgrade/)
 
 OUT = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "ui")
 
@@ -293,8 +297,10 @@ def menu_bg():
 def main():
     panel_frame(); panel_inset(); hud_plate(); buttons(); tabs(); slider(); checks(); scroll(); line_edit()
     icons(); touch(); logo(); menu_bg()
+    ui_art_icons.build(put)
     os.makedirs(OUT, exist_ok=True)
     for name, content in FILES.items():
+        os.makedirs(os.path.dirname(os.path.join(OUT, name)), exist_ok=True)
         with open(os.path.join(OUT, name + ".svg"), "w") as f:
             f.write(content)
     print(f"{len(FILES)} sprites -> {os.path.normpath(OUT)}")

@@ -4,7 +4,8 @@ extends UIModal
 ## over the Intermission screen and closes when the vote resolves for this peer (a pick, the 20 s clock, the Event
 ## applying, the phase leaving Intermission). A single-card offer is a forced scripted_first Event: an announcement.
 
-const CARD_MIN_SIZE := Vector2(220.0, 120.0)  # >= ~9 mm on a phone
+const CARD_MIN_SIZE := Vector2(236.0, 236.0)  # >= ~9 mm on a phone; room for the hazard's icon over its name and numbers
+const ICON_SIZE := 92.0
 
 @export var scheduler: EventScheduler
 @export var game_loop: GameLoop
@@ -52,17 +53,48 @@ func _on_offer(round_index: int, _tier: int, event_ids: Array[StringName]) -> vo
 	_title.text = "Round %d: coming up" % round_index if forced else "Round %d: pick the hazard" % round_index
 	for id in event_ids:
 		var e := FxCatalog.event(id)
-		var card := Button.new()
-		card.custom_minimum_size = CARD_MIN_SIZE
-		card.disabled = forced
-		card.text = "%s\n×%.2f reward\n%+d s" % [e.display_name, e.reward_mult, roundi(e.round_time_add_sec)]
-		card.pressed.connect(_vote.bind(id, e.display_name))
-		_cards.add_child(card)
+		_cards.add_child(_card(id, e, forced))
 	_left = EventScheduler.VOTE_TIMEOUT_SEC
 	_clock.visible = not forced
 	_ok.visible = forced
 	open()
 	set_process(not forced)
+
+
+## A button holding the hazard's icon, name, reward multiplier and time change. Its children ignore the mouse, so the
+## whole card is the tap target; an announcement (forced Event) is the same card, not greyed, that cannot be pressed.
+func _card(id: StringName, e: Event, forced: bool) -> Button:
+	var card := Button.new()
+	card.custom_minimum_size = CARD_MIN_SIZE
+	card.mouse_filter = Control.MOUSE_FILTER_IGNORE if forced else Control.MOUSE_FILTER_STOP
+	card.focus_mode = Control.FOCUS_NONE if forced else Control.FOCUS_ALL
+	card.pressed.connect(_vote.bind(id, e.display_name))
+	var box := VBoxContainer.new()
+	box.theme_type_variation = &"TightBox"
+	box.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT, Control.PRESET_MODE_MINSIZE, 10)
+	box.alignment = BoxContainer.ALIGNMENT_CENTER
+	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icon := TextureRect.new()
+	icon.texture = IconCatalog.hazard(e)
+	icon.custom_minimum_size = Vector2(ICON_SIZE, ICON_SIZE)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var plate := PanelContainer.new()
+	plate.theme_type_variation = &"PanelInset"
+	plate.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	plate.add_child(icon)
+	box.add_child(plate)
+	for line: Array in [[e.display_name, &"CardName"], ["×%.2f reward" % e.reward_mult, &""], ["%+d s" % roundi(e.round_time_add_sec), &"Caption"]]:
+		var l := Label.new()
+		l.text = line[0]
+		l.theme_type_variation = line[1]
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		box.add_child(l)
+	card.add_child(box)
+	return card
 
 
 func _vote(id: StringName, display_name: String) -> void:
