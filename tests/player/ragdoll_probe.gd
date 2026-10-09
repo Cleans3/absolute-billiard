@@ -166,25 +166,37 @@ func _player() -> void:
 		await process_frame
 	await _wait(2.0)
 	_check(player.humanoid != null and not player.is_ragdoll(), "the local player wears a Humanoid")
-	_check(hum._upper_mi.layers == Humanoid.HEAD_LAYER and (player.cam.cull_mask & Humanoid.HEAD_LAYER) == 0, "first person: head on its own layer, hidden from the camera")
-	# no arm vertex may sit on a surface the local camera renders; legs must (they stay visible looking down)
+	_check(hum._head_mi.layers == Humanoid.HEAD_LAYER and (player.cam.cull_mask & Humanoid.HEAD_LAYER) == 0, "first person: head on its own layer, hidden from the camera")
+	# C17: the local camera renders torso, arms and legs, never the head; the head still casts its shadow
 	var arm_bones := [Humanoid.B.UARM_R, Humanoid.B.LARM_R, Humanoid.B.UARM_L, Humanoid.B.LARM_L]
 	var leg_bones := [Humanoid.B.THIGH_R, Humanoid.B.SHIN_R, Humanoid.B.THIGH_L, Humanoid.B.SHIN_L]
 	var arm_seen := false
-	var arm_shadow_only := false
 	var legs_seen := false
-	for mi: MeshInstance3D in [hum._body_mi, hum._upper_mi]:
+	var head_seen := false
+	var head_shadow := false
+	var lid_seen := false
+	for mi: MeshInstance3D in [hum._body_mi, hum._head_mi]:
 		var shown := (mi.layers & player.cam.cull_mask) != 0 and mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		var casts := mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (mi.layers & 0xFFFFF) != 0
-		for b: int in (mi.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_BONES]:
+		var arrays := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for v in verts.size():
+			var b := bones[v * 4]
 			if b in arm_bones:
 				arm_seen = arm_seen or shown
-				arm_shadow_only = arm_shadow_only or casts
 			elif b in leg_bones:
 				legs_seen = legs_seen or shown
-	_check(not arm_seen, "no arm surface is visible to the local camera's cull mask")
-	_check(arm_shadow_only, "...but the arms still cast shadows")
+			elif b == Humanoid.B.HEAD:
+				head_seen = head_seen or shown
+				head_shadow = head_shadow or casts
+			elif b == Humanoid.B.TORSO and verts[v].y > 1.49 and normals[v].y > 0.9:
+				lid_seen = lid_seen or shown
+	_check(arm_seen, "arms are visible to the local camera's cull mask (C17)")
 	_check(legs_seen, "legs and feet stay visible to the local camera")
+	_check(lid_seen, "the trunk is closed at the top by a lid the local camera renders (no looking inside)")
+	_check(not head_seen and head_shadow, "the head and hat are hidden from the local camera but still cast shadows")
 	var bartender := level.get_node_or_null("Bar/Bartender") as Bartender
 	_check(bartender != null and absf(bartender.global_position.x - 6.0) < 0.01 and absf(bartender.global_position.z - 2.5) < 0.01, "Bar/Bartender stands at (6, 0, 2.5)")
 	_check(bartender != null and bartender.global_basis.z.is_equal_approx(Vector3.RIGHT), "...facing -X")

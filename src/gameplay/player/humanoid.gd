@@ -1,7 +1,7 @@
 class_name Humanoid
 extends Node3D
 ## Low-poly person built in code (06 P15, 08 §2.7): 11 bones, one vertex-coloured material, two skinned
-## meshes (body: trunk, legs; upper: head, hat, arms) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
+## meshes (body: trunk and its lid, arms, legs; head: head, face, hat, neck) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
 ## CARRY stances, hand targets). `ragdoll()` hands the bones to a PhysicalBoneSimulator3D; its 11 bodies are
 ## on no layer and not simulated until then, and `get_up()` blends back to the pose.
 ## Rests facing -Z with the feet at this node's origin, like the CharacterBody3D it hangs from.
@@ -65,7 +65,7 @@ var _skel: Skeleton3D
 var _sim: PhysicalBoneSimulator3D
 var _pbs: Array[PhysicalBone3D] = []
 var _body_mi: MeshInstance3D
-var _upper_mi: MeshInstance3D
+var _head_mi: MeshInstance3D
 var _first_person := false
 var _ragdoll := false
 var _blend := 1.0               ## 0 → 1 over BLEND_SEC after get_up()
@@ -117,16 +117,16 @@ func apply_skin(skin: CharacterSkin) -> void:
 	var head := _new_st()
 	_paint(body, head, skin)
 	_body_mi.mesh = body.commit()
-	_upper_mi.mesh = head.commit()
+	_head_mi.mesh = head.commit()
 	_body_mi.skin = _skel.create_skin_from_rest_transforms()
-	_upper_mi.skin = _body_mi.skin
+	_head_mi.skin = _body_mi.skin
 
 
-## Local player: the upper surface (head, hat, arms) leaves the camera's cull mask (the Player removes HEAD_LAYER from it)
-## but keeps casting shadows; trunk, legs and feet stay visible when looking down.
+## Local player: the head surface (head, face, hat, neck) leaves the camera's cull mask (the Player removes HEAD_LAYER from it)
+## but keeps casting shadows; trunk, arms, legs and feet stay visible when looking down. A mirror camera keeps HEAD_LAYER.
 func set_first_person(on: bool) -> void:
 	_first_person = on
-	_upper_mi.layers = HEAD_LAYER if on else 1
+	_head_mi.layers = HEAD_LAYER if on else 1
 
 
 ## Local player in CUE: the leaning trunk would fill the aiming view, so the body only casts its shadow.
@@ -365,8 +365,8 @@ func _build_skeleton() -> void:
 		_pbs.append(pb)
 		_sim.add_child(pb)
 	_body_mi = MeshInstance3D.new()
-	_upper_mi = MeshInstance3D.new()
-	for mi in [_body_mi, _upper_mi]:
+	_head_mi = MeshInstance3D.new()
+	for mi in [_body_mi, _head_mi]:
 		mi.material_override = _shared_material()
 		mi.extra_cull_margin = 2.0
 		_skel.add_child(mi)
@@ -466,27 +466,26 @@ func _new_st() -> SurfaceTool:
 	return st
 
 
-## The whole character: body surface (trunk, legs, feet) and upper surface (head, face, hat, shoulder cap, neck, arms).
+## The whole character: body surface (trunk with its lid, shoulders, arms, legs, feet) and head surface (head, face, hat,
+## neck). The local camera culls the head surface only; it sits inside the neck, so the lid closes the trunk (no looking
+## through to the legs) and the arms hang beside it.
 func _paint(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 	var shirt := skin.body_color
 	var legs := skin.accent_color
 	var flesh := skin.skin_color
 	var shoe := legs.darkened(0.55)
-	# The arms, shoulder cap and neck live on the upper surface, which the local camera culls, and the torso is open at
-	# the top: looking down the local player sees through the trunk to legs and floor, not a lid or two huge sleeves.
 	_cyl(body, B.PELVIS, legs, Vector3(0, 0.86, 0), 0.17, Vector2(0.155, 0.10), Vector2(0.155, 0.10), 8, CAP_BOTTOM)
-	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8, 0)
-	_cyl(head, B.TORSO, shirt, Vector3(0, 1.498, 0), 0.002, Vector2(0.205, 0.11), Vector2(0.205, 0.11), 8, CAP_TOP)
+	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8, CAP_TOP)
 	_cyl(head, B.TORSO, flesh, Vector3(0, 1.49, 0), 0.08, Vector2(0.045, 0.045), Vector2(0.04, 0.04), 6)
 	for side in 2:
 		var sx := 0.22 if side == 0 else -0.22
 		var ua := B.UARM_R if side == 0 else B.UARM_L
 		var th := B.THIGH_R if side == 0 else B.THIGH_L
 		var lx := 0.10 if side == 0 else -0.10
-		_cyl(head, ua, shirt, Vector3(sx, 1.13, 0), 0.32, Vector2(0.040, 0.040), Vector2(0.052, 0.052), 6)
-		_ball(head, ua, shirt, Vector3(sx, 1.43, 0), Vector3(0.058, 0.058, 0.058), 6, 4)
-		_cyl(head, ua + 1, flesh, Vector3(sx, 0.86, 0), 0.27, Vector2(0.033, 0.033), Vector2(0.041, 0.041), 6)
-		_ball(head, ua + 1, flesh, Vector3(sx, 0.835, 0), Vector3(0.048, 0.052, 0.048), 6, 4)
+		_cyl(body, ua, shirt, Vector3(sx, 1.13, 0), 0.32, Vector2(0.040, 0.040), Vector2(0.052, 0.052), 6)
+		_ball(body, ua, shirt, Vector3(sx, 1.43, 0), Vector3(0.058, 0.058, 0.058), 6, 4)
+		_cyl(body, ua + 1, flesh, Vector3(sx, 0.86, 0), 0.27, Vector2(0.033, 0.033), Vector2(0.041, 0.041), 6)
+		_ball(body, ua + 1, flesh, Vector3(sx, 0.835, 0), Vector3(0.048, 0.052, 0.048), 6, 4)
 		_cyl(body, th, legs, Vector3(lx, 0.50, 0), 0.43, Vector2(0.056, 0.056), Vector2(0.074, 0.074), 6)
 		_cyl(body, th + 1, legs, Vector3(lx, 0.08, 0), 0.42, Vector2(0.042, 0.042), Vector2(0.056, 0.056), 6)
 		_box(body, th + 1, shoe, Vector3(lx, 0.04, -0.05), Vector3(0.052, 0.04, 0.12))
