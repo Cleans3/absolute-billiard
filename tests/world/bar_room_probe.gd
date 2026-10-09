@@ -1,6 +1,7 @@
 extends SceneTree
 ## Bar room polish (06 P13/P14/P17/P18): no fog planes, the counter stands off the wall with a >= 1 m aisle and a
 ## free bartender spot, BarSkin recolours the shared materials, Table felt, and the camera rig is a real 3-surface model.
+## adhoc-1010a C10/C18: the Decor mesh (one draw call, one material), >= 12 distinct props + >= 6 posters, keep-clear zones, licences.
 ##   godot --path . --headless -s tests/world/bar_room_probe.gd
 
 const ROOM := preload("res://src/gameplay/bar_room/BarRoom.tscn")
@@ -28,6 +29,7 @@ func _run() -> void:
 		await physics_frame
 	_fog(room)
 	_aisle(room)
+	_decor(room)
 	_skins(room)
 	await _felt()
 	await _rig()
@@ -77,6 +79,52 @@ func _aisle(room: Node) -> void:
 	for p: Array in Bar.PROPS:
 		if p[0] in [&"bar_buy", &"bar_serve", &"throw_drink"]:
 			_check((p[1] as Vector3).is_equal_approx(Vector3(4.2, 0.0, 2.5)), "%s sits on the customer side at (4.2, 0, 2.5)" % p[0])
+
+
+## adhoc-1010a C10/C18 (docs/plan/07 §2 decor row): what the generator baked, checked against what must stay clear.
+func _decor(room: BarRoom) -> void:
+	var decor := room.get_node_or_null("Decor")
+	_check(decor != null, "Decor node exists next to Geometry (not inside it: BarSkin walks Geometry's surfaces)")
+	if decor == null:
+		return
+	var mi := decor.get_node("Mesh") as MeshInstance3D
+	_check(mi.mesh.get_surface_count() == 1, "decor is ONE surface (one draw call): %d" % mi.mesh.get_surface_count())
+	var mat := mi.mesh.surface_get_material(0) as StandardMaterial3D
+	_check(mat != null and mat.resource_name == "decor" and mat.albedo_texture != null and mat.vertex_color_use_as_albedo, "decor material: atlas texture + vertex colour")
+	_check(mi.gi_mode == GeometryInstance3D.GI_MODE_STATIC and mi.mesh.surface_get_format(0) & Mesh.ARRAY_FORMAT_TEX_UV2 != 0, "decor is static with UV2 (lives in the lightmap bake)")
+	var tris: int = mi.mesh.surface_get_array_index_len(0) / 3
+	_check(tris <= 8000, "decor stays under 8k triangles (07 budget slice): %d" % tris)
+	var props := {}
+	var posters := {}
+	var walls := {}
+	var floor_rects := DecorPlan.floor_keep_clear()
+	var wall_rects := DecorPlan.wall_keep_clear()
+	for it: Dictionary in decor.get_meta("items"):
+		if it.kind == &"poster":
+			posters[it.id] = true
+			walls[it.wall] = true
+			for r: Rect2 in wall_rects.get(it.wall, []):
+				_check(not (it.wall_rect as Rect2).intersects(r), "poster %s clear of wall rect %s on %s" % [it.id, r, it.wall])
+			continue
+		props[it.model] = true
+		if it.kind == &"floor":
+			for r in floor_rects:
+				_check(not (it.rect as Rect2).intersects(r), "%s %s clear of floor zone %s" % [it.id, it.rect, r])
+		elif it.kind == &"flat":
+			for r in [floor_rects[0], floor_rects[1]]:
+				_check(not (it.rect as Rect2).intersects(r), "rug %s clear of the table band / door" % it.id)
+	_check(props.size() >= 12, ">= 12 distinct prop models (C18): %d" % props.size())
+	_check(posters.size() >= 6, ">= 6 distinct posters (C10): %d" % posters.size())
+	_check(walls.size() == 4, "posters on all four walls: %s" % [walls.keys()])
+	for pk: StringName in DecorPlan.PACKS:
+		var dir: String = ProjectSettings.globalize_path("res://assets/third_party/%s/" % DecorPlan.PACKS[pk].dir)
+		var has_license := false
+		for f in DirAccess.get_files_at(dir):
+			has_license = has_license or f.begins_with("LICENSE")
+		_check(has_license, "%s ships its LICENSE beside the models" % pk)
+	# floor props collide (layer 8): a ray from above lands on the sofa, not on the floor
+	var hit := _ray(room.get_world_3d().direct_space_state, Vector3(5.6, 2.0, -6.55), Vector3(5.6, -0.2, -6.55))
+	_check(not hit.is_empty() and hit.position.y > 0.3, "the NE sofa has a collider (hit y %.2f)" % (hit.position.y if not hit.is_empty() else -1.0))
 
 
 func _ray(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:

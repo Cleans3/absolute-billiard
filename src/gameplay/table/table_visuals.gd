@@ -88,9 +88,15 @@ static func set_cloth_color(parent: Node3D, color: Color) -> void:
 		(cloth.material_override as StandardMaterial3D).albedo_color = color
 
 
+## Matte on purpose (adhoc-1010a C8): the default `metallic_specular` 0.5 adds a white lobe from the table lamp that is
+## independent of albedo, so on the near-black cushion rubber it showed as a bright desaturated band along the inner
+## edges (measured: ~half of the cushion's lit brightness, 0.07 -> 0.03 median, peak 0.63 -> 0.25). Felt, rubber and wood
+## are diffuse materials; the balls keep their own gloss.
 static func _material(color: Color) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = color
+	m.roughness = 1.0
+	m.metallic_specular = 0.0
 	return m
 
 
