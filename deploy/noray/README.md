@@ -12,7 +12,7 @@ Clients only need `relay_host` in `src/resources/net_config.tres`; a fork points
 | 49152–49251 | UDP | Noray's own relay pool (unused by this game, see Lobby flow) | yes |
 | 8893 | TCP | tunnel relay control: `host CODE` / `join CODE` | yes |
 | 49252–49351 | UDP | tunnel relay, 1 port per relayed joiner | yes |
-| 8892 | TCP | share-link page `/j/CODE` | yes |
+| 8892 | TCP | share-link page `/j/CODE`, APK download `/` (`src/tools/publish_apk.sh`) | yes |
 | 8891 | TCP | metrics (bound to 127.0.0.1) | no |
 
 ## Docker

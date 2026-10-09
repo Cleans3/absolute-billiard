@@ -195,3 +195,7 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 **P17 — Bartender NPC replaces the Shop menu (refines P3).** The counter moves off the back wall; an NPC bartender stands behind it. No Shop button. One bartender menu: **Drinks** = a random stock of 5 offers, rerolled by the host at every Intermission, each offer's tier drawn by relative weight Common 50 · Uncommon 26 · Rare 13 · Epic 6 · Legendary 2 · Mystery 3, then a drink of that tier; stock per offer Common 3 · Uncommon 2 · others 1, shared by the crew. **Mystery** drinks are red with glitching text and show one buff and one debuff, so the buyer weighs it. **Upgrades** = the fixed ball/cue/camera/table rows.
 
 **P18 — Skins (test mode).** A Skins screen in the main menu with character skins and bar skins, all free and unlocked for now (economy later). Each Round the host picks one bar skin at random from the crew's equipped bar skins.
+
+# Cleanse's rulings (2026-10-09) — testing on the phone
+
+**P19 — The phone is the testing ground.** Cleanse plays every change on an Android phone, not on the desktop. When a change is finished and ready to test (merged to `main`, probes green), run `src/tools/publish_apk.sh` in the same session: it builds the debug APK and replaces the download on the relay box's share page. Then hand Cleanse the link `http://160.191.243.188:8892/`. A change that isn't on that page hasn't reached testing yet. Desktop runs and probes are for development only. iOS stays out of scope until there is a Mac.

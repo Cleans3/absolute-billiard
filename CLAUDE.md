@@ -20,6 +20,8 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 
 Open questions listed in `05`/each doc §6 need the user's decision — do not resolve them silently in code.
 
+**Testing happens on the phone (06 P19).** A change is ready to test only once it is merged to `main` with the probes green and `src/tools/publish_apk.sh` has run. Then give Cleanse `http://160.191.243.188:8892/` to download and install it.
+
 ## Engine & commands
 
 Godot **4.7.1** (`godot` on PATH), GDScript, Mobile renderer, Jolt physics. No package manager, no build step. `tests/**/*_probe.gd` are plain SceneTree scripts run with `-s`; `*_pair_probe.gd` need two processes and run through `tests/net/pair.sh`; `tests/run_all.sh` runs everything (CI: `.github/workflows/ci.yml`).
@@ -34,6 +36,7 @@ godot --path . --headless -s tests/physics/probe.gd   # physics feel probe (roll
 tests/run_all.sh                        # every probe + every pair probe; prints ALL PROBES OK
 bash tests/net/pair.sh tests/net/campaign_pair_probe.gd   # two peers (host + client) run one pair probe; prints PAIR OK
 bash src/tools/android_export.sh        # gradle debug APK (deep-link intent-filters) → build/android/ab.apk
+src/tools/publish_apk.sh                # build + put the APK on the relay box: phone opens http://160.191.243.188:8892/ and installs
 src/tools/m0_device_run.sh --quick      # M0 phone gate (07 §9): export, adb install, fixtures, budget table
 ```
 
