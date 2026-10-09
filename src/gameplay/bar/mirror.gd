@@ -57,13 +57,13 @@ func _ready() -> void:
 		table.connect(&"rebuilt", tag.bind(table))
 
 
-## Puts every visual under `root` (but a ball's) on the mirror layer as well as layer 1. Lights, the lightmap and the
-## reflection probes count: a camera whose mask misses their layer draws the room unlit.
+## Puts every visual under `root` (but a ball's, or one in group `no_mirror`) on the mirror layer as well as layer 1. Lights,
+## the lightmap and the reflection probes count: a camera whose mask misses their layer draws the room unlit.
 func tag(root: Node) -> void:
 	if root == null:
 		return
 	for vi: VisualInstance3D in root.find_children("*", "VisualInstance3D", true, false):
-		if not vi.get_parent() is RigidBody3D:
+		if not vi.get_parent() is RigidBody3D and not vi.is_in_group(&"no_mirror"):
 			vi.layers |= LAYER
 
 
