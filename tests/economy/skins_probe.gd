@@ -133,7 +133,37 @@ func _screen() -> void:
 	_check(SkinCatalog.equipped_bar_id() == SkinCatalog.DEFAULT_BAR, "a bar preview does not equip")
 	screen.get_node("%EquipBar").pressed.emit()
 	_check(SkinCatalog.equipped_bar_id() == &"tiki" and bar_cards[&"tiki"].badge.text == "Equipped", "Equip writes the bar skin")
-	_check(screen.get_node("%Palette").get_child_count() == 6, "the palette lists wall, floor, wood, seats, felt, neon")
+	# names only (polish 2 C1): a card is its name and an Equipped badge, no colour chips, and the bar tab has no palette list
+	for card_set: Dictionary in [cards, bar_cards]:
+		for id: StringName in card_set:
+			var btn: Button = card_set[id].button
+			var labels := btn.find_children("*", "Label", true, false)
+			_check(labels.size() == 2 and btn.find_children("*", "Panel", true, false).is_empty(), "card %s shows only its name and badge" % id)
+			var skin: Resource = SkinCatalog.character(id) if card_set == cards else SkinCatalog.bar(id)
+			_check((labels[0] as Label).text == skin.display_name, "card %s is named %s" % [id, skin.display_name])
+	_check(screen.get_node_or_null("%Palette") == null, "no palette list in the bar tab")
+	# the bar preview: a pre-rendered panorama per skin that spins (polish 2 C2)
+	var preview: TextureRect = screen.get_node("%BarPreview")
+	var mat := preview.material as ShaderMaterial
+	var seen := {}
+	for skin in SkinCatalog.bars():
+		bar_cards[skin.id].button.pressed.emit()
+		var tex: Texture2D = preview.texture
+		_check(tex != null and preview.visible, "bar %s has a preview sheet (run src/tools/render_bar_previews.gd)" % skin.id)
+		if tex == null:
+			continue
+		_check(tex.get_width() == SkinsScreen.PREVIEW_SHEET.x and tex.get_height() == SkinsScreen.PREVIEW_SHEET.y and maxi(tex.get_width(), tex.get_height()) <= 1024, "bar %s sheet is %dx%d, the panorama size, <= 1024" % [skin.id, tex.get_width(), tex.get_height()])
+		_check(mat.get_shader_parameter(&"sheet") == tex, "the turntable shows %s's sheet" % skin.id)
+		_check(not seen.has(tex.resource_path), "%s is not %s's picture" % [skin.id, seen.get(tex.resource_path)])
+		seen[tex.resource_path] = skin.id
+	screen._tabs.current_tab = 1
+	var before: float = mat.get_shader_parameter(&"phase") if mat.get_shader_parameter(&"phase") != null else 0.0
+	screen._process(1.0)
+	var after: float = mat.get_shader_parameter(&"phase")
+	_check(absf(after - before) > 0.01 and after < 1.0, "the bar preview turns with time: %f -> %f" % [before, after])
+	var turn := SkinsScreen.BAR_TURN_SEC
+	screen._process(turn)
+	_check(absf(float(mat.get_shader_parameter(&"phase")) - fposmod(after + 1.0, 1.0)) < 0.001, "one full turn brings it back")
 	screen.close()
 	_check(not screen.is_open() and closed[0] == 1, "close() hides it and emits closed once")
 	screen.close()
