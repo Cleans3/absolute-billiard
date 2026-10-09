@@ -57,17 +57,17 @@ mesh = SubResource("cap")
 material_override = SubResource("glow")
 
 [node name="Title" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.55, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 billboard = 2
-pixel_size = 0.004
+pixel_size = 0.0025
 modulate = Color(1, 0.35, 0.3, 1)
 outline_size = 14
 text = "GO LIVE"
 font_size = 96
 
 [node name="Status" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.25, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.28, 0)
 billboard = 2
-pixel_size = 0.003
+pixel_size = 0.002
 outline_size = 10
 font_size = 48

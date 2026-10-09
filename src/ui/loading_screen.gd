@@ -25,6 +25,8 @@ var _roster: Array[Dictionary] = []
 
 func _ready() -> void:
 	_cancel.pressed.connect(cancelled.emit)
+	_bar.add_theme_stylebox_override(&"background", _box(Color(0.25, 0.17, 0.12)))  # the project theme draws no ProgressBar
+	_bar.add_theme_stylebox_override(&"fill", _box(Color(0.89, 0.67, 0.25)))
 	_refresh()
 
 
@@ -51,6 +53,13 @@ func set_players(done: PackedInt32Array, roster: Array[Dictionary]) -> void:
 	_done = done
 	_roster = roster
 	_refresh()
+
+
+static func _box(color: Color) -> StyleBoxFlat:
+	var b := StyleBoxFlat.new()
+	b.bg_color = color
+	b.set_corner_radius_all(6)
+	return b
 
 
 ## The local PlayerSlot has replicated into the new MainLevel: the bar is playable.
