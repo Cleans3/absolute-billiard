@@ -12,6 +12,7 @@ enum Stance { STAND, CUE, CARRY }  ## same order as Player.Mode
 enum B { PELVIS, TORSO, HEAD, UARM_R, LARM_R, UARM_L, LARM_L, THIGH_R, SHIN_R, THIGH_L, SHIN_L }
 
 const HEAD_LAYER := 1 << 19    ## render layer 20: the local player's camera culls it, shadows still fall
+const MIRROR_LAYER := 1 << 9   ## render layer 10: what the wall mirror's camera draws (room shell, table, avatars)
 const RAG_LAYER := 1 << 4      ## collision layer 5 `ragdoll` (07 §1): bones never touch each other or balls
 const RAG_MASK := 2 | 8        ## table rails + world (floor, walls, bar)
 const BLEND_SEC := 0.4
@@ -139,7 +140,7 @@ func set_quirk(quirk: StringName) -> void:
 ## but keeps casting shadows; trunk, arms, legs and feet stay visible when looking down. A mirror camera keeps HEAD_LAYER.
 func set_first_person(on: bool) -> void:
 	_first_person = on
-	_head_mi.layers = HEAD_LAYER if on else 1
+	_head_mi.layers = HEAD_LAYER if on else 1 | MIRROR_LAYER  # the mirror camera draws HEAD_LAYER too
 
 
 ## Local player in CUE: the leaning trunk would fill the aiming view, so the body only casts its shadow.
@@ -417,6 +418,7 @@ func _build_skeleton() -> void:
 	_head_mi = MeshInstance3D.new()
 	for mi in [_body_mi, _head_mi]:
 		mi.material_override = _shared_material()
+		mi.layers = 1 | MIRROR_LAYER
 		mi.extra_cull_margin = 2.0
 		_skel.add_child(mi)
 		mi.skeleton = NodePath("..")  # unset by default when built in code
