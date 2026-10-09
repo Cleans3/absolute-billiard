@@ -144,6 +144,13 @@ func _humanoid() -> void:
 
 # --- the player ----------------------------------------------------------------------------------------
 
+## The one place a probe waits for the level to be playable after pressing Solo (alpha swaps the body for
+## `await SoloSupport.until_playable(self)` once the threaded loading screen lands).
+func _until_playable() -> void:
+	for i in 8:
+		await process_frame
+
+
 func _player() -> void:
 	SaveManager.root = "user://test_ragdoll"
 	DirAccess.make_dir_recursive_absolute(SaveManager.root)
@@ -151,8 +158,7 @@ func _player() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	for i in 8:
-		await process_frame
+	await _until_playable()
 	var level := current_scene
 	var rd: RoundDirector = level.get_node("RoundDirector")
 	var spawner := level.get_node("PlayerSpawner")  # untyped: a -s probe compiles before the NetManager autoload exists

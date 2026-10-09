@@ -41,6 +41,12 @@ func _await_line(pool: StringName, seconds: float) -> Array:
 	return []
 
 
+## The one place a probe waits for the level to be playable after pressing Solo (alpha swaps the body for
+## `await SoloSupport.until_playable(self)` once the threaded loading screen lands).
+func _until_playable() -> void:
+	await _frames(8)
+
+
 func _run() -> void:
 	_pools()
 	await process_frame
@@ -50,7 +56,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await _until_playable()
 	var level := current_scene
 	var rd: RoundDirector = level.get_node("RoundDirector")
 	var economy: EconomyManager = level.get_node("EconomyManager")

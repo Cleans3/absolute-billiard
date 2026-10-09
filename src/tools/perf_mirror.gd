@@ -28,8 +28,7 @@ func _run() -> void:
 	for i in 3:
 		await process_frame
 	current_scene.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	for i in 40:
-		await process_frame
+	await _until_playable()
 	var level := current_scene
 	root.scaling_3d_scale = scale
 	root.msaa_3d = Viewport.MSAA_2X
@@ -67,6 +66,13 @@ func _run() -> void:
 		print("PERF_MIRROR %-18s dc mean %5.1f p95 %5.1f max %5.1f | tris max %7.0f | gpu main %.2f ms mirror %.2f ms (mean) | mirror renders %d/%d frames" % [
 			name, _mean(dc), _p(dc, 0.95), _p(dc, 1.0), _p(prim, 1.0), _mean(gpu), _mean(gpu_mirror), mirror.renders - renders, FRAMES])
 	quit()
+
+
+## The one place a probe waits for the level to be playable after pressing Solo (alpha swaps the body for
+## `await SoloSupport.until_playable(self)` once the threaded loading screen lands).
+func _until_playable() -> void:
+	for i in 40:
+		await process_frame
 
 
 func _mean(a: Array[float]) -> float:

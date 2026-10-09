@@ -63,6 +63,12 @@ func _drag(node: Control, index: int, from: Vector2, to: Vector2) -> void:
 	node._gui_input(e)
 
 
+## The one place a probe waits for the level to be playable after pressing Solo (alpha swaps the body for
+## `await SoloSupport.until_playable(self)` once the threaded loading screen lands).
+func _until_playable() -> void:
+	await _frames(8)
+
+
 func _run() -> void:
 	await process_frame
 	SaveManager.root = "user://test_player"
@@ -71,7 +77,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await _until_playable()
 	level = current_scene
 	rd = level.get_node("RoundDirector")
 	table = level.get_node("Table")
