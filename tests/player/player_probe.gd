@@ -257,6 +257,10 @@ func _modes() -> void:
 	_touch(controls.power, 0, Vector2(30, 250), false)
 	_check(player.mode == Player.Mode.WALK and not cue.active, "strike leaves CUE")
 	_check(player.global_position.distance_to(strike_spot) <= Player.SNAP_MAX_M and player._clear_of_table(player.global_position), "strike: the player stands by the shot")
+	var by_strike := player.global_position
+	_check(not player._verdict_pending, "the host's own accepted strike leaves no verdict pending")
+	sim.shot_rejected.emit(&"balls_moving")  # an unrelated refusal later moves nobody
+	_check(player.global_position.distance_to(by_strike) < 0.001, "...so a later refusal does not walk the player back")
 	_check(fired_intents.size() == 1, "the host struck once (%d)" % fired_intents.size())
 	if fired_intents.size() == 1:
 		_check(_near(fired_intents[0].power, 0.5) and fired_intents[0].shooter_id == root.multiplayer.get_unique_id(), "strike carried the slider power")

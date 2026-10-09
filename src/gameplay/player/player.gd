@@ -55,6 +55,7 @@ var _cue_pitch := 0.0
 var _floor_y := 0.0
 var _verdict_pending := false        # a shot left from the snapped spot and the host has not answered yet
 var _refused_inline := false         # the host refused while fire() was still on the stack
+var _shot_seen := false              # the host's `shot_started_net` reached us since CUE began (the host's own strike beats `fired`)
 var _pose := PackedByteArray()
 var _samples: Array[PackedFloat64Array] = []  # puppet: [msec, x, y, z, yaw, pitch, mode]
 var _puppet_mode := Mode.WALK
@@ -107,7 +108,9 @@ func bind(level: Node) -> void:
 	_on_settings_changed()
 	cue.fired.connect(_on_fired)
 	_sim.shot_rejected.connect(_on_shot_rejected)
-	_sim.shot_started_net.connect(func(_id: int, _shooter: int, _tick: int) -> void: _verdict_pending = false)
+	_sim.shot_started_net.connect(func(_id: int, _shooter: int, _tick: int) -> void:
+		_shot_seen = true
+		_verdict_pending = false)
 	_rd.shooter_changed.connect(_on_shooter_changed)
 	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
 	_rd.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: _clock_end_msec = 0)
@@ -344,6 +347,7 @@ func enter_cue() -> bool:
 	_saved_pitch = head.rotation.x
 	_verdict_pending = false
 	_refused_inline = false
+	_shot_seen = false
 	_floor_y = global_position.y
 	var eye_y := _floor_y + EYE_M
 	_cue_pitch = atan2(ball.global_position.y - eye_y, CueController.BACK_M + CueController.LOOK_AHEAD_M)
@@ -423,7 +427,7 @@ func _on_fired(_intent: ShotIntent) -> void:
 		_refused_inline = false
 		exit_cue()
 		return
-	_verdict_pending = true
+	_verdict_pending = not _shot_seen  # a client waits for the host's answer; the host already knows it
 	exit_cue(false)
 
 
