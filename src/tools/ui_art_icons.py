@@ -2,7 +2,7 @@
 128x128 plain SVG (no filters, no <text>, no clipPath: ThorVG draws it as written), transparent, made to sit on a dark
 plate. Drinks are composed from rules, not drawn one by one: GLASSES = the silhouette, a row of DRINKS = glass +
 liquid colour + decor, so a new Drink is one row. The tier rim is not in the file: BartenderMenu draws it from Drink.tier.
-Every id of every Drink / Event / ShopItem needs a row here: tests/ui/shop_probe.gd fails on a missing file."""
+Every id of every Drink / Event / ShopItem needs a row here: tests/ui/shop_ui_probe.gd fails on a missing file."""
 import math
 import random
 

@@ -141,13 +141,19 @@ func _refresh() -> void:
 	var worn_char := SkinCatalog.resolve_character(SkinCatalog.equipped_character_id(), 0).id
 	var worn_bar := SkinCatalog.equipped_bar_id()
 	for id: StringName in _char_cards:
-		_char_cards[id].badge.text = "Equipped" if id == worn_char else ""
+		_badge(_char_cards[id].badge, id == worn_char)
 	for id: StringName in _bar_cards:
-		_bar_cards[id].badge.text = "Equipped" if id == worn_bar else ""
+		_badge(_bar_cards[id].badge, id == worn_bar)
 	_equip_char.text = "Equipped" if _sel_char == worn_char else "Equip"
 	_equip_char.disabled = _sel_char == worn_char
 	_equip_bar.text = "Equipped" if _sel_bar == worn_bar else "Equip"
 	_equip_bar.disabled = _sel_bar == worn_bar
+
+
+## The badge is only there on the worn skin, so every other card is just its name, centred.
+func _badge(badge: Label, worn: bool) -> void:
+	badge.text = "Equipped" if worn else ""
+	badge.visible = worn
 
 
 ## One toggle card: the skin's name and an "Equipped" badge, nothing else. Children ignore the mouse so the Button gets every tap.

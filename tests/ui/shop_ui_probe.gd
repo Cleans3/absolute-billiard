@@ -2,8 +2,8 @@ extends SceneTree
 ## Shop UI probe (polish 2, C11 C12 C15): the Bartender panel keeps its size in every mode, phase, shelf and refusal text;
 ## Serve / Throw never leave a hidden target selected; no card clips its content; every Drink, Upgrade and hazard
 ## has an icon of its own, distinct from the others, shown on the card, the row and the vote.
-##   godot --path . --headless -s tests/ui/shop_probe.gd
-## Prints SHOP OK, or the failing checks and SHOP FAIL (exit 1).
+##   godot --path . --headless -s tests/ui/shop_ui_probe.gd
+## Prints SHOP UI OK, or the failing checks and SHOP UI FAIL (exit 1).
 
 const COUNTER := Vector3(3.5, 0.05, 2.5)  # customer side of the counter: the Player closes the menu when out of reach
 
@@ -22,7 +22,7 @@ var net: Variant  ## the NetManager autoload, by path: probes compile before aut
 func _init() -> void:
 	create_timer(180.0).timeout.connect(func() -> void:
 		if not finished:
-			print("SHOP FAIL (script error or hang)")
+			print("SHOP UI FAIL (script error or hang)")
 			quit(1))
 	_run()
 
@@ -66,7 +66,7 @@ func _run() -> void:
 	await _vote()
 	DirAccess.remove_absolute(SaveManager.root)
 	finished = true
-	print("SHOP OK" if fails == 0 else "SHOP FAIL (%d)" % fails)
+	print("SHOP UI OK" if fails == 0 else "SHOP UI FAIL (%d)" % fails)
 	quit(0 if fails == 0 else 1)
 
 

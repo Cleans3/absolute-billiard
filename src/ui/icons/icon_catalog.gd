@@ -2,7 +2,7 @@ class_name IconCatalog
 extends RefCounted
 ## One icon per Drink, Event (hazard) and ShopItem (docs/plan/03 §2.6, 08 §2.8). The SVGs are drawn by src/tools/ui_art.py
 ## into assets/ui/{drink,hazard,upgrade}/<id>.svg. Never null: an id with no file of its own gets that kind's `unknown`
-## icon, and tests/ui/shop_probe.gd fails on it, so a new catalog row cannot ship without its art.
+## icon, and tests/ui/shop_ui_probe.gd fails on it, so a new catalog row cannot ship without its art.
 
 const DIR := "res://assets/ui/"
 

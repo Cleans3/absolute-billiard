@@ -5,7 +5,7 @@ extends UIModal
 ## Upgrades = the fixed ball / cue / camera / table rows. A Drink tap is only reported (`picked`): the Player sends
 ## the host-validated world interaction. Upgrades ask the host through request_purchase. The UIRouter owns the mouse.
 ## The panel never changes size (polish 2, C11): the cards are fixed-size Controls that clip their content, every
-## variable string is clipped or wrapped to a bounded slot, and tests/ui/shop_probe.gd measures it in every state.
+## variable string is clipped or wrapped to a bounded slot, and tests/ui/shop_ui_probe.gd measures it in every state.
 
 signal picked(kind: StringName, drink_id: StringName, target_peer: int)
 
