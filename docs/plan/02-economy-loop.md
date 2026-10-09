@@ -72,14 +72,14 @@ One `Shot` at a time; the shooter passes to the next player in seat order when t
 
 Rounds differ by hazard tier: **Round 1 no Event, Round 2 a tier-1 Event, Round 3 a tier-2 Event**, chosen by the crew from 03's catalog before the Round starts (D6 — chosen, never rolled). Identical rounds are a UI boundary pretending to be pacing.
 
-**Intermission is untimed.** The host advances it. Negotiating what the shared purse buys is the social peak of the loop; a 15 s clock means the host buys alone.
+**Intermission is untimed, and it is a place, not a screen.** Between Rounds there is no modal and no Start button: the crew stays in the bar (buys at the counter, votes the Event, reframes cameras) and a **GO LIVE** pedestal beside the table (`Bar.GO_LIVE_AT`, the `go_live` interaction, 04 §5) starts the next Round. Solo: one press. Online: every connected player must press (their *ready*); a second press un-readies; the pedestal shows `Ready N/M`, who is in and who is still being waited on, and the set survives a client resume (`ready_state` rides `full_state`). A player who disconnects is dropped from the count, and a client whose app is in the background is not waited on (`NetManager.peer_away`), so neither can hold the crew back; once the last waited-on peer is ready the host calls `advance()`. The round result, Cash and the next ask arrive as two toasts at Intermission start (held back while a modal is open); the blackboard (hud slice) shows them permanently. Negotiating what the shared purse buys is the social peak of the loop; a 15 s clock means the host buys alone. The Reckoning, Game over and Campaign won screens are unchanged (host-only Next Night / Endless, "Waiting for the host · N s" for the rest).
 
 ```mermaid
 stateDiagram-v2
     [*] --> Lobby
     Lobby --> NightStart: host starts session
     NightStart --> Intermission: load NightConfig, viewers = base_viewers
-    Intermission --> RoundSetup: host advances (untimed; Bartender open)
+    Intermission --> RoundSetup: every present player pressed GO LIVE (untimed; Bartender open)
     RoundSetup --> RoundActive: crew picks Event for tier, drop 10 balls (seeded)
 
     state RoundActive {
@@ -250,7 +250,7 @@ src/
 - `EconomyManager.try_purchase(item_id: StringName, buyer_peer_id: int, target_peer_id := 0) -> bool` — host-authoritative; the only path Cash leaves the account for the Bartender (`try_spend_cash` is 03's world-interaction path, `try_throw(drink_id) -> StringName` the thrown Drink's). `roll_stock(key)` / `set_stock(key, ids, left)` / `stock_id(i)` / `stock_left(i)` / `stock_refusal(id)` are the shelf (§3.6); `GameLoop.stock_key()` is its seed. Getters for the rack: `unlocked_ball_types(base)`, `ball_overrides()`, `round_config(night)`; for the Player: `build_cue_spec()`.
 - `GameLoop.resume_from(profile: SaveProfile)` — host; rebuilds a checkpoint (04 §2.6). `GameLoop.build_profile()` is what every Round end broadcasts.
 - `StreamManager.on_ball_potted(ball, shot_id, pocket_id)` buffers pots during the `Shot`; `StreamManager.on_shot_ended(raw_points, trick_ids, foul)` applies them after `EconomyManager` has read `Viewer_Scalar`. A foul discards the buffer — the Shot scores nothing, viewers included (01 §3).
-- `GameLoop.advance() -> void` — host only; the untimed Intermission gate, and Reckoning → next Night.
+- `GameLoop.advance() -> void` — host only; Intermission → Round (called by `toggle_ready` once everyone waited on is ready; probes force-start with it), and Reckoning → next Night. `GameLoop.toggle_ready(peer_id)` — host only, from the `go_live` interaction; `ready_peers` / `waiting_peers` mirror to clients (`ready_state`), signal `ready_changed`.
 - **From 03:** `EventScheduler.offer_tier(tier) -> Array[Event]` for the crew's pre-Round pick; `EffectManager.get_reward_multiplier() -> float`.
 - **From 01:** `shot_ended(shot_id, raw_points, trick_ids, foul)`, and `BallType.base_value` reads gated on `NightConfig.unlocked_ball_types`.
 - **Amended (M1):** `round_ended` `reason` ∈ `timer | cleared | shots` — `shots` when the Round's shot budget hits 0 (every `shot_ended`, foul included, costs one); `stuck` is retired, "only penalty balls left" *is* `table_cleared` (01 §3).

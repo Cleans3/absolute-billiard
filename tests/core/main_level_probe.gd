@@ -17,7 +17,9 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(5)
+	var t0 := Time.get_ticks_msec()  # the load is threaded behind the loading screen: no fixed frame count
+	while (current_scene == null or current_scene.name != "MainLevel") and Time.get_ticks_msec() - t0 < 30000:
+		await process_frame
 	assert(current_scene != null and current_scene.name == "MainLevel", "MainLevel not loaded")
 	var loop: GameLoop = current_scene.get_node("GameLoop")
 	var rd: RoundDirector = current_scene.get_node("RoundDirector")

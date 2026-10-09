@@ -151,8 +151,7 @@ func _player() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	for i in 8:
-		await process_frame
+	await SoloSupport.until_playable(self)
 	var level := current_scene
 	var rd: RoundDirector = level.get_node("RoundDirector")
 	var spawner := level.get_node("PlayerSpawner")  # untyped: a -s probe compiles before the NetManager autoload exists
