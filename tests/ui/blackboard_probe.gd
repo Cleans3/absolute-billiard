@@ -16,10 +16,9 @@ func _check(ok: bool, what: String) -> void:
 		printerr("FAIL: ", what)
 
 
-## The one place that waits for the bar after Solo (flow's threaded load swaps this body for SoloSupport.until_playable(self)).
+## The one place that waits for the bar after Solo: MainLevel loads on a thread behind the loading screen.
 func _until_playable() -> void:
-	for i in 8:
-		await process_frame
+	await SoloSupport.until_playable(self)
 
 
 func _run() -> void:
