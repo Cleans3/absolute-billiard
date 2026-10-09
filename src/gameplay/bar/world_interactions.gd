@@ -9,6 +9,7 @@ enum HostilePolicy { ON, FRIENDS_ONLY, OFF }
 signal interaction_applied(peer_id: int, kind: StringName, target_id: int, payload: Dictionary)
 signal interaction_rejected(kind: StringName, reason: StringName)
 ## bar_buy / bar_serve: validated, nothing charged. The Shop (ECON) owns purchasing and calls serve_drink.
+## go_live: the pedestal between Rounds; validated, then GameLoop.toggle_ready (02 §3.1).
 signal bar_purchase_requested(kind: StringName, buyer_peer_id: int, drink_id: StringName, target_peer_id: int)
 signal camera_move_requested(peer_id: int, target_id: int, payload: Dictionary)  # Cameras (M5) consume
 
@@ -28,6 +29,8 @@ var friends := PackedInt32Array()  # peers allowed hostile actions under FRIENDS
 var player_position_source: Callable = _spawner_position
 var clock: Callable = Time.get_ticks_msec
 
+## Seconds the last rejection says to wait (> 0 only for `cooldown`); it rides world_interaction_rejected, the signal keeps its shape.
+var last_wait_sec := 0.0
 var _cooldown_until := {}  # "peer:kind" -> msec
 var _hostile_this_turn := 0
 var _round_used := {}  # once_per_round kinds
@@ -69,15 +72,23 @@ func world_interaction_applied(peer_id: int, kind: StringName, target_id: int, p
 
 
 @rpc("authority", "call_remote", "reliable", 3)
-func world_interaction_rejected(kind: StringName, reason: StringName) -> void:
+func world_interaction_rejected(kind: StringName, reason: StringName, wait_sec: float) -> void:
+	last_wait_sec = wait_sec
 	interaction_rejected.emit(kind, reason)
 
 
 func _reject(peer_id: int, kind: StringName, reason: StringName) -> void:
+	var wait := cooldown_left_sec(peer_id, kind) if reason == &"cooldown" else 0.0
 	if peer_id == multiplayer.get_unique_id():
+		last_wait_sec = wait
 		interaction_rejected.emit(kind, reason)
 	else:
-		world_interaction_rejected.rpc_id(peer_id, kind, reason)
+		world_interaction_rejected.rpc_id(peer_id, kind, reason, wait)
+
+
+## Host: how long `peer_id` still waits before `kind` works for them again.
+func cooldown_left_sec(peer_id: int, kind: StringName) -> float:
+	return maxf(float(int(_cooldown_until.get("%d:%s" % [peer_id, kind], 0)) - int(clock.call())) / 1000.0, 0.0)
 
 
 func _handle(peer_id: int, kind: StringName, target_id: int, payload: Dictionary) -> void:
@@ -95,6 +106,10 @@ func _handle(peer_id: int, kind: StringName, target_id: int, payload: Dictionary
 
 func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: int, payload: Dictionary) -> StringName:
 	if w == null:
+		if kind == &"go_live":
+			if game_loop == null or game_loop.phase != GameLoop.Phase.INTERMISSION:
+				return &"not_intermission"
+			return _reach(peer_id, kind, target_id)
 		if kind != &"bar_buy" and kind != &"bar_serve":
 			return &"unknown_kind"
 		var drink := FxCatalog.drink(payload.get(&"drink_id", &""))
@@ -214,6 +229,9 @@ func _soak_shooter(thrower: int) -> void:
 
 
 func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:
+	if kind == &"go_live":
+		game_loop.toggle_ready(peer_id)
+		return
 	var target := int(payload.get(&"target_peer", peer_id)) if kind == &"bar_serve" else peer_id
 	bar_purchase_requested.emit(kind, peer_id, payload[&"drink_id"], target)
 

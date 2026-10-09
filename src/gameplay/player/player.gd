@@ -104,9 +104,9 @@ func bind(level: Node) -> void:
 	_rd.shooter_changed.connect(_on_shooter_changed)
 	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
 	_rd.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: _clock_end_msec = 0)
-	_sim.shot_rejected.connect(func(reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
+	_sim.shot_rejected.connect(func(reason: StringName) -> void: _toast(WaitText.shot(reason, _shooter_name(), _sim.awake)))
 	if _world != null:
-		_world.interaction_rejected.connect(func(_k: StringName, reason: StringName) -> void: _toast(String(reason).replace("_", " ")))
+		_world.interaction_rejected.connect(func(kind: StringName, reason: StringName) -> void: _toast(WaitText.interaction(kind, reason, _world.last_wait_sec)))
 	if _cameras != null:
 		_cameras.holders_changed.connect(_sync_carry)
 	if _bartender != null:
@@ -259,7 +259,7 @@ func interact() -> void:
 			_bartender.open()
 		return
 	if not _target.try_use({}):
-		_toast("wait")
+		_toast(WaitText.cooling(_target.effective_kind(), _target.cooldown_left_sec()) if _target.cooldown_left_sec() > 0.0 else WaitText.interaction(&"", &"no_prop"))
 
 
 func place_camera(at_feet: bool) -> void:
@@ -320,17 +320,18 @@ func enter_cue() -> bool:
 	if mode != Mode.WALK or _rd == null:
 		return false
 	if _host_away:
-		_toast("host away")
+		_toast("The host's app is in the background: shooting resumes when it is back")
 		return false
 	if _rd.current_shooter_id != multiplayer.get_unique_id():
-		_toast("not your turn")
+		_toast(WaitText.shot(&"not_your_turn", _shooter_name()))
 		return false
 	var ball := _cue_ball()
 	if ball == null or _sim.awake > 0 or not _rd.can_strike(ball):
-		_toast("balls moving")
+		_toast(WaitText.shot(&"balls_moving", "", _sim.awake))
 		return false
-	if cam.global_position.distance_to(ball.global_position) > ball.spec.cue_reach_m:
-		_toast("too far from the cue ball")
+	var away := cam.global_position.distance_to(ball.global_position)
+	if away > ball.spec.cue_reach_m:
+		_toast("Too far from the cue ball: %.1f m away, reach is %.1f m" % [away, ball.spec.cue_reach_m])
 		return false
 	_saved_pos = global_position
 	_saved_yaw = rotation.y
@@ -403,6 +404,14 @@ func _set_mode(m: Mode) -> void:
 	if _controls != null:
 		_controls.set_mode(m)
 	mode_changed.emit(m)
+
+
+## The roster name of whoever has the shot, for the "not your turn" refusals.
+func _shooter_name() -> String:
+	for e: Dictionary in _net.get_roster():
+		if e.peer_id == _rd.current_shooter_id:
+			return e.name
+	return ""
 
 
 func _toast(text: String) -> void:

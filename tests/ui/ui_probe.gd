@@ -288,14 +288,14 @@ func _phase_and_pause() -> void:
 	await process_frame
 	await process_frame
 	var screens := {"Bartender": bartender, "Pause": pause, "Settings": settings, "Controls": controls}
-	loop.phase_changed.emit(GameLoop.Phase.INTERMISSION)
-	_check(phase.visible and phase._next.visible and phase._next.text == "Start Round", "Intermission screen with the host's Start Round")
+	loop.phase_changed.emit(GameLoop.Phase.RECKONING)
+	_check(phase.visible and phase._next.visible and phase._next.text == "Next Night", "Reckoning screen with the host's Next Night")
 	for name: String in screens:
 		var m: UIModal = screens[name]
 		m.open()
 		_check(m.visible and not phase.visible and router.current == m, "%s open: the phase screen is hidden" % name)
 		m.close()
-		_check(phase.visible and phase._next.visible and not m.visible, "%s closed: the phase screen is back and the host can press Start Round" % name)
+		_check(phase.visible and phase._next.visible and not m.visible, "%s closed: the phase screen is back and the host can press Next Night" % name)
 	var ids: Array[StringName] = [FxCatalog.EVENTS[0].id, FxCatalog.EVENTS[1].id, FxCatalog.EVENTS[2].id]
 	vote._on_offer(1, 1, ids)
 	_check(vote.visible and not phase.visible, "the vote displaces the phase screen")
@@ -312,16 +312,20 @@ func _phase_and_pause() -> void:
 	pause.close()
 	_check(phase.visible, "closing Pause returns to the phase screen")
 
-	phase._bar.pressed.emit()
-	_check(not phase.visible and not router.is_modal_open(), "Visit the bar sets the Intermission screen aside: nothing blocks the walk")
-	bartender.open()
-	_check(bartender.visible and not phase.visible, "the bar menu opens while walking")
-	bartender.close()
-	_check(phase.visible and phase._next.visible, "the walk is over once a screen has come and gone: the phase screen is back")
-	phase._bar.pressed.emit()
-	_esc()
-	pause._resume.pressed.emit()
-	_check(phase.visible, "Pause, Resume from a walk brings the phase screen back")
+	# the Intermission has no screen: the player stays in the bar, its news is two toasts, held while a modal is open
+	loop.night_started.emit(1, 600)
+	loop.round_ended.emit(&"cleared", 450)
+	loop.phase_changed.emit(GameLoop.Phase.INTERMISSION)
+	_check(not phase.visible and not router.is_modal_open(), "Intermission: no screen, nothing blocks the walk")
+	var toast: Label = router._toast_label
+	_check(toast.visible and toast.text.begins_with("Round over (cleared): 450 points"), "Intermission news, line 1: the last Round (%s)" % toast.text)
+	phase._flush_news()
+	_check(toast.text.begins_with("Round 1/") and "press GO LIVE at the table" in toast.text, "line 2: what is next and how to start it (%s)" % toast.text)
+	pause.open()
+	loop.phase_changed.emit(GameLoop.Phase.INTERMISSION)
+	_check(not phase.visible and phase._news.size() == 2 and not toast.visible, "a modal is open: the news is held, not lost")
+	pause.close()
+	_check(toast.visible and toast.text.begins_with("Round over") and not phase.visible, "closing the modal shows the held news and no phase screen")
 
 	loop.phase_changed.emit(GameLoop.Phase.ROUND_LIVE)
 	_check(not phase.visible, "a Round starting closes the phase screen")

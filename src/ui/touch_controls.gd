@@ -89,7 +89,7 @@ func _ready() -> void:
 	_prompt_label = _label(root, 0.5, 1.0, -200, -76, 200, -36)
 	_status = _label(root, 0.5, 0.0, -160, 64, 160, 104)
 	_away = _label(root, 0.5, 0.0, -300, 232, 300, 272)
-	_away.text = "Host away, waiting…"
+	_away.set_script(preload("res://src/ui/host_away_label.gd"))  # text = what we wait on + the seconds
 	_away.hide()
 	mirror = bool(Settings.value(&"touch_mirror"))  # the setter lays out
 	_layout()
