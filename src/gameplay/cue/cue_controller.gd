@@ -241,10 +241,8 @@ func _push_ui() -> void:
 	if controls == null:
 		return
 	controls.spin_pad.set_spin(spin)
-	if controls.spin_pad.elevation_deg != elevation_deg:
-		controls.spin_pad.elevation_deg = elevation_deg
-		controls.spin_pad.queue_redraw()
 	controls.elevation.set_value(elevation_deg)
+	controls.set_elevation_cap(Ball.effective_elevation(max_elevation_deg, spin, cue_spec))
 	if not controls.touch:
 		controls.power.set_value(power)
 	var text := "Call a pocket   " if call_required and called_pocket == &"" else ""

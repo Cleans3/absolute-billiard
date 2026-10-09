@@ -32,8 +32,10 @@ const MODE_CARRY := 2
 
 var stick: VirtualStick
 var look: LookPad
-var spin_pad: SpinPad
-var elevation: PowerSlider
+var spin_pad: SpinPad  ## the small cue-ball control; a tap opens `spin_overlay`
+var elevation: ElevationPad  ## the small cue-angle control; a tap opens `elevation_overlay`
+var spin_overlay: SpinOverlay
+var elevation_overlay: ElevationOverlay
 var power: PowerSlider
 var pockets: Array[TouchButton] = []
 
@@ -64,10 +66,7 @@ func _ready() -> void:
 	look = _add(root, LookPad.new())
 	stick = _add(root, VirtualStick.new())
 	spin_pad = _add(root, SpinPad.new())
-	elevation = _add(root, PowerSlider.new())
-	elevation.from_top = false
-	elevation.max_value = 80.0
-	elevation.caption = "elev"
+	elevation = _add(root, ElevationPad.new())
 	power = _add(root, PowerSlider.new())
 	power.caption = "power"
 	_btn_jump = _button(root, "Jump", jump_pressed)
@@ -91,6 +90,12 @@ func _ready() -> void:
 	_away = _label(root, 0.5, 0.0, -300, 232, 300, 272)
 	_away.text = "Host away, waiting…"
 	_away.hide()
+	spin_overlay = _add(root, SpinOverlay.new())  # last: above every widget and label
+	spin_overlay.bind(spin_pad)
+	spin_pad.opened.connect(_open_overlay.bind(spin_overlay))
+	elevation_overlay = _add(root, ElevationOverlay.new())
+	elevation_overlay.bind(elevation)
+	elevation.opened.connect(_open_overlay.bind(elevation_overlay))
 	mirror = bool(Settings.value(&"touch_mirror"))  # the setter lays out
 	_layout()
 	_apply()
@@ -109,6 +114,7 @@ func _on_modal_changed(open: bool) -> void:
 	if open:
 		look.release()
 		stick.release()
+		_close_overlays()
 
 
 func _on_settings_changed() -> void:
@@ -133,6 +139,21 @@ func set_can_shoot(v: bool) -> void:
 ## Presentation only: the host's app is in the background.
 func set_host_away(away: bool) -> void:
 	_away.visible = away
+
+
+## The highest cue angle the cue allows right now (`Ball.effective_elevation`): the small control and its overlay show the rest as shut.
+func set_elevation_cap(deg: float) -> void:
+	elevation.set_cap(deg)
+
+
+func _open_overlay(overlay: Control) -> void:
+	look.release()
+	overlay.call(&"open")
+
+
+func _close_overlays() -> void:
+	spin_overlay.close()
+	elevation_overlay.close()
 
 
 func set_prompt(text: String) -> void:
@@ -182,6 +203,8 @@ func _apply() -> void:
 	spin_pad.visible = cue
 	power.visible = cue
 	elevation.visible = cue
+	if not cue:
+		_close_overlays()
 	for b in pockets:
 		b.visible = touch and cue and _call_pockets
 	_prompt_label.visible = not touch and _prompt != ""
@@ -207,7 +230,7 @@ func _layout() -> void:
 	# left-thumb group (CUE)
 	spin_pad.custom_minimum_size = Vector2(120, 120)
 	_corner(spin_pad, mirror, MARGIN, MARGIN, Vector2(120, 120))
-	_corner(elevation, mirror, MARGIN, MARGIN * 2 + 120.0, Vector2(56, 200))
+	_corner(elevation, mirror, MARGIN, MARGIN * 2 + 120.0, Vector2(120, 72))
 	_corner(_btn_back, mirror, MARGIN, MARGIN, BTN, true)
 	for i in pockets.size():
 		var b := pockets[i]

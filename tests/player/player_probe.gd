@@ -147,19 +147,22 @@ func _widgets() -> void:
 	_check(lp.fine, "second finger = fine aim")
 	_touch(lp, 1, Vector2(900, 300), false)
 	_touch(lp, 0, Vector2(700, 320), false)
-	# spin pad
+	# spin pad: a tap opens the enlarged ball (tests/ui/shot_controls_probe.gd has the full overlay drive), a tap on it sets the point
 	var sp := controls.spin_pad
-	sp.size = Vector2(120, 120)
 	var got: Array[Vector2] = []
 	var on_spin := func(v: Vector2) -> void: got.append(v)
 	sp.changed.connect(on_spin)
-	var r := 60.0 - 2.0
-	_touch(sp, 0, Vector2(60 + 0.5 * r, 60 - 0.25 * r), true)
-	_check(got.size() == 1 and _near(got[0].x, 0.5) and _near(got[0].y, 0.25), "spin pad tap: %s" % [got])
-	_touch(sp, 0, Vector2.ZERO, false)
-	_touch(sp, 0, Vector2(60, 60), true)  # second tap inside 300 ms: reset
-	_check(got.back() == Vector2.ZERO, "spin pad double-tap resets")
-	_touch(sp, 0, Vector2.ZERO, false)
+	_touch(sp, 0, Vector2(60, 60), true)
+	_touch(sp, 0, Vector2(60, 60), false)
+	var face := controls.spin_overlay.face
+	_check(controls.spin_overlay.visible and face.size.y > 0.0, "spin pad tap opens the enlarged ball")
+	var r := minf(face.size.x, face.size.y) * 0.5 - 2.0
+	_touch(face, 0, face.size * 0.5 + Vector2(0.5 * r, -0.25 * r), true)
+	_check(got.size() == 1 and _near(got[0].x, 0.5) and _near(got[0].y, 0.25), "enlarged ball tap: %s" % [got])
+	_touch(face, 0, Vector2.ZERO, false)
+	controls.spin_overlay._reset.pressed.emit()
+	_check(got.back() == Vector2.ZERO, "Reset centres the hit point")
+	controls.spin_overlay.close()
 	sp.changed.disconnect(on_spin)
 	# power slider: only from the top, release strikes, under 3% cancels
 	var pw := controls.power
@@ -180,13 +183,18 @@ func _widgets() -> void:
 	_drag(pw, 0, Vector2.ZERO, Vector2(30, 5))
 	_touch(pw, 0, Vector2(30, 5), false)
 	_check(out.size() == 1 and cancels[0] == 1, "dragging back under 3% cancels")
-	# elevation
+	# elevation: the small control opens the enlarged cue angle, a tap on its protractor sets it
 	var el := controls.elevation
-	el.size = Vector2(56, 200)
-	_touch(el, 0, Vector2(20, 150), true)
-	_check(_near(el.value, 20.0), "elevation slider bottom-up: %f" % el.value)
-	_touch(el, 0, Vector2(20, 150), false)
+	_touch(el, 0, Vector2(60, 36), true)
+	_touch(el, 0, Vector2(60, 36), false)
+	var eo := controls.elevation_overlay
+	_check(eo.visible, "elevation tap opens the enlarged cue angle")
+	var tap := eo._pivot + Vector2(-cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0))) * eo._radius * 0.8
+	_touch(eo, 0, tap, true)
+	_check(_near(el.value, 20.0), "elevation protractor tap: %f" % el.value)
+	_touch(eo, 0, tap, false)
 	_check(_near(el.value, 20.0), "elevation holds after release")
+	eo.close()
 	el.set_value(0.0)
 
 
@@ -263,14 +271,20 @@ func _parity() -> void:
 	_drag(controls.look, 0, Vector2(600, 300), Vector2(700, 300))
 	_touch(controls.look, 0, Vector2(700, 300), false)
 	_drive_cue(1.0 / 60.0, 1)
-	var sp := controls.spin_pad
-	sp.size = Vector2(120, 120)
-	var r := 58.0
-	_touch(sp, 0, Vector2(60 + 0.3 * r, 60 - 0.5 * r), true)
-	_touch(sp, 0, Vector2.ZERO, false)
-	controls.elevation.size = Vector2(56, 200)
-	_touch(controls.elevation, 0, Vector2(20, 200 * (1.0 - 20.0 / 80.0)), true)
-	_touch(controls.elevation, 0, Vector2.ZERO, false)
+	_touch(controls.spin_pad, 0, Vector2(60, 60), true)
+	_touch(controls.spin_pad, 0, Vector2(60, 60), false)
+	var face := controls.spin_overlay.face
+	var r := minf(face.size.x, face.size.y) * 0.5 - 2.0
+	_touch(face, 0, face.size * 0.5 + Vector2(0.3 * r, -0.5 * r), true)
+	_touch(face, 0, Vector2.ZERO, false)
+	controls.spin_overlay.close()
+	_touch(controls.elevation, 0, Vector2(60, 36), true)
+	_touch(controls.elevation, 0, Vector2(60, 36), false)
+	var eo := controls.elevation_overlay
+	var tap := eo._pivot + Vector2(-cos(deg_to_rad(20.0)), -sin(deg_to_rad(20.0))) * eo._radius * 0.8
+	_touch(eo, 0, tap, true)
+	_touch(eo, 0, tap, false)
+	eo.close()
 	controls.power.size = Vector2(72, 500)
 	_touch(controls.power, 0, Vector2(30, 10), true)
 	_drag(controls.power, 0, Vector2.ZERO, Vector2(30, 400))
