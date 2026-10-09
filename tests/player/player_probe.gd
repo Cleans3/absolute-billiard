@@ -223,13 +223,40 @@ func _modes() -> void:
 	rd.shooter_changed.emit(99)
 	_check(player.mode == Player.Mode.WALK, "shooter change leaves CUE")
 	rd.current_shooter_id = root.multiplayer.get_unique_id()
+	# stay where you shot (C16): aim west so the pinned spot is east of the ball, 3 m from where the player stood
+	_check(player.enter_cue(), "CUE for the stay-put shot")
+	cue.shot_sink = func(_i: ShotIntent) -> void: pass
+	cue.aim_yaw = PI * 0.5
+	await _frames(2)
+	var pinned := player.global_position
+	cue.fire(0.5)
+	var stayed := player.global_position
+	_check(player.mode == Player.Mode.WALK and stayed.distance_to(home) > 1.5, "fired: the player stays by the shot, not back at %s (now %s)" % [home, stayed])
+	_check(stayed.distance_to(pinned) <= Player.SNAP_MAX_M and player._clear_of_table(stayed), "fired: snapped clear of the table outline within %.1f m of the aim spot (%.2f m)" % [Player.SNAP_MAX_M, stayed.distance_to(pinned)])
+	_check(_near(player.rotation.y, PI * 0.5, 0.01), "fired: yaw kept")
+	_check(_near(stayed.y, 0.0, 0.05), "fired: standing on the floor")
+	sim.shot_rejected.emit(&"balls_moving")  # the host's refusal arrives over the wire: walk back
+	_check(player.global_position.distance_to(home) < 0.01, "a late refusal restores the spot before aiming")
+	player.global_position = stayed
+	sim.shot_rejected.emit(&"balls_moving")
+	_check(player.global_position.distance_to(stayed) < 0.01, "a second refusal moves nobody (nothing pending)")
+	# the host refusing while fire() is still on the stack (host's own shot)
+	player.global_position = home
+	_check(player.enter_cue(), "CUE for the refused shot")
+	cue.shot_sink = func(_i: ShotIntent) -> void: sim.shot_rejected.emit(&"balls_moving")
+	cue.fire(0.5)
+	_check(player.mode == Player.Mode.WALK and player.global_position.distance_to(home) < 0.01, "an inline refusal restores the spot before aiming")
+	cue.shot_sink = real_sink
 	# strike through the real path: touch power slider → request_shot → the host strikes
 	_check(player.enter_cue(), "CUE again for the strike")
+	await _frames(2)
+	var strike_spot := player.global_position
 	controls.power.size = Vector2(72, 500)
 	_touch(controls.power, 0, Vector2(30, 10), true)
 	_drag(controls.power, 0, Vector2.ZERO, Vector2(30, 250))
 	_touch(controls.power, 0, Vector2(30, 250), false)
 	_check(player.mode == Player.Mode.WALK and not cue.active, "strike leaves CUE")
+	_check(player.global_position.distance_to(strike_spot) <= Player.SNAP_MAX_M and player._clear_of_table(player.global_position), "strike: the player stands by the shot")
 	_check(fired_intents.size() == 1, "the host struck once (%d)" % fired_intents.size())
 	if fired_intents.size() == 1:
 		_check(_near(fired_intents[0].power, 0.5) and fired_intents[0].shooter_id == root.multiplayer.get_unique_id(), "strike carried the slider power")

@@ -22,6 +22,9 @@ const KNOCK_SEC := 2.0
 const TAG_Y := 2.05                  # name tag height, above a top hat
 const HARD_LAND_MPS := 7.0           # [tune] fall speed that knocks you over on landing
 const LIMP_GRACE_MSEC := 3000        # a puppet waits this long past its timer for the owner to stand
+const SNAP_STEP_M := 0.1             # post-shot spot search: backing away along the shot line, then rings around it
+const SNAP_MAX_M := 3.0
+const SNAP_LIFT_M := 0.06            # the query capsule floats clear of the floor box
 
 @export var speed := 3.5             # [tune]
 @export var jump_velocity := 4.5
@@ -50,6 +53,8 @@ var _saved_yaw := 0.0
 var _saved_pitch := 0.0
 var _cue_pitch := 0.0
 var _floor_y := 0.0
+var _verdict_pending := false        # a shot left from the snapped spot and the host has not answered yet
+var _refused_inline := false         # the host refused while fire() was still on the stack
 var _pose := PackedByteArray()
 var _samples: Array[PackedFloat64Array] = []  # puppet: [msec, x, y, z, yaw, pitch, mode]
 var _puppet_mode := Mode.WALK
@@ -101,6 +106,8 @@ func bind(level: Node) -> void:
 	add_to_group(Settings.GROUP)
 	_on_settings_changed()
 	cue.fired.connect(_on_fired)
+	_sim.shot_rejected.connect(_on_shot_rejected)
+	_sim.shot_started_net.connect(func(_id: int, _shooter: int, _tick: int) -> void: _verdict_pending = false)
 	_rd.shooter_changed.connect(_on_shooter_changed)
 	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
 	_rd.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: _clock_end_msec = 0)
@@ -335,6 +342,8 @@ func enter_cue() -> bool:
 	_saved_pos = global_position
 	_saved_yaw = rotation.y
 	_saved_pitch = head.rotation.x
+	_verdict_pending = false
+	_refused_inline = false
 	_floor_y = global_position.y
 	var eye_y := _floor_y + EYE_M
 	_cue_pitch = atan2(ball.global_position.y - eye_y, CueController.BACK_M + CueController.LOOK_AHEAD_M)
@@ -346,14 +355,58 @@ func enter_cue() -> bool:
 	return true
 
 
-func exit_cue() -> void:
+## Leave CUE. `restore`: back to where the player stood before aiming (Back, shooter change, host away, knock);
+## otherwise stay by the shot (C16) on the nearest spot clear of the table, yaw and pitch as aimed.
+func exit_cue(restore := true) -> void:
 	if mode != Mode.CUE:
 		return
 	cue.end()
+	if restore:
+		_restore_spot()
+	else:
+		global_position = _free_spot(global_position, Vector3(sin(rotation.y), 0.0, cos(rotation.y)))
+	_set_mode(Mode.WALK)
+
+
+func _restore_spot() -> void:
 	global_position = _saved_pos
 	rotation.y = _saved_yaw
 	head.rotation.x = _saved_pitch
-	_set_mode(Mode.WALK)
+
+
+## Where a standing player fits near `p`: `p` itself, else backing away along `away` (the shot line, off the ball),
+## else rings around `p`; clear of walls and props (capsule query on the player's own mask) and of the table's outline
+## including its wooden rails. Falls back to where they stood before aiming.
+func _free_spot(p: Vector3, away: Vector3) -> Vector3:
+	var space := get_world_3d().direct_space_state
+	var query := PhysicsShapeQueryParameters3D.new()
+	query.shape = _body.shape
+	query.collision_mask = collision_mask
+	query.exclude = [get_rid()]
+	var fits := func(at: Vector3) -> bool:
+		query.transform = Transform3D(Basis.IDENTITY, at + _body.position + Vector3(0.0, SNAP_LIFT_M, 0.0))
+		return _clear_of_table(at) and space.intersect_shape(query, 1).is_empty()
+	for i in int(SNAP_MAX_M / SNAP_STEP_M) + 1:
+		var at := p + away * (i * SNAP_STEP_M)
+		if fits.call(at):
+			return at
+	var rings := int(SNAP_MAX_M / 0.3)
+	for r in range(1, rings + 1):
+		for k in 16:
+			var a := TAU * k / 16.0
+			var at := p + Vector3(cos(a), 0.0, sin(a)) * (r * 0.3)
+			if fits.call(at):
+				return at
+	return _saved_pos
+
+
+func _clear_of_table(at: Vector3) -> bool:
+	var t := cue.table
+	if t == null:
+		return true
+	var l := t.to_local(at)
+	var reach := (_body.shape as CapsuleShape3D).radius + t.spec.rail_width_m
+	return absf(l.x) > t.spec.length_m * 0.5 + reach or absf(l.z) > t.spec.width_m * 0.5 + reach
 
 
 ## CueController each frame: the body sits behind the cue ball on the aim line, looking down it.
@@ -364,11 +417,27 @@ func pin_to_cue(ball_pos: Vector3, yaw: float) -> void:
 	head.rotation.x = _cue_pitch
 
 
+## The shot is away: the player stays by it. A refusal the host already gave inside fire() walks them back instead.
 func _on_fired(_intent: ShotIntent) -> void:
-	exit_cue()
+	if _refused_inline:
+		_refused_inline = false
+		exit_cue()
+		return
+	_verdict_pending = true
+	exit_cue(false)
+
+
+## Refused inline (host: fire() has not reached `fired` yet) or later over the wire: back to the spot before aiming.
+func _on_shot_rejected(_reason: StringName) -> void:
+	if mode == Mode.CUE and not cue.active:
+		_refused_inline = true
+	elif _verdict_pending:
+		_verdict_pending = false
+		_restore_spot()
 
 
 func _on_shooter_changed(peer_id: int) -> void:
+	_verdict_pending = false
 	if peer_id != multiplayer.get_unique_id():
 		_clock_end_msec = 0
 	if peer_id != multiplayer.get_unique_id():
@@ -422,6 +491,7 @@ func knock(impulse: Vector3, seconds: float) -> void:
 		_getup_msec = maxi(_getup_msec, until)
 		return
 	if is_local:
+		_verdict_pending = false
 		exit_cue()
 		if mode == Mode.CARRY:
 			place_camera(true)
