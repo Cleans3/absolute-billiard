@@ -149,13 +149,13 @@ src/
 │                    SaveManager.gd (static) · BallMotion.gd (shared dead-reckoning)
 │                    Settings.gd (static, user://settings.cfg: options + key bindings)
 ├── gameplay/        Table.tscn (contains PhysicsSim.gd) · Ball.tscn · BallEventCodec.gd
-│                    Bar.tscn · Camera.tscn · Prop.tscn
+│                    Bar.tscn · Blackboard.tscn · Camera.tscn · Prop.tscn
 ├── levels/          Lobby.tscn (boot scene) · MainLevel.tscn
 ├── resources/       BallType/ · Drink/ · Effect/ · Event/ · ShopItem/ · net_config.tres
-├── ui/              LobbyUI.tscn · HUD.tscn · TouchControls.tscn · UIRouter + UIModal (modal screens:
+├── ui/              LobbyUI.tscn · HUD.tscn · TouchControls.tscn (+ SpinOverlay · ElevationOverlay) · UIRouter + UIModal (modal screens:
 │                    PhaseScreen · EventVote · BartenderMenu · PauseMenu · SettingsScreen · ControlsScreen ·
 │                    SkinsScreen) · theme/game_theme.tres (the one project Theme, built by tools/build_ui_theme.gd)
-├── shaders/         player_view.gdshader · neon.gdshader
+├── shaders/         player_view.gdshader · neon.gdshader · blackboard.gdshader
 ├── debug/           dev-only overlay (DebugRoot.tscn, HUD/freecam/gizmos/spec panel/shot
 │                    console/timescale/rack presets, src/debug/README.md); NetGraph.tscn ·
 │                    SimDiff.gd (M3 reconstruction check) still to come
