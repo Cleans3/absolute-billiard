@@ -16,6 +16,12 @@ func _check(ok: bool, what: String) -> void:
 		printerr("FAIL: ", what)
 
 
+## The one place that waits for the bar after Solo (flow's threaded load swaps this body for SoloSupport.until_playable(self)).
+func _until_playable() -> void:
+	for i in 8:
+		await process_frame
+
+
 func _run() -> void:
 	SaveManager.root = "user://test_blackboard"
 	DirAccess.make_dir_recursive_absolute(SaveManager.root)
@@ -23,8 +29,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	for i in 8:
-		await process_frame
+	await _until_playable()
 	var level := current_scene
 	var bb: Blackboard = level.get_node("Blackboard")
 	var loop: GameLoop = level.get_node("GameLoop")
