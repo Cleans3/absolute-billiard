@@ -38,9 +38,9 @@ func _frames(n: int) -> void:
 		await process_frame
 
 
-## The one boot wait: swap the body for `await SoloSupport.until_playable(self)` once the threaded level load lands.
+## The one boot wait: MainLevel loads on a thread behind the loading screen.
 func _until_playable() -> void:
-	await _frames(8)
+	await SoloSupport.until_playable(self)
 
 
 func _run() -> void:

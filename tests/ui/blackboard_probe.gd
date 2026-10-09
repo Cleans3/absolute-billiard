@@ -62,6 +62,7 @@ func _run() -> void:
 
 	fx.begin_event(FxCatalog.EVENTS[0])
 	_check(bb._hazard.text == FxCatalog.EVENTS[0].display_name, "a Hazard shows by name: %s" % bb._hazard.text)
+	_check(bb._hazard_icon.visible and bb._hazard_icon.texture == IconCatalog.hazard(FxCatalog.EVENTS[0]), "the Hazard shows its icon")
 	loop.round_started.emit(1, 120.0, 0)  # start counting the Round's Cash
 	econ.add_cash(320, &"shot")
 	econ.add_cash(-50, &"scratch")
@@ -69,6 +70,7 @@ func _run() -> void:
 	loop.round_ended.emit(&"cleared", 140)
 	_check(bb._footer.text.begins_with("LAST ROUND  Table cleared · 140 pts · +$270\n"), "last Round's result: %s" % bb._footer.text)
 	_check(bb._hazard.text == "none" and bb._drinks.text == "DRINKS  none", "the Round ending clears the Hazard and the Drinks: %s / %s" % [bb._hazard.text, bb._drinks.text])
+	_check(not bb._hazard_icon.visible, "the Round ending hides the Hazard icon")
 	var ask := loop.ask_for(loop.night_index)
 	_check(bb._footer.text.ends_with("NEXT NIGHT $%d" % loop.ask_for(loop.night_index + 1)) and ask > 0, "the next Night's ask is on the board: %s" % bb._footer.text)
 	loop.night_started.emit(2, 900)

@@ -28,6 +28,7 @@ var _counting := false  ## Cash since the Round began still counts towards `_las
 @onready var _viewers_label: Label3D = %Viewers
 @onready var _hype_label: Label3D = %Hype
 @onready var _hazard: Label3D = %Hazard
+@onready var _hazard_icon: Sprite3D = %HazardIcon
 @onready var _drinks: Label3D = %Drinks
 @onready var _footer: Label3D = %Footer
 
@@ -108,10 +109,14 @@ func _refresh_header() -> void:
 func _refresh_live() -> void:
 	if effects == null:
 		return
+	var live := effects.live_events()
 	var events: Array[String] = []
-	for e in effects.live_events():
+	for e in live:
 		events.append(e.display_name)
 	_write(_hazard, ", ".join(events) if not events.is_empty() else "none")
+	_hazard_icon.visible = not live.is_empty()
+	if not live.is_empty():
+		_hazard_icon.texture = IconCatalog.hazard(live[0])
 	var drinks := effects.live_drinks()
 	var shown := drinks.slice(0, MAX_DRINK_LINES if drinks.size() <= MAX_DRINK_LINES else MAX_DRINK_LINES - 1)
 	var lines: Array[String] = []
