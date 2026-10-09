@@ -1,5 +1,5 @@
 extends SceneTree
-## Draw-call / GPU cost of the wall mirror (06 P22, 07 §2 gate: draw calls p95 <= 120). Boots the real MainLevel solo
+## Draw-call / GPU cost of the wall mirror (06 P26, 07 §2 gate: draw calls p95 <= 120). Boots the real MainLevel solo
 ## with five humanoids (the local player, the Bartender, three more), a live Round, then samples `FRAMES` frames in each
 ## view and prints one row per view. Needs a window (headless has no renderer).
 ##   godot --path . -s src/tools/perf_mirror.gd [-- --scale=0.85]

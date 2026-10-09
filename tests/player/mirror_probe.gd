@@ -1,5 +1,5 @@
 extends SceneTree
-## The wall mirror (C14, 06 P22), the parts that need no renderer: placement, the render layers (shell, table, avatars
+## The wall mirror (C14, 06 P26), the parts that need no renderer: placement, the render layers (shell, table, avatars
 ## and the local head in; balls out), the reflected camera's geometry (the glass maps onto the whole viewport, the eye
 ## sits behind the wall), the gates (range, side) and the rate (20 Hz, 10 Hz on tier 2).
 ##   godot --path . --headless -s tests/player/mirror_probe.gd

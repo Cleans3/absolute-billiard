@@ -1,7 +1,7 @@
 class_name Bartender
 extends Node3D
 ## The NPC behind the counter (06 P17 — the menu itself is the counter props'). The `Humanoid` body in its barkeep
-## quirk (06 P21); idle life: breathing (Humanoid), the head follows the nearest player within LOOK_RANGE_M, and every
+## quirk (06 P24); idle life: breathing (Humanoid), the head follows the nearest player within LOOK_RANGE_M, and every
 ## few seconds the right hand wipes the counter. He also talks unprompted (`BartenderChat`): a speech bubble, gibberish
 ## blips and an arm gesture per line. Faces -Z like every Humanoid: place him with his back to the wall.
 

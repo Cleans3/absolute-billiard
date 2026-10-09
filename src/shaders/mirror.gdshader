@@ -1,6 +1,6 @@
 shader_type spatial;
 render_mode unshaded, cull_back;
-// The wall mirror's glass (06 P22): the SubViewport that looks through the glass from the far side of the wall.
+// The wall mirror's glass (06 P26): the SubViewport that looks through the glass from the far side of the wall.
 // Its image runs right-to-left as seen from the room, hence the flipped U.
 
 uniform sampler2D view : source_color, filter_linear, repeat_disable;

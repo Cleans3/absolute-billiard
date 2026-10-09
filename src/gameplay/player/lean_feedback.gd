@@ -1,6 +1,6 @@
 class_name LeanFeedback
 extends Node3D
-## Makes "Lean on the rail" visible (03 §3.7, 06 P20). Every peer hears `interaction_applied`: the presser's body leans
+## Makes "Lean on the rail" visible (03 §3.7, 06 P25). Every peer hears `interaction_applied`: the presser's body leans
 ## for LEAN_SEC and a toast names who leaned on which rail and what it does. A marker lies on each rail whose cushion is
 ## dead right now, derived from the live Effect state — so a client that resumed rebuilds it — and it goes with the Effect
 ## when the Shot resolves.

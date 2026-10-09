@@ -1,5 +1,5 @@
 extends SceneTree
-## The quirky talking Bartender (C4, 06 P21): line pools, no back-to-back repeats, the special names a Drink that is
+## The quirky talking Bartender (C4, 06 P24): line pools, no back-to-back repeats, the special names a Drink that is
 ## really on the shelf, ambient lines on a timer, reactions to a scratch / trick / pot / miss / foul, the bubble, the
 ## voice blips and the gesture. Runs through the real MainLevel (solo).
 ##   godot --path . --headless -s tests/player/bartender_probe.gd

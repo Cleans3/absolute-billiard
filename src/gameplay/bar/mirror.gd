@@ -1,6 +1,6 @@
 class_name Mirror
 extends Node3D
-## The big wall mirror (C14, 06 P22). A planar reflection on a phone budget: a SubViewport camera sits where the viewer's
+## The big wall mirror (C14, 06 P26). A planar reflection on a phone budget: a SubViewport camera sits where the viewer's
 ## eye would be behind the glass and looks through the glass rectangle (a frustum camera whose near plane IS the glass, so
 ## nothing behind the wall plane is drawn and no oblique-clip maths is needed). It draws only render layer 10 (room shell,
 ## table, avatars; balls and props are left out) plus the local head's layer, at 576x384, at most 20 Hz (10 on quality

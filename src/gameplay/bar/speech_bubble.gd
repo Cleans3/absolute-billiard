@@ -1,6 +1,6 @@
 class_name SpeechBubble
 extends Node3D
-## A speech bubble over a head (C4, 06 P21): billboarded text on a rounded backing with a tail, popping in and fading out.
+## A speech bubble over a head (C4, 06 P24): billboarded text on a rounded backing with a tail, popping in and fading out.
 ## The node origin is the tip of the tail; the bubble grows upward from it. One Label3D and one quad while a line is up,
 ## nothing drawn otherwise.
 

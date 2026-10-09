@@ -1,6 +1,6 @@
 class_name BartenderLines
 extends RefCounted
-## What the Bartender says (06 P21, 03 §3.7). Cosmetic: each peer picks its own ambient lines; reactions are seeded
+## What the Bartender says (06 P24, 03 §3.7). Cosmetic: each peer picks its own ambient lines; reactions are seeded
 ## by the shot so the whole room hears the same remark. Tokens: {who} the shooter ("you" for the local one), {drink} a
 ## Drink actually on the shelf, {cash} and {quota} the current purse and ask. Negative pools are cutting but indirect:
 ## sarcasm, backhanded compliments, never a plain insult. Keep a line under ~85 characters: the bubble holds three rows.

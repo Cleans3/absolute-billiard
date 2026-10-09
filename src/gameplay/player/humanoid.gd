@@ -60,7 +60,7 @@ const THIGH := 0.43
 const SHIN := 0.42
 const ANKLE := 0.08
 
-static var _material: StandardMaterial3D  ## every Humanoid shares it: colours live in the vertices
+static var _material: ShaderMaterial  ## every Humanoid shares it: colours live in the vertices (humanoid.gdshader)
 
 var stance := Stance.STAND
 var pelvis_at_getup := Vector3.ZERO
@@ -83,7 +83,7 @@ var _vel := Vector3.ZERO
 var _last_pos := Vector3.ZERO
 var _look := Vector2.ZERO       ## yaw, pitch of the head (radians, relative to the body)
 var _hand: Array = [null, null]  ## right, left: Vector3 target in this node's space, or null
-var _lean_left := 0.0           ## seconds of rail lean to go (transient, never on the wire: 06 P20)
+var _lean_left := 0.0           ## seconds of rail lean to go (transient, never on the wire: 06 P25)
 var _lean_to := Vector3.ZERO    ## where the hands rest, this node's space
 var _rot: Array[Quaternion] = []
 var _pelvis_pos := ORIGIN[0]
@@ -500,14 +500,10 @@ func _hinge(pb: PhysicalBone3D, at: Vector3, lower: float, upper: float) -> void
 
 # --- mesh --------------------------------------------------------------------------------------------
 
-static func _shared_material() -> StandardMaterial3D:
+static func _shared_material() -> ShaderMaterial:
 	if _material == null:
-		_material = StandardMaterial3D.new()
-		_material.vertex_color_use_as_albedo = true
-		_material.vertex_color_is_srgb = true  # the skins' colours are the hex values people pick
-		_material.albedo_color = Color(0.5, 0.5, 0.5)  # the bar's key lights are tuned for dark wood; bright cloth clips under them
-		_material.metallic_specular = 0.2
-		_material.roughness = 0.85
+		_material = ShaderMaterial.new()
+		_material.shader = preload("res://src/shaders/humanoid.gdshader")
 	return _material
 
 
@@ -574,7 +570,7 @@ func _paint_head(head: SurfaceTool, skin: CharacterSkin) -> void:
 				_cyl(head, B.HEAD, GOLD, Vector3(sin(a) * 0.095, 1.73, cos(a) * 0.095), 0.07, Vector2(0.026, 0.026), Vector2(0.0, 0.0), 4)
 
 
-## The Bartender's look (06 P21): an oversized head with bulging eyes, a red nose, a handlebar mustache and a very tall
+## The Bartender's look (06 P24): an oversized head with bulging eyes, a red nose, a handlebar mustache and a very tall
 ## striped hat, a bow tie and gold sleeve garters. The same bones as everyone; only the surfaces differ.
 func _paint_barkeep(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 	var flesh := skin.skin_color

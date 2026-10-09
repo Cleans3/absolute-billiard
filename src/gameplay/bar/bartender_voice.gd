@@ -1,6 +1,6 @@
 class_name BartenderVoice
 extends AudioStreamPlayer3D
-## The Bartender's gibberish (C4, 06 P21): a blip per syllable of the line, pitched from its letters, a longer breath at
+## The Bartender's gibberish (C4, 06 P24): a blip per syllable of the line, pitched from its letters, a longer breath at
 ## punctuation, a lift at a question mark. The blips are six little buzzy tones rendered once in code; no audio files.
 ## Plays on the Master bus, so the Settings volume applies.
 

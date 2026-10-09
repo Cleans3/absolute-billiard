@@ -1,6 +1,6 @@
 class_name BartenderChat
 extends Node
-## Director of the Bartender's unprompted talk (C4, 06 P21). Ambient lines on a timer, weighted by the phase and the
+## Director of the Bartender's unprompted talk (C4, 06 P24). Ambient lines on a timer, weighted by the phase and the
 ## purse; reactions to the play (scratch, foul, miss, pot, trick shot) a beat after the shot settles. Lines come from
 ## `BartenderLines` through a shuffle bag per pool, so nothing repeats until a pool is used up and never back to back.
 ## Everything here is cosmetic and local: each peer runs its own director; reactions are seeded by the shot so most

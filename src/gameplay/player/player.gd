@@ -22,6 +22,10 @@ const KNOCK_SEC := 2.0
 const TAG_Y := 2.05                  # name tag height, above a top hat
 const HARD_LAND_MPS := 7.0           # [tune] fall speed that knocks you over on landing
 const LIMP_GRACE_MSEC := 3000        # a puppet waits this long past its timer for the owner to stand
+const EYE_AHEAD_M := 0.12            # eye pivot ahead of the trunk's axis, standing
+const EYE_LEAN_M := 0.16             # ... and this much further when looking steeply down (stays inside the capsule, r 0.3)
+const EYE_DROP_M := 0.05             # ... a little lower too
+const EYE_LEAN_DEG := Vector2(50.0, 89.0)  # look-down angles where the head starts to come forward / is fully forward
 const SNAP_STEP_M := 0.1             # post-shot spot search: backing away along the shot line, then rings around it
 const SNAP_MAX_M := 3.0
 const SNAP_LIFT_M := 0.06            # the query capsule floats clear of the floor box
@@ -180,6 +184,7 @@ func look(yaw_rad: float, pitch_rad: float) -> void:
 func _process(delta: float) -> void:
 	if is_local:
 		humanoid.set_look(0.0, head.rotation.x)
+		_lean_eye()
 		if mode == Mode.RAGDOLL:
 			cam.global_transform = cam.global_transform.interpolate_with(humanoid.eye_transform(), 1.0 - exp(-25.0 * delta))
 			if Time.get_ticks_msec() >= _getup_msec:
@@ -194,6 +199,14 @@ func _process(delta: float) -> void:
 				look(-d.x * k, -d.y * k)
 	else:
 		_puppet_step()
+
+
+## Looking down the head comes forward over the chest (first-person body, C17): at the eye the trunk's top is 10 cm below
+## the camera, so a pivot on the trunk's axis would fill the view with the shoulder line; ahead of the chest the view
+## clears it and shows the chest sloping away, both arms hanging and the legs and shoes beyond.
+func _lean_eye() -> void:
+	var s := smoothstep(EYE_LEAN_DEG.x, EYE_LEAN_DEG.y, rad_to_deg(-head.rotation.x))
+	head.position = Vector3(0.0, EYE_M - EYE_DROP_M * s, -(EYE_AHEAD_M + EYE_LEAN_M * s))
 
 
 func _physics_process(delta: float) -> void:
