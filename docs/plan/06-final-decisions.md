@@ -199,3 +199,23 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 # Cleanse's rulings (2026-10-09) — testing on the phone
 
 **P19 — The phone is the testing ground.** Cleanse plays every change on an Android phone, not on the desktop. When a change is finished and ready to test (merged to `main`, probes green), run `src/tools/publish_apk.sh` in the same session: it builds the debug APK and replaces the download on the relay box's share page. Then hand Cleanse the link `http://160.191.243.188:8892/`. A change that isn't on that page hasn't reached testing yet. Desktop runs and probes are for development only. iOS stays out of scope until there is a Mac.
+
+# Cleanse's rulings (2026-10-10) — polish pass 2, from the first phone test (override P3's Intermission screen, P12's top stat bar, 08 §2.4 "arms hidden in first person")
+
+**P20 — GO LIVE starts the Round from the room.** Intermission has no modal: players stay free in the bar. A GO LIVE pedestal next to the table starts the next Round. Solo: one press. Online: every connected player presses it (a ready toggle). Players whose app is backgrounded don't count toward that, and a disconnect drops out of the count. The pedestal shows who is ready and who isn't. Reckoning, Campaign won and Game over keep their screens.
+
+**P21 — Lean HUD plus a wall blackboard.** On screen: Cash against Quota with a fill bar, and the Round clock with shots left, as two separate groups. Everything else goes on a chalk blackboard on the bar wall: Night, Round i/n, viewers and hype, the active hazard and drink effects, the last Round's result, and the next Night's ask.
+
+**P22 — Waits explain themselves.** Every wait message says what it is waiting for and shows a countdown, the elapsed time, or a count. Pressing Start shows a loading screen, and it stays up until the local player has spawned (online it shows "Waiting for players N/M"). A hosted lobby can be cancelled while it connects and left once it is open. A client whose host leaves goes back to the menu with a notice.
+
+**P23 — Icons for everything you buy or face.** Every Drink shows a glass that suits it (shot, pint, cocktail, wine, mug, highball, tiki, flask…), with colour and decor that change per drink. Upgrades and hazards get icons too. Skin options show names only: no colour swatches, to keep the mystery. Bar skins get a pre-rendered turntable preview.
+
+**P24 — Quirky bartender.** The bartender keeps the procedural body but exaggerated: mustache, tall hat, bowtie, odd proportions, big gestures. He talks on his own in speech bubbles with gibberish voice blips. His lines are pep talks, a special of the day (a drink that is really on the shelf), sales pitches, and reactions to play. The negative reactions cut deep, but never directly.
+
+**P25 — Lean on rail stays and becomes visible.** The effect is unchanged (one cushion ×0.85 for the next shot, 03 §3). The presser leans for 2 s, the rail is marked until the shot resolves, and everyone gets a toast naming who leaned on which rail.
+
+**P26 — Body and mirror.** In first person the player sees their own torso and arms. Only the head and hat are hidden: the Humanoid upper mesh is split into head and arms, at +1 draw call per avatar. A large real-time mirror on the west wall shows everyone, your own head included. It is a reflected camera with a cull mask, a capped resolution and a capped rate, and it renders only when it is in view. The 120 draw-call gate still holds with the mirror in view.
+
+**P27 — Stay where you shot.** After firing, the player keeps the spot they shot from, snapped to free floor. Backing out of aiming still returns them to where they stood before.
+
+**P28 — A richer bar from CC0 packs.** Stylized low-poly CC0 props (Kenney / Quaternius style) and generated poster art. Licenses are kept beside the assets under `assets/third_party/`. The decor is baked into the lightmap and atlased. The spin and elevation controls open enlarged pickers on tap. The table's inner-edge glare is removed.
