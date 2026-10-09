@@ -38,6 +38,11 @@ func _frames(n: int) -> void:
 		await process_frame
 
 
+## The one boot wait: swap the body for `await SoloSupport.until_playable(self)` once the threaded level load lands.
+func _until_playable() -> void:
+	await _frames(8)
+
+
 func _run() -> void:
 	await process_frame
 	net = root.get_node("NetManager")
@@ -48,7 +53,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _frames(8)
+	await _until_playable()
 	level = current_scene
 	menu = level.get_node("UILayer/BartenderMenu")
 	econ = level.get_node("EconomyManager")
