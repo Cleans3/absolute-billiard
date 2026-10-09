@@ -37,7 +37,7 @@ const ITEMS: Array = [
 	[&"lamp_nw", &"furniture", "lampSquareFloor", Vector3(-6.8, 0.0, -6.7), 0.0, &"floor"],
 	[&"rug_ne", &"furniture", "rugRectangle", Vector3(5.6, 0.004, -5.6), 0.0, &"flat", 0.6],
 	[&"rug_nw", &"furniture", "rugRound", Vector3(-5.7, 0.004, -5.55), 0.0, &"flat", 0.7],
-	[&"plant_e", &"furniture", "pottedPlant", Vector3(6.7, 0.0, -5.5), 0.0, &"floor"],
+	[&"plant_e", &"furniture", "pottedPlant", Vector3(6.7, 0.0, -5.8), 0.0, &"floor"],
 	# south wall: TV wall with speakers, shelving, a bar fridge
 	[&"speaker_l", &"furniture", "speaker", Vector3(-1.9, 0.0, 6.78), AGAINST_SOUTH, &"floor"],
 	[&"speaker_r", &"furniture", "speaker", Vector3(1.9, 0.0, 6.78), AGAINST_SOUTH, &"floor"],
@@ -51,9 +51,9 @@ const ITEMS: Array = [
 	[&"sidetable", &"furniture", "sideTable", Vector3(-6.7, 0.0, 0.95), AGAINST_WEST, &"floor"],
 	[&"radio", &"furniture", "radio", Vector3(-6.7, 0.76, 0.95), AGAINST_WEST, &"top"],
 	# east wall, north of the counter aisle
-	[&"barrel_a", &"survival", "barrel", Vector3(6.55, 0.0, -1.55), 0.0, &"floor"],
-	[&"barrel_b", &"survival", "barrel", Vector3(6.6, 0.0, -0.95), 0.0, &"floor"],
-	[&"crate", &"survival", "box-large", Vector3(5.95, 0.0, -1.35), 0.0, &"floor"],
+	[&"barrel_a", &"survival", "barrel", Vector3(6.55, 0.0, -1.1), 0.0, &"floor"],
+	[&"barrel_b", &"survival", "barrel", Vector3(6.6, 0.0, -0.5), 0.0, &"floor"],
+	[&"crate", &"survival", "box-large", Vector3(5.9, 0.0, -0.95), 0.0, &"floor"],
 	# ceiling fans over the open bar floor
 	[&"fan_a", &"furniture", "ceilingFan", Vector3(-2.0, CEIL, 3.0), 0.0, &"hang"],
 	[&"fan_b", &"furniture", "ceilingFan", Vector3(2.0, CEIL, 3.0), 0.0, &"hang"],
@@ -100,7 +100,7 @@ static func floor_keep_clear() -> Array[Rect2]:
 	r.append(_rect(4.6, 0.3, 7.0, 4.7))            # counter, aisle, back bar
 	r.append(_rect(3.9, 0.6, 4.7, 4.4))            # counter stools
 	r.append(_rect(6.0, 5.0, 7.0, 6.5))            # jukebox
-	r.append(_rect(5.5, -5.0, 7.0, -2.0))          # in front of the blackboard (east wall, z -4.7..-2.3 + 0.3)
+	r.append(_rect(5.5, -5.4, 7.0, -1.6))          # in front of the blackboard (east wall, 3.2 w x 1.75 h at z -3.5: z -5.1..-1.9 + 0.3)
 	r.append(_rect(-7.0, -5.9, -5.2, -1.7))        # in front of the mirror (west wall, z -5.6..-2.0 + 0.3)
 	for t: Vector2 in [Vector2(-5.2, 2.6), Vector2(-5.2, 4.4), Vector2(-2.8, 5.6)]:
 		r.append(_rect(t.x - 1.0, t.y - 1.0, t.x + 1.0, t.y + 1.0))  # table + its two stools
@@ -116,7 +116,7 @@ static func wall_keep_clear() -> Dictionary:
 		&"S": [Rect2(-1.6, 1.25, 3.2, 1.7)],                # TV
 		&"N": [Rect2(-1.2, 0.0, 2.4, 2.6),                  # door + frame
 				Rect2(-4.3, 2.6, 2.6, 0.5), Rect2(2.1, 2.5, 1.8, 0.7)],  # neon signs
-		&"E": [Rect2(-5.0, 0.8, 3.0, 2.3), Rect2(0.3, 0.0, 4.4, 3.6)],   # blackboard (+0.3) ; counter + back bar panel
+		&"E": [Rect2(-5.4, 0.77, 3.8, 2.36), Rect2(0.3, 0.0, 4.4, 3.6)],   # blackboard y 1.07..2.83 (+0.3) ; counter + back bar panel
 		&"W": [Rect2(-5.9, 0.2, 4.2, 2.4),                  # mirror (+0.3)
 				Rect2(0.3, 1.8, 2.4, 0.8), Rect2(5.5, 1.1, 0.7, 0.6)],  # neon bars, fuse box
 	}
