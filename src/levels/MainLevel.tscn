@@ -116,10 +116,9 @@ spawner = NodePath("../PlayerSpawner")
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 
-[node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy", "stream") instance=ExtResource("10_hud")]
+[node name="HUD" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy") instance=ExtResource("10_hud")]
 game_loop = NodePath("../../GameLoop")
 economy = NodePath("../../EconomyManager")
-stream = NodePath("../../StreamManager")
 
 [node name="UIRouter" type="Control" parent="UILayer" node_paths=PackedStringArray("game_loop")]
 layout_mode = 3

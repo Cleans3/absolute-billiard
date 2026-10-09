@@ -1,49 +1,34 @@
 extends Control
-## HUD (docs/plan/02 §3.1): one stat bar at the top, one payout line at the bottom. Signals only (07 §5): the clock
-## label is rewritten once a second, everything else when its own signal fires. Reads the same mirrored state on every
-## peer. The phase screens live in PhaseScreen, notices in UIRouter's single toast line; the seed is on the F1 debug panel.
-## The whole HUD hides while a modal is open.
-## Fixed regions (docs 08 §2.8): stat bar x[140, W-140] y[8, 64]; payout x[240, W-240] y[576, 636].
+## HUD (docs/plan/02 §3.1, 08 §2.8): two groups at the top, one payout line at the bottom. Cash vs Quota with a fill bar on the
+## left, the Round clock and shots left on the right; Night, Round, viewers, hype and the effects live on the Blackboard.
+## Signals only (07 §5): the clock label is rewritten once a second, everything else when its own signal fires. Reads the
+## same mirrored state on every peer. The phase screens live in PhaseScreen, notices in UIRouter's single toast line; the
+## seed is on the F1 debug panel. The whole HUD hides while a modal is open.
+## Fixed regions (docs 08 §2.8): money x[140, W-140] y[8, 64] from the left; clock x[140, W-140] y[8, 64] from the right;
+## fps x[140, 300] y[68, 96]; payout x[240, W-240] y[576, 636].
 
 const FEED_SECS := 4.0
-const ICONS := "res://assets/ui/icon_%s.svg"
+const LOW_SECS := 10  ## the clock turns red at this many seconds left
+const LOW_SHOTS := 1  ## and the shot count at this many
 
 @export var game_loop: GameLoop
 @export var economy: EconomyManager
-@export var stream: StreamManager
 
-var _night_number := 1
 var _demand := 0
 var _tween: Tween  # the payout line's fade
 var _shown_secs := -1
 
-var _night: Label
-var _round: Label
-var _time: Label
-var _shots: Label
-var _cash: Label
-var _quota: Label
-var _viewers: Label
-var _hype: Label
-var _fps: Label
-
-@onready var _stats: HBoxContainer = %Stats
+@onready var _cash: Label = %Cash
+@onready var _quota: Label = %Quota
+@onready var _quota_bar: FillBar = %QuotaBar
+@onready var _time: Label = %Time
+@onready var _shots: Label = %Shots
+@onready var _fps: Label = %Fps
 @onready var _payout: Label = %Payout
 
 
 func _ready() -> void:
 	add_to_group(Settings.GROUP)
-	_night = _chip("night", "Night 1")
-	_round = _chip("round", "Round 0/3")
-	_time = _chip("clock", "0:00")
-	_shots = _chip("shots", "Shots 0")
-	_cash = _chip("cash", "$0")
-	_quota = _chip("quota", "$0")
-	_viewers = _chip("viewers", "0")
-	_hype = _chip("hype", "0%")
-	_fps = Label.new()
-	_fps.theme_type_variation = &"HudLabel"
-	_stats.add_child(_fps)
 	if game_loop != null:
 		game_loop.night_started.connect(_on_night_started)
 		game_loop.round_started.connect(_on_round_started)
@@ -56,8 +41,6 @@ func _ready() -> void:
 		economy.purchase_rejected.connect(_on_purchase_rejected)
 		if economy.has_signal(&"fined"):  # contract §2: EconomyManager.fined(reason, amount), every peer
 			economy.connect(&"fined", _on_fined)
-	if stream != null:
-		stream.viewers_changed.connect(_on_viewers_changed)
 	_on_settings_changed()
 	_bind_router.call_deferred()
 	_refresh_round()
@@ -82,28 +65,6 @@ func _on_settings_changed() -> void:
 	_fps.visible = bool(Settings.value(&"show_fps"))
 
 
-## icon + label; returns the label.
-func _chip(icon: String, text: String) -> Label:
-	var box := HBoxContainer.new()
-	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.theme_type_variation = &"ChipBox"
-	var tex := TextureRect.new()
-	tex.texture = load(ICONS % icon)
-	tex.custom_minimum_size = Vector2(30, 30)
-	tex.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	tex.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	tex.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	tex.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(tex)
-	var label := Label.new()
-	label.text = text
-	label.theme_type_variation = &"HudLabel"
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	box.add_child(label)
-	_stats.add_child(box)
-	return label
-
-
 func _refresh_time() -> void:
 	if game_loop == null:
 		return
@@ -111,25 +72,27 @@ func _refresh_time() -> void:
 	if secs != _shown_secs:
 		_shown_secs = secs
 		_time.text = "%d:%02d" % [floori(secs / 60.0), secs % 60]
+		_warn(_time, secs <= LOW_SECS)
 
 
 func _refresh_round() -> void:
-	_night.text = "Night %d" % _night_number
 	if game_loop != null:
 		_shots.text = "Shots %d" % game_loop.shots_left
-		_round.text = "Round %d/%d" % [game_loop.round_index, game_loop.current_night().rounds_count if not game_loop.nights.is_empty() else 0]
+		_warn(_shots, game_loop.shots_left <= LOW_SHOTS)
+		_warn(_time, ceili(game_loop.time_left) <= LOW_SECS)  # the phase may have changed under an unchanged number
+
+
+## Red only while a Round is live: between Rounds the numbers are stale, not urgent.
+func _warn(label: Label, low: bool) -> void:
+	label.theme_type_variation = &"HudDanger" if low and game_loop.phase == GameLoop.Phase.ROUND_LIVE else &"HudLabel"
 
 
 func _refresh_cash() -> void:
 	var cash := economy.cash if economy != null else 0
 	_cash.text = "-$%d" % -cash if cash < 0 else "$%d" % cash
 	_cash.theme_type_variation = &"HudDanger" if cash < 0 else &"HudLabel"
-	_quota.text = "$%d" % _demand
-
-
-func _on_viewers_changed(viewers: int, hype: float) -> void:
-	_viewers.text = str(viewers)
-	_hype.text = "%d%%" % roundi(hype * 100.0)
+	_quota.text = "/ $%d" % _demand
+	_quota_bar.value = float(cash) / float(_demand) if _demand > 0 else 0.0
 
 
 func _on_item_purchased(item_id: StringName, _buyer_peer_id: int) -> void:
@@ -145,8 +108,7 @@ func _on_fined(_reason: StringName, amount: int) -> void:
 	_toast("Scratch! -$%d" % amount, &"bad")
 
 
-func _on_night_started(night_number: int, quota: int) -> void:
-	_night_number = night_number
+func _on_night_started(_night_number: int, quota: int) -> void:
 	_demand = quota
 	_refresh_round()
 	_refresh_cash()
