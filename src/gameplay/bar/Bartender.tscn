@@ -1,8 +1,11 @@
-[gd_scene load_steps=5 format=3]
+[gd_scene load_steps=8 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/bar/bartender.gd" id="rag_script"]
 [ext_resource type="Script" path="res://src/gameplay/player/humanoid.gd" id="rag_humanoid"]
 [ext_resource type="Resource" path="res://src/resources/skins/characters/bartender.tres" id="rag_skin"]
+[ext_resource type="Script" path="res://src/gameplay/bar/bartender_chat.gd" id="chat_script"]
+[ext_resource type="Script" path="res://src/gameplay/bar/speech_bubble.gd" id="bubble_script"]
+[ext_resource type="Script" path="res://src/gameplay/bar/bartender_voice.gd" id="voice_script"]
 
 [sub_resource type="CapsuleShape3D" id="rag_capsule"]
 radius = 0.28
@@ -22,3 +25,14 @@ collision_mask = 0
 [node name="Shape" type="CollisionShape3D" parent="Body"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.875, 0)
 shape = SubResource("rag_capsule")
+
+[node name="Chat" type="Node" parent="."]
+script = ExtResource("chat_script")
+
+[node name="Bubble" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.3, 0)
+script = ExtResource("bubble_script")
+
+[node name="Voice" type="AudioStreamPlayer3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.7, 0)
+script = ExtResource("voice_script")

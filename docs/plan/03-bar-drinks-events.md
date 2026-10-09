@@ -191,6 +191,8 @@ The two opportunity Events carry `reward_mult 1.0` on purpose: the crew trades a
 | `heckle` | crowd | yes | hype `-0.08` | hype `+0.20`, viewers `+40` on `shot_missed` | `shot_clock_sec ADD 8` on the shooter (`-2`) | 25 s |
 | `chalk_the_cue` | table | no | cash `-$10` | — | `cue_spin_radius_mult MUL 1.10` on the shooter's next shot (`-2`) | 20 s |
 
+**Lean feedback (06 P25, C13).** `LeanFeedback` (a `MainLevel` child, `src/gameplay/player/lean_feedback.gd`) listens to `WorldInteractions.interaction_applied`, which every peer gets: for `lean_on_rail` it starts a `2 s` lean on the presser's `Humanoid` (local and puppet; 08 §2.7) toward the middle of that rail's wood and shows a toast on every peer naming who, which rail (`west rail`, `north-west rail`, …, the long rails being two segments split by the side pockets) and the strength read from the Effect (`"<name> leaned on the west rail: cushion 15% dead"`). A glowing marker lies along each rail whose `EffectManager.rail_restitution_mult` is not 1, recomputed on `effect_applied` / `effect_expired` — derived from the live Effect state, not from the press, so a client that resumed (`_resync_effects_rpc` → `apply_local`) rebuilds it, and it goes with the Effect when the Shot resolves (`SHOT` expiry). No RPC is added. `tests/player/lean_probe.gd`.
+
 Nine entries, three of them pro-social, so the bar is not only a heckling machine. Every hostile row is `exclusive_group`-tagged and counts against the per-Turn cap of 2 (§3.4).
 
 ### 3.8 Mobile budget (P1)

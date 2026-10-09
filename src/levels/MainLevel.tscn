@@ -29,6 +29,8 @@
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Bartender.tscn" id="rag_bartender"]
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Blackboard.tscn" id="hud_blackboard"]
 [ext_resource type="Script" path="res://src/gameplay/bar_room/bar_skin_director.gd" id="skins_director"]
+[ext_resource type="Script" path="res://src/gameplay/player/lean_feedback.gd" id="lean_fb"]
+[ext_resource type="PackedScene" path="res://src/gameplay/bar/Mirror.tscn" id="mirror_scene"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -95,6 +97,18 @@ stream = NodePath("../StreamManager")
 economy = NodePath("../EconomyManager")
 game_loop = NodePath("../GameLoop")
 round_director = NodePath("../RoundDirector")
+table = NodePath("../Table")
+
+[node name="LeanFeedback" type="Node3D" parent="." node_paths=PackedStringArray("world", "effects", "table", "spawner")]
+script = ExtResource("lean_fb")
+world = NodePath("../WorldInteractions")
+effects = NodePath("../EffectManager")
+table = NodePath("../Table")
+spawner = NodePath("../PlayerSpawner")
+
+[node name="Mirror" parent="." node_paths=PackedStringArray("shell", "table") instance=ExtResource("mirror_scene")]
+transform = Transform3D(0, 0, 1, 0, 1, 0, -1, 0, 0, -6.9, 1.4, -3.8)
+shell = NodePath("../BarRoom")
 table = NodePath("../Table")
 
 [node name="QualityManager" type="Node" parent="." node_paths=PackedStringArray("sim")]

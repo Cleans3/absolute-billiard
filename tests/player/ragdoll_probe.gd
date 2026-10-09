@@ -144,6 +144,12 @@ func _humanoid() -> void:
 
 # --- the player ----------------------------------------------------------------------------------------
 
+## The one place a probe waits for the level to be playable after pressing Solo: MainLevel loads on a thread
+## behind the loading screen.
+func _until_playable() -> void:
+	await SoloSupport.until_playable(self)
+
+
 func _player() -> void:
 	SaveManager.root = "user://test_ragdoll"
 	DirAccess.make_dir_recursive_absolute(SaveManager.root)
@@ -151,7 +157,7 @@ func _player() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await SoloSupport.until_playable(self)
+	await _until_playable()
 	var level := current_scene
 	var rd: RoundDirector = level.get_node("RoundDirector")
 	var spawner := level.get_node("PlayerSpawner")  # untyped: a -s probe compiles before the NetManager autoload exists
@@ -165,25 +171,58 @@ func _player() -> void:
 		await process_frame
 	await _wait(2.0)
 	_check(player.humanoid != null and not player.is_ragdoll(), "the local player wears a Humanoid")
-	_check(hum._upper_mi.layers == Humanoid.HEAD_LAYER and (player.cam.cull_mask & Humanoid.HEAD_LAYER) == 0, "first person: head on its own layer, hidden from the camera")
-	# no arm vertex may sit on a surface the local camera renders; legs must (they stay visible looking down)
+	_check(hum._head_mi.layers == Humanoid.HEAD_LAYER and (player.cam.cull_mask & Humanoid.HEAD_LAYER) == 0, "first person: head on its own layer, hidden from the camera")
+	# C17: the local camera renders torso, arms and legs, never the head; the head still casts its shadow
 	var arm_bones := [Humanoid.B.UARM_R, Humanoid.B.LARM_R, Humanoid.B.UARM_L, Humanoid.B.LARM_L]
 	var leg_bones := [Humanoid.B.THIGH_R, Humanoid.B.SHIN_R, Humanoid.B.THIGH_L, Humanoid.B.SHIN_L]
 	var arm_seen := false
-	var arm_shadow_only := false
 	var legs_seen := false
-	for mi: MeshInstance3D in [hum._body_mi, hum._upper_mi]:
+	var head_seen := false
+	var head_shadow := false
+	var lid_seen := false
+	for mi: MeshInstance3D in [hum._body_mi, hum._head_mi]:
 		var shown := (mi.layers & player.cam.cull_mask) != 0 and mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
 		var casts := mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (mi.layers & 0xFFFFF) != 0
-		for b: int in (mi.mesh as ArrayMesh).surface_get_arrays(0)[Mesh.ARRAY_BONES]:
+		var arrays := (mi.mesh as ArrayMesh).surface_get_arrays(0)
+		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
+		var verts: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
+		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
+		for v in verts.size():
+			var b := bones[v * 4]
 			if b in arm_bones:
 				arm_seen = arm_seen or shown
-				arm_shadow_only = arm_shadow_only or casts
 			elif b in leg_bones:
 				legs_seen = legs_seen or shown
-	_check(not arm_seen, "no arm surface is visible to the local camera's cull mask")
-	_check(arm_shadow_only, "...but the arms still cast shadows")
+			elif b == Humanoid.B.HEAD:
+				head_seen = head_seen or shown
+				head_shadow = head_shadow or casts
+			elif b == Humanoid.B.TORSO and verts[v].y > 1.49 and normals[v].y > 0.9:
+				lid_seen = lid_seen or shown
+	_check(arm_seen, "arms are visible to the local camera's cull mask (C17)")
 	_check(legs_seen, "legs and feet stay visible to the local camera")
+	_check(lid_seen, "the trunk is closed at the top by a lid the local camera renders (no looking inside)")
+	_check(not head_seen and head_shadow, "the head and hat are hidden from the local camera but still cast shadows")
+	# C17 look-down: at no pitch is the trunk's lid in view (it filled the screen as one flat plane); steeply down the
+	# chest front and both hands are, and the eye never leaves the capsule
+	var lid: Array[Vector3] = []
+	for x: float in [-0.2, 0.0, 0.2]:
+		for z: float in [-0.11, 0.0, 0.11]:
+			lid.append(hum.to_global(Vector3(x, 1.5, z)))
+	var keep_pitch := player.head.rotation.x
+	for deg: int in [0, 30, 50, 60, 70, 80, 89]:
+		player.head.rotation.x = deg_to_rad(-deg)
+		player._lean_eye()
+		var seen := 0
+		for pt in lid:
+			seen += 1 if player.cam.is_position_in_frustum(pt) else 0
+		_check(seen == 0, "pitch -%d: the trunk lid is out of the view (%d of %d points in)" % [deg, seen, lid.size()])
+		_check(Vector2(player.cam.position.x + player.head.position.x, player.cam.position.z + player.head.position.z).length() <= 0.3, "pitch -%d: the eye stays inside the capsule" % deg)
+		if deg >= 80:
+			var chest := player.cam.is_position_in_frustum(hum.to_global(Vector3(0.0, 1.2, -0.1)))
+			var hands := player.cam.is_position_in_frustum(hum.to_global(Vector3(0.22, 0.85, -0.1))) and player.cam.is_position_in_frustum(hum.to_global(Vector3(-0.22, 0.85, -0.1)))
+			_check(chest and hands, "pitch -%d: chest front and both hands are in view (chest %s, hands %s)" % [deg, chest, hands])
+	player.head.rotation.x = keep_pitch
+	player._lean_eye()
 	var bartender := level.get_node_or_null("Bar/Bartender") as Bartender
 	_check(bartender != null and absf(bartender.global_position.x - 6.0) < 0.01 and absf(bartender.global_position.z - 2.5) < 0.01, "Bar/Bartender stands at (6, 0, 2.5)")
 	_check(bartender != null and bartender.global_basis.z.is_equal_approx(Vector3.RIGHT), "...facing -X")

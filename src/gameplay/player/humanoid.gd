@@ -1,7 +1,7 @@
 class_name Humanoid
 extends Node3D
 ## Low-poly person built in code (06 P15, 08 §2.7): 11 bones, one vertex-coloured material, two skinned
-## meshes (body: trunk, legs; upper: head, hat, arms) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
+## meshes (body: trunk and its lid, arms, legs; head: head, face, hat, neck) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
 ## CARRY stances, hand targets). `ragdoll()` hands the bones to a PhysicalBoneSimulator3D; its 11 bodies are
 ## on no layer and not simulated until then, and `get_up()` blends back to the pose.
 ## Rests facing -Z with the feet at this node's origin, like the CharacterBody3D it hangs from.
@@ -12,6 +12,7 @@ enum Stance { STAND, CUE, CARRY }  ## same order as Player.Mode
 enum B { PELVIS, TORSO, HEAD, UARM_R, LARM_R, UARM_L, LARM_L, THIGH_R, SHIN_R, THIGH_L, SHIN_L }
 
 const HEAD_LAYER := 1 << 19    ## render layer 20: the local player's camera culls it, shadows still fall
+const MIRROR_LAYER := 1 << 9   ## render layer 10: what the wall mirror's camera draws (room shell, table, avatars)
 const RAG_LAYER := 1 << 4      ## collision layer 5 `ragdoll` (07 §1): bones never touch each other or balls
 const RAG_MASK := 2 | 8        ## table rails + world (floor, walls, bar)
 const BLEND_SEC := 0.4
@@ -21,6 +22,7 @@ const SMOOTH := 18.0           ## pose smoothing rate (1/s)
 const GOLD := Color("e8b923")
 const CAP_BOTTOM := 1  ## `_cyl` end caps
 const CAP_TOP := 2
+const QUIRK_BARKEEP := &"barkeep"  ## `set_quirk`: the Bartender's exaggerated surfaces
 
 const NAMES: PackedStringArray = [
 	"pelvis", "torso", "head", "uarm_r", "larm_r", "uarm_l", "larm_l", "thigh_r", "shin_r", "thigh_l", "shin_l",
@@ -49,13 +51,16 @@ const SEG: Array = [
 ]
 ## How much of a knock's impulse each bone takes, in B order.
 const SHOVE_SHARE: PackedFloat32Array = [1.0, 1.3, 1.6, 1.3, 1.3, 1.3, 1.3, 0.6, 0.3, 0.6, 0.3]
+const LEAN_RAD := 0.55     ## trunk pitch while leaning on a rail
+const LEAN_STILL_MPS := 1.0  ## walking off ends a lean early
+const LEAN_HANDS := 0.12   ## the two hands rest this far either side of the point under them
 const UPPER := 0.30     ## shoulder → elbow
 const FORE := 0.295     ## elbow → hand centre
 const THIGH := 0.43
 const SHIN := 0.42
 const ANKLE := 0.08
 
-static var _material: StandardMaterial3D  ## every Humanoid shares it: colours live in the vertices
+static var _material: ShaderMaterial  ## every Humanoid shares it: colours live in the vertices (humanoid.gdshader)
 
 var stance := Stance.STAND
 var pelvis_at_getup := Vector3.ZERO
@@ -65,7 +70,8 @@ var _skel: Skeleton3D
 var _sim: PhysicalBoneSimulator3D
 var _pbs: Array[PhysicalBone3D] = []
 var _body_mi: MeshInstance3D
-var _upper_mi: MeshInstance3D
+var _head_mi: MeshInstance3D
+var _quirk := &""
 var _first_person := false
 var _ragdoll := false
 var _blend := 1.0               ## 0 → 1 over BLEND_SEC after get_up()
@@ -77,6 +83,8 @@ var _vel := Vector3.ZERO
 var _last_pos := Vector3.ZERO
 var _look := Vector2.ZERO       ## yaw, pitch of the head (radians, relative to the body)
 var _hand: Array = [null, null]  ## right, left: Vector3 target in this node's space, or null
+var _lean_left := 0.0           ## seconds of rail lean to go (transient, never on the wire: 06 P25)
+var _lean_to := Vector3.ZERO    ## where the hands rest, this node's space
 var _rot: Array[Quaternion] = []
 var _pelvis_pos := ORIGIN[0]
 var _t_rot: Array[Quaternion] = []
@@ -117,21 +125,38 @@ func apply_skin(skin: CharacterSkin) -> void:
 	var head := _new_st()
 	_paint(body, head, skin)
 	_body_mi.mesh = body.commit()
-	_upper_mi.mesh = head.commit()
+	_head_mi.mesh = head.commit()
 	_body_mi.skin = _skel.create_skin_from_rest_transforms()
-	_upper_mi.skin = _body_mi.skin
+	_head_mi.skin = _body_mi.skin
 
 
-## Local player: the upper surface (head, hat, arms) leaves the camera's cull mask (the Player removes HEAD_LAYER from it)
-## but keeps casting shadows; trunk, legs and feet stay visible when looking down.
+## A special look for a non-player body (the Bartender): rebuilds the surfaces. `&""` = a plain person.
+func set_quirk(quirk: StringName) -> void:
+	_quirk = quirk
+	apply_skin(_skin)
+
+
+## Local player: the head surface (head, face, hat, neck) leaves the camera's cull mask (the Player removes HEAD_LAYER from it)
+## but keeps casting shadows; trunk, arms, legs and feet stay visible when looking down. A mirror camera keeps HEAD_LAYER.
 func set_first_person(on: bool) -> void:
 	_first_person = on
-	_upper_mi.layers = HEAD_LAYER if on else 1
+	_head_mi.layers = HEAD_LAYER if on else 1 | MIRROR_LAYER  # the mirror camera draws HEAD_LAYER too
 
 
 ## Local player in CUE: the leaning trunk would fill the aiming view, so the body only casts its shadow.
 func set_body_hidden(on: bool) -> void:
 	_body_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+
+
+## Lean on a rail: the trunk pitches toward `world_point` and both hands rest on it for `seconds`, or until the body
+## walks off. Transient and local to each peer's copy of this body: every peer starts it from the applied interaction.
+func lean_on(world_point: Vector3, seconds: float) -> void:
+	_lean_to = to_local(world_point)
+	_lean_left = seconds
+
+
+func is_leaning() -> bool:
+	return _lean_left > 0.0
 
 
 ## Head turn relative to the body, radians (positive pitch looks up). Clamped to what a neck can do.
@@ -158,6 +183,10 @@ func clear_hand(side: int) -> void:
 ## was walking at; the head and trunk take more of it than the legs, so a shove topples rather than slides.
 func ragdoll(impulse: Vector3) -> void:
 	if not _ragdoll:
+		if _lean_left > 0.0:
+			_lean_left = 0.0
+			clear_hand(0)
+			clear_hand(1)
 		_ragdoll = true
 		_blend = 1.0
 		_skel.force_update_all_bone_transforms()
@@ -227,6 +256,7 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	_phase += _speed * delta * STRIDE_RAD_PER_M
+	_step_lean(delta)
 	_compute_pose()
 	var a := 1.0 - exp(-SMOOTH * delta)
 	for i in _rot.size():
@@ -235,6 +265,20 @@ func _process(delta: float) -> void:
 	if _blend < 1.0:
 		_blend = minf(1.0, _blend + delta / BLEND_SEC)
 	_write_pose(_blend)
+
+
+func _step_lean(delta: float) -> void:
+	if _lean_left <= 0.0:
+		return
+	_lean_left -= delta
+	if _lean_left <= 0.0 or _speed > LEAN_STILL_MPS:
+		_lean_left = 0.0
+		clear_hand(0)
+		clear_hand(1)
+		return
+	var side := Vector3(-_lean_to.z, 0.0, _lean_to.x).normalized() * LEAN_HANDS  # across the lean direction, + = the body's right
+	set_hand(0, _lean_to + side)
+	set_hand(1, _lean_to - side)
 
 
 ## Fills _t_rot / _t_pelvis: where every bone wants to be this frame, before smoothing.
@@ -266,7 +310,13 @@ func _compute_pose() -> void:
 	var sway := sin(_time * 0.45) * 0.006
 	var pelvis := Vector3(sway + 0.012 * k * s, maxf(ext_r, ext_l) + 0.003 * breath, 0.0)
 	var lean := 0.0
-	if cue:
+	var lean_axis := Vector3.RIGHT  # the trunk pitches about this (right = forward)
+	if _lean_left > 0.0:
+		var flat := Vector3(_lean_to.x, 0.0, _lean_to.z)
+		if flat.length() > 0.05:
+			lean_axis = flat.normalized().cross(Vector3.UP)
+		lean = LEAN_RAD
+	elif cue:
 		lean = 0.65
 		pelvis.x -= 0.2  # stands left of the cue line so the stick passes the right shoulder
 	elif carry:
@@ -274,11 +324,11 @@ func _compute_pose() -> void:
 	elif reaching:
 		lean = 0.22
 	var pelvis_rot := Quaternion(Vector3.UP, 0.07 * k * s)
-	var torso_rot := Quaternion(Vector3.RIGHT, -lean + 0.014 * breath) * Quaternion(Vector3.UP, -0.1 * k * s)
+	var torso_rot := Quaternion(lean_axis, -lean + 0.014 * breath) * Quaternion(Vector3.UP, -0.1 * k * s)
 	_t_pelvis = pelvis
 	_t_rot[B.PELVIS] = pelvis_rot
 	_t_rot[B.TORSO] = torso_rot
-	_t_rot[B.HEAD] = Quaternion(Vector3.UP, _look.x) * Quaternion(Vector3.RIGHT, _look.y + lean * 0.9)
+	_t_rot[B.HEAD] = Quaternion(Vector3.UP, _look.x) * Quaternion(Vector3.RIGHT, _look.y) * Quaternion(lean_axis, lean * 0.9)
 	_t_rot[B.THIGH_R] = Quaternion(Vector3.RIGHT, th_r)
 	_t_rot[B.SHIN_R] = Quaternion(Vector3.RIGHT, -fl_r)
 	_t_rot[B.THIGH_L] = Quaternion(Vector3.RIGHT, th_l)
@@ -365,9 +415,10 @@ func _build_skeleton() -> void:
 		_pbs.append(pb)
 		_sim.add_child(pb)
 	_body_mi = MeshInstance3D.new()
-	_upper_mi = MeshInstance3D.new()
-	for mi in [_body_mi, _upper_mi]:
+	_head_mi = MeshInstance3D.new()
+	for mi in [_body_mi, _head_mi]:
 		mi.material_override = _shared_material()
+		mi.layers = 1 | MIRROR_LAYER
 		mi.extra_cull_margin = 2.0
 		_skel.add_child(mi)
 		mi.skeleton = NodePath("..")  # unset by default when built in code
@@ -449,14 +500,10 @@ func _hinge(pb: PhysicalBone3D, at: Vector3, lower: float, upper: float) -> void
 
 # --- mesh --------------------------------------------------------------------------------------------
 
-static func _shared_material() -> StandardMaterial3D:
+static func _shared_material() -> ShaderMaterial:
 	if _material == null:
-		_material = StandardMaterial3D.new()
-		_material.vertex_color_use_as_albedo = true
-		_material.vertex_color_is_srgb = true  # the skins' colours are the hex values people pick
-		_material.albedo_color = Color(0.5, 0.5, 0.5)  # the bar's key lights are tuned for dark wood; bright cloth clips under them
-		_material.metallic_specular = 0.2
-		_material.roughness = 0.85
+		_material = ShaderMaterial.new()
+		_material.shader = preload("res://src/shaders/humanoid.gdshader")
 	return _material
 
 
@@ -466,30 +513,39 @@ func _new_st() -> SurfaceTool:
 	return st
 
 
-## The whole character: body surface (trunk, legs, feet) and upper surface (head, face, hat, shoulder cap, neck, arms).
+## The whole character: body surface (trunk with its lid, shoulders, arms, legs, feet) and head surface (head, face, hat,
+## neck). The local camera culls the head surface only; it sits inside the neck, so the lid closes the trunk (no looking
+## through to the legs) and the arms hang beside it.
 func _paint(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 	var shirt := skin.body_color
 	var legs := skin.accent_color
 	var flesh := skin.skin_color
 	var shoe := legs.darkened(0.55)
-	# The arms, shoulder cap and neck live on the upper surface, which the local camera culls, and the torso is open at
-	# the top: looking down the local player sees through the trunk to legs and floor, not a lid or two huge sleeves.
 	_cyl(body, B.PELVIS, legs, Vector3(0, 0.86, 0), 0.17, Vector2(0.155, 0.10), Vector2(0.155, 0.10), 8, CAP_BOTTOM)
-	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8, 0)
-	_cyl(head, B.TORSO, shirt, Vector3(0, 1.498, 0), 0.002, Vector2(0.205, 0.11), Vector2(0.205, 0.11), 8, CAP_TOP)
+	_cyl(body, B.TORSO, shirt, Vector3(0, 1.03, 0), 0.47, Vector2(0.15, 0.092), Vector2(0.205, 0.11), 8, CAP_TOP)
 	_cyl(head, B.TORSO, flesh, Vector3(0, 1.49, 0), 0.08, Vector2(0.045, 0.045), Vector2(0.04, 0.04), 6)
 	for side in 2:
 		var sx := 0.22 if side == 0 else -0.22
 		var ua := B.UARM_R if side == 0 else B.UARM_L
 		var th := B.THIGH_R if side == 0 else B.THIGH_L
 		var lx := 0.10 if side == 0 else -0.10
-		_cyl(head, ua, shirt, Vector3(sx, 1.13, 0), 0.32, Vector2(0.040, 0.040), Vector2(0.052, 0.052), 6)
-		_ball(head, ua, shirt, Vector3(sx, 1.43, 0), Vector3(0.058, 0.058, 0.058), 6, 4)
-		_cyl(head, ua + 1, flesh, Vector3(sx, 0.86, 0), 0.27, Vector2(0.033, 0.033), Vector2(0.041, 0.041), 6)
-		_ball(head, ua + 1, flesh, Vector3(sx, 0.835, 0), Vector3(0.048, 0.052, 0.048), 6, 4)
+		_cyl(body, ua, shirt, Vector3(sx, 1.13, 0), 0.32, Vector2(0.040, 0.040), Vector2(0.052, 0.052), 6)
+		_ball(body, ua, shirt, Vector3(sx, 1.43, 0), Vector3(0.058, 0.058, 0.058), 6, 4)
+		_cyl(body, ua + 1, flesh, Vector3(sx, 0.86, 0), 0.27, Vector2(0.033, 0.033), Vector2(0.041, 0.041), 6)
+		_ball(body, ua + 1, flesh, Vector3(sx, 0.835, 0), Vector3(0.048, 0.052, 0.048), 6, 4)
 		_cyl(body, th, legs, Vector3(lx, 0.50, 0), 0.43, Vector2(0.056, 0.056), Vector2(0.074, 0.074), 6)
 		_cyl(body, th + 1, legs, Vector3(lx, 0.08, 0), 0.42, Vector2(0.042, 0.042), Vector2(0.056, 0.056), 6)
 		_box(body, th + 1, shoe, Vector3(lx, 0.04, -0.05), Vector3(0.052, 0.04, 0.12))
+	if _quirk == QUIRK_BARKEEP:
+		_paint_barkeep(body, head, skin)
+	else:
+		_paint_head(head, skin)
+
+
+func _paint_head(head: SurfaceTool, skin: CharacterSkin) -> void:
+	var shirt := skin.body_color
+	var legs := skin.accent_color
+	var flesh := skin.skin_color
 	_ball(head, B.HEAD, flesh, Vector3(0, 1.60, 0), Vector3(0.10, 0.12, 0.11), 8, 6)
 	var dark := Color(0.08, 0.07, 0.07)
 	_box(head, B.HEAD, dark, Vector3(0.04, 1.615, -0.099), Vector3(0.011, 0.014, 0.008))
@@ -512,6 +568,37 @@ func _paint(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
 			for n in 5:
 				var a := TAU * n / 5.0
 				_cyl(head, B.HEAD, GOLD, Vector3(sin(a) * 0.095, 1.73, cos(a) * 0.095), 0.07, Vector2(0.026, 0.026), Vector2(0.0, 0.0), 4)
+
+
+## The Bartender's look (06 P24): an oversized head with bulging eyes, a red nose, a handlebar mustache and a very tall
+## striped hat, a bow tie and gold sleeve garters. The same bones as everyone; only the surfaces differ.
+func _paint_barkeep(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -> void:
+	var flesh := skin.skin_color
+	var nose := flesh.lerp(Color(0.85, 0.25, 0.2), 0.45)
+	var stache := Color(0.42, 0.2, 0.07)
+	var white := Color(0.96, 0.96, 0.92)
+	var dark := Color(0.08, 0.07, 0.07)
+	var plum := Color(0.32, 0.1, 0.42)
+	var red := Color(0.75, 0.1, 0.12)
+	var cy := 1.62  # head centre
+	_ball(head, B.HEAD, flesh, Vector3(0, cy, 0), Vector3(0.135, 0.16, 0.145), 10, 7)
+	for sx in [-1.0, 1.0]:
+		_ball(head, B.HEAD, white, Vector3(0.055 * sx, cy + 0.04, -0.125), Vector3(0.036, 0.04, 0.03), 6, 4)
+		_ball(head, B.HEAD, dark, Vector3(0.05 * sx, cy + 0.04, -0.153), Vector3(0.014, 0.016, 0.01), 5, 3)
+		_box(head, B.HEAD, stache, Vector3(0.06 * sx, cy + 0.10, -0.12), Vector3(0.05, 0.012, 0.014))
+		for lump: Array in [[0.035, 0.0], [0.08, -0.008], [0.125, 0.0], [0.16, 0.03], [0.185, 0.065]]:  # the bar sags, then curls up
+			_ball(head, B.HEAD, stache, Vector3(lump[0] * sx, cy - 0.075 + lump[1], -0.135), Vector3(0.032, 0.02, 0.02), 6, 4)
+	_ball(head, B.HEAD, nose, Vector3(0, cy - 0.02, -0.155), Vector3(0.036, 0.034, 0.04), 6, 4)
+	var hat_y := cy + 0.14
+	_cyl(head, B.HEAD, plum, Vector3(0, hat_y, 0), 0.014, Vector2(0.2, 0.2), Vector2(0.2, 0.2), 10)
+	for i in 5:
+		var top := i == 4
+		_cyl(head, B.HEAD, plum if i % 2 == 0 else GOLD, Vector3(0, hat_y + 0.014 + 0.085 * i, 0), 0.085, Vector2(0.105, 0.105), Vector2(0.105, 0.105), 10, CAP_TOP if top else 0)
+	_box(body, B.TORSO, red, Vector3(0.075, 1.465, -0.105), Vector3(0.065, 0.032, 0.018))
+	_box(body, B.TORSO, red, Vector3(-0.075, 1.465, -0.105), Vector3(0.065, 0.032, 0.018))
+	_ball(body, B.TORSO, GOLD, Vector3(0, 1.465, -0.108), Vector3(0.026, 0.026, 0.026), 6, 4)
+	for side in 2:
+		_cyl(body, B.UARM_R if side == 0 else B.UARM_L, GOLD, Vector3(0.22 if side == 0 else -0.22, 1.27, 0), 0.03, Vector2(0.056, 0.056), Vector2(0.056, 0.056), 6)
 
 
 ## Vertical frustum from `base` up by `h`, elliptical radii (x, z) at the bottom and top, closed with fans.
