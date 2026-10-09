@@ -1,6 +1,7 @@
 [gd_scene format=3]
 
 [ext_resource type="Script" path="res://src/ui/skins_screen.gd" id="skins_script"]
+[ext_resource type="Shader" path="res://src/shaders/bar_preview.gdshader" id="bar_shader"]
 
 [sub_resource type="Environment" id="skins_env"]
 background_mode = 1
@@ -8,6 +9,9 @@ background_color = Color(0.2, 0.22, 0.27, 1)
 ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 3.0
+
+[sub_resource type="ShaderMaterial" id="bar_turntable"]
+shader = ExtResource("bar_shader")
 
 [node name="SkinsScreen" type="Control"]
 visible = false
@@ -128,17 +132,24 @@ layout_mode = 2
 metadata/_tab_index = 1
 
 [node name="Side" type="VBoxContainer" parent="Panel/Box/Tabs/Bar"]
-custom_minimum_size = Vector2(300, 0)
+custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
 
 [node name="Frame" type="PanelContainer" parent="Panel/Box/Tabs/Bar/Side"]
 layout_mode = 2
 size_flags_vertical = 3
 
-[node name="Palette" type="VBoxContainer" parent="Panel/Box/Tabs/Bar/Side/Frame"]
-unique_name_in_owner = true
+[node name="Aspect" type="AspectRatioContainer" parent="Panel/Box/Tabs/Bar/Side/Frame"]
 layout_mode = 2
-alignment = 1
+ratio = 1.634
+stretch_mode = 2
+
+[node name="BarPreview" type="TextureRect" parent="Panel/Box/Tabs/Bar/Side/Frame/Aspect"]
+unique_name_in_owner = true
+material = SubResource("bar_turntable")
+layout_mode = 2
+expand_mode = 1
+stretch_mode = 0
 
 [node name="BarName" type="Label" parent="Panel/Box/Tabs/Bar/Side"]
 unique_name_in_owner = true
@@ -161,4 +172,4 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-columns = 4
+columns = 2
