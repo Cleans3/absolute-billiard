@@ -35,7 +35,7 @@ func _run() -> void:
 	var at := bb.global_transform
 	_check(at.origin.distance_to(Vector3(6.95, 1.95, -3.5)) < 0.001, "the board hangs on the east wall at (6.95, 1.95, -3.5): %s" % at.origin)
 	_check((at.basis * Vector3.BACK).distance_to(Vector3.LEFT) < 0.001, "and faces into the room (-x)")
-	_check(bb.get_node("Frame").mesh.size.x > 2.3 and bb.get_node("Frame").mesh.size.y > 1.2, "about 2.4 x 1.3 m")
+	_check(bb.get_node("Frame").mesh.size.x > 3.1 and bb.get_node("Frame").mesh.size.y > 1.7, "about 3.2 x 1.75 m (alpha's A#2)")
 
 	_check(bb._header.text == "NIGHT 1  ·  NEXT ROUND 1/3", "between Rounds the board names the next one: %s" % bb._header.text)
 	for id in [&"beer", &"flaming_shot", &"neighbours_round"]:  # served between Rounds, like the Bartender does
@@ -57,14 +57,14 @@ func _run() -> void:
 	_check(bb._viewers_label.text == before, "a change inside a hype step leaves the board alone")
 
 	fx.begin_event(FxCatalog.EVENTS[0])
-	_check(bb._hazard.text == "HAZARD  " + FxCatalog.EVENTS[0].display_name, "a Hazard shows by name: %s" % bb._hazard.text)
+	_check(bb._hazard.text == FxCatalog.EVENTS[0].display_name, "a Hazard shows by name: %s" % bb._hazard.text)
 	loop.round_started.emit(1, 120.0, 0)  # start counting the Round's Cash
 	econ.add_cash(320, &"shot")
 	econ.add_cash(-50, &"scratch")
 	econ.add_cash(-100, &"shop")  # a purchase is not play
 	loop.round_ended.emit(&"cleared", 140)
 	_check(bb._footer.text.begins_with("LAST ROUND  Table cleared · 140 pts · +$270\n"), "last Round's result: %s" % bb._footer.text)
-	_check(bb._hazard.text == "HAZARD  none" and bb._drinks.text == "DRINKS  none", "the Round ending clears the Hazard and the Drinks: %s / %s" % [bb._hazard.text, bb._drinks.text])
+	_check(bb._hazard.text == "none" and bb._drinks.text == "DRINKS  none", "the Round ending clears the Hazard and the Drinks: %s / %s" % [bb._hazard.text, bb._drinks.text])
 	var ask := loop.ask_for(loop.night_index)
 	_check(bb._footer.text.ends_with("NEXT NIGHT $%d" % loop.ask_for(loop.night_index + 1)) and ask > 0, "the next Night's ask is on the board: %s" % bb._footer.text)
 	loop.night_started.emit(2, 900)

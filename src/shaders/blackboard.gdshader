@@ -7,11 +7,11 @@ render_mode unshaded;
 uniform vec4 slate : source_color = vec4(0.055, 0.085, 0.075, 1.0);
 uniform vec4 chalk : source_color = vec4(0.93, 0.92, 0.85, 1.0);
 uniform vec4 bar_fill : source_color = vec4(0.24, 0.88, 1.0, 1.0);
-uniform vec2 board_size = vec2(2.34, 1.26);
+uniform vec2 board_size = vec2(3.12, 1.68);
 uniform float hype : hint_range(0.0, 1.0) = 0.0;
 
-const vec2 BAR_MIN = vec2(-1.1, -0.15);  // hype bar rectangle, metres from the board centre (+y up)
-const vec2 BAR_MAX = vec2(-0.1, -0.10);
+const vec2 BAR_MIN = vec2(-1.45, -0.20);  // hype bar rectangle, metres from the board centre (+y up)
+const vec2 BAR_MAX = vec2(-0.15, -0.13);
 
 float hash(vec2 p) {
 	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
@@ -47,12 +47,12 @@ void fragment() {
 	float smear = vnoise(m * vec2(2.2, 4.0)) * 0.6 + vnoise(m * 9.0) * 0.4;
 	vec3 col = slate.rgb + (smear - 0.5) * 0.05;
 	// chalk strokes: dividers (a little wobbly, like a hand drew them) and the column rule
-	float wob = 0.004 * sin(m.x * 13.0) + 0.002 * sin(m.x * 41.0);
-	float d = seg(m, vec2(-1.1, 0.33 + wob), vec2(1.1, 0.33 + wob), 0.005);
-	d = min(d, seg(m, vec2(-1.1, -0.31 - wob), vec2(1.1, -0.31 - wob), 0.005));
-	d = min(d, seg(m, vec2(0.0 + wob, 0.29), vec2(0.0 + wob, -0.27), 0.004));
+	float wob = 0.005 * sin(m.x * 10.0) + 0.0025 * sin(m.x * 31.0);
+	float d = seg(m, vec2(-1.45, 0.44 + wob), vec2(1.45, 0.44 + wob), 0.0065);
+	d = min(d, seg(m, vec2(-1.45, -0.42 - wob), vec2(1.45, -0.42 - wob), 0.0065));
+	d = min(d, seg(m, vec2(0.0 + wob, 0.40), vec2(0.0 + wob, -0.36), 0.005));
 	// the hype bar: a chalk outline with a cyan fill as long as hype
-	float outline = abs(box(m, BAR_MIN - 0.01, BAR_MAX + 0.01)) - 0.003;
+	float outline = abs(box(m, BAR_MIN - 0.012, BAR_MAX + 0.012)) - 0.004;
 	d = min(d, outline);
 	float fill_x = BAR_MIN.x + (BAR_MAX.x - BAR_MIN.x) * hype;
 	float fill = box(m, BAR_MIN, vec2(fill_x, BAR_MAX.y));

@@ -111,7 +111,7 @@ func _refresh_live() -> void:
 	var events: Array[String] = []
 	for e in effects.live_events():
 		events.append(e.display_name)
-	_write(_hazard, "HAZARD  " + (", ".join(events) if not events.is_empty() else "none"))
+	_write(_hazard, ", ".join(events) if not events.is_empty() else "none")
 	var drinks := effects.live_drinks()
 	var shown := drinks.slice(0, MAX_DRINK_LINES if drinks.size() <= MAX_DRINK_LINES else MAX_DRINK_LINES - 1)
 	var lines: Array[String] = []
