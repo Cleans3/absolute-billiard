@@ -113,7 +113,7 @@ func _busy(action: Callable) -> void:
 
 func _on_start() -> void:
 	%Start.disabled = true
-	_status.text = "Starting…"
+	_status.text = "Starting: sending everyone to the bar (%d player%s)" % [NetManager.get_roster().size(), "" if NetManager.get_roster().size() == 1 else "s"]
 	NetManager.start_game()
 
 

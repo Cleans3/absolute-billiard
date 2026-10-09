@@ -343,7 +343,7 @@ func enter_cue() -> bool:
 	if mode != Mode.WALK or _rd == null:
 		return false
 	if _host_away:
-		_toast("The host's app is in the background: shooting resumes when it is back")
+		_toast("Can't shoot yet: " + get_node(^"/root/NetManager").host_away_text())
 		return false
 	if _rd.current_shooter_id != multiplayer.get_unique_id():
 		_toast(WaitText.shot(&"not_your_turn", _shooter_name()))

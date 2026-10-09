@@ -106,7 +106,7 @@ func _esc_flow(ui: Control, nm: Node) -> void:
 	ui.get_node("%HostLan").pressed.emit()
 	await process_frame
 	ui.get_node("%Start").pressed.emit()
-	assert(ui.get_node("%Start").disabled and ui.get_node("%Status").text == "Starting…", "Start locks after the press")
+	assert(ui.get_node("%Start").disabled and ui.get_node("%Status").text.begins_with("Starting: sending everyone to the bar ("), "Start locks after the press")
 	var t0 := Time.get_ticks_msec()  # let the load finish: quitting under a threaded load prints teardown errors
 	while (current_scene == null or current_scene.name != "MainLevel" or root.get_node_or_null("LoadingScreen") != null) and Time.get_ticks_msec() - t0 < 60000:
 		await process_frame
