@@ -380,18 +380,7 @@ func _add_decor(root_n: Node3D, decor: Dictionary) -> void:
 	mi.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 	mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_add(holder, mi, "Mesh")
-	var items_n := _add(holder, Node3D.new(), "Items")  # data only: one marker per prop/poster so tests can read what is where
-	for info: Dictionary in decor.items:
-		var n := _add(items_n, Node3D.new(), String(info.id))
-		n.set_meta("decor_id", info.id)
-		n.set_meta("model", info.get("model", ""))
-		n.set_meta("kind", info.kind)
-		n.set_meta("tris", info.tris)
-		if info.has("rect"):
-			n.set_meta("rect", info.rect)
-		if info.has("wall"):
-			n.set_meta("wall", info.wall)
-			n.set_meta("wall_rect", info.wall_rect)
+	holder.set_meta("items", decor.items)  # data only (id, model, kind, footprint / wall rect, tris): what tests/world/bar_room_probe.gd reads
 	print("decor: %d items, %d tris, %d colliders" % [decor.items.size(), decor.tris, decor.boxes.size()])
 
 
