@@ -513,6 +513,12 @@ func is_ragdoll() -> bool:
 	return humanoid.is_ragdoll()
 
 
+## The body leans on a rail for a moment (LeanFeedback, from the applied interaction: every peer, local or puppet).
+func lean_on(world_point: Vector3, seconds: float) -> void:
+	if mode != Mode.RAGDOLL:
+		humanoid.lean_on(world_point, seconds)
+
+
 ## Stand where the pelvis lies. A puppet resyncs to the owner's latest pose instead and drops the stale ones.
 func _end_knock() -> void:
 	var at := humanoid.pelvis_position()

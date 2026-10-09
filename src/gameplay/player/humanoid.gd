@@ -49,6 +49,9 @@ const SEG: Array = [
 ]
 ## How much of a knock's impulse each bone takes, in B order.
 const SHOVE_SHARE: PackedFloat32Array = [1.0, 1.3, 1.6, 1.3, 1.3, 1.3, 1.3, 0.6, 0.3, 0.6, 0.3]
+const LEAN_RAD := 0.55     ## trunk pitch while leaning on a rail
+const LEAN_STILL_MPS := 1.0  ## walking off ends a lean early
+const LEAN_HANDS := 0.12   ## the two hands rest this far either side of the point under them
 const UPPER := 0.30     ## shoulder → elbow
 const FORE := 0.295     ## elbow → hand centre
 const THIGH := 0.43
@@ -77,6 +80,8 @@ var _vel := Vector3.ZERO
 var _last_pos := Vector3.ZERO
 var _look := Vector2.ZERO       ## yaw, pitch of the head (radians, relative to the body)
 var _hand: Array = [null, null]  ## right, left: Vector3 target in this node's space, or null
+var _lean_left := 0.0           ## seconds of rail lean to go (transient, never on the wire: 06 P20)
+var _lean_to := Vector3.ZERO    ## where the hands rest, this node's space
 var _rot: Array[Quaternion] = []
 var _pelvis_pos := ORIGIN[0]
 var _t_rot: Array[Quaternion] = []
@@ -134,6 +139,17 @@ func set_body_hidden(on: bool) -> void:
 	_body_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
 
 
+## Lean on a rail: the trunk pitches toward `world_point` and both hands rest on it for `seconds`, or until the body
+## walks off. Transient and local to each peer's copy of this body: every peer starts it from the applied interaction.
+func lean_on(world_point: Vector3, seconds: float) -> void:
+	_lean_to = to_local(world_point)
+	_lean_left = seconds
+
+
+func is_leaning() -> bool:
+	return _lean_left > 0.0
+
+
 ## Head turn relative to the body, radians (positive pitch looks up). Clamped to what a neck can do.
 func set_look(yaw: float, pitch: float) -> void:
 	_look = Vector2(clampf(yaw, -1.2, 1.2), clampf(pitch, -1.0, 1.0))
@@ -158,6 +174,10 @@ func clear_hand(side: int) -> void:
 ## was walking at; the head and trunk take more of it than the legs, so a shove topples rather than slides.
 func ragdoll(impulse: Vector3) -> void:
 	if not _ragdoll:
+		if _lean_left > 0.0:
+			_lean_left = 0.0
+			clear_hand(0)
+			clear_hand(1)
 		_ragdoll = true
 		_blend = 1.0
 		_skel.force_update_all_bone_transforms()
@@ -227,6 +247,7 @@ func _process(delta: float) -> void:
 		return
 	_time += delta
 	_phase += _speed * delta * STRIDE_RAD_PER_M
+	_step_lean(delta)
 	_compute_pose()
 	var a := 1.0 - exp(-SMOOTH * delta)
 	for i in _rot.size():
@@ -235,6 +256,20 @@ func _process(delta: float) -> void:
 	if _blend < 1.0:
 		_blend = minf(1.0, _blend + delta / BLEND_SEC)
 	_write_pose(_blend)
+
+
+func _step_lean(delta: float) -> void:
+	if _lean_left <= 0.0:
+		return
+	_lean_left -= delta
+	if _lean_left <= 0.0 or _speed > LEAN_STILL_MPS:
+		_lean_left = 0.0
+		clear_hand(0)
+		clear_hand(1)
+		return
+	var side := Vector3(-_lean_to.z, 0.0, _lean_to.x).normalized() * LEAN_HANDS  # across the lean direction, + = the body's right
+	set_hand(0, _lean_to + side)
+	set_hand(1, _lean_to - side)
 
 
 ## Fills _t_rot / _t_pelvis: where every bone wants to be this frame, before smoothing.
@@ -266,7 +301,13 @@ func _compute_pose() -> void:
 	var sway := sin(_time * 0.45) * 0.006
 	var pelvis := Vector3(sway + 0.012 * k * s, maxf(ext_r, ext_l) + 0.003 * breath, 0.0)
 	var lean := 0.0
-	if cue:
+	var lean_axis := Vector3.RIGHT  # the trunk pitches about this (right = forward)
+	if _lean_left > 0.0:
+		var flat := Vector3(_lean_to.x, 0.0, _lean_to.z)
+		if flat.length() > 0.05:
+			lean_axis = flat.normalized().cross(Vector3.UP)
+		lean = LEAN_RAD
+	elif cue:
 		lean = 0.65
 		pelvis.x -= 0.2  # stands left of the cue line so the stick passes the right shoulder
 	elif carry:
@@ -274,11 +315,11 @@ func _compute_pose() -> void:
 	elif reaching:
 		lean = 0.22
 	var pelvis_rot := Quaternion(Vector3.UP, 0.07 * k * s)
-	var torso_rot := Quaternion(Vector3.RIGHT, -lean + 0.014 * breath) * Quaternion(Vector3.UP, -0.1 * k * s)
+	var torso_rot := Quaternion(lean_axis, -lean + 0.014 * breath) * Quaternion(Vector3.UP, -0.1 * k * s)
 	_t_pelvis = pelvis
 	_t_rot[B.PELVIS] = pelvis_rot
 	_t_rot[B.TORSO] = torso_rot
-	_t_rot[B.HEAD] = Quaternion(Vector3.UP, _look.x) * Quaternion(Vector3.RIGHT, _look.y + lean * 0.9)
+	_t_rot[B.HEAD] = Quaternion(Vector3.UP, _look.x) * Quaternion(Vector3.RIGHT, _look.y) * Quaternion(lean_axis, lean * 0.9)
 	_t_rot[B.THIGH_R] = Quaternion(Vector3.RIGHT, th_r)
 	_t_rot[B.SHIN_R] = Quaternion(Vector3.RIGHT, -fl_r)
 	_t_rot[B.THIGH_L] = Quaternion(Vector3.RIGHT, th_l)

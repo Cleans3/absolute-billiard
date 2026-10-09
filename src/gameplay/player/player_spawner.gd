@@ -84,6 +84,11 @@ func get_player_position(peer_id: int) -> Vector3:
 	return slot.player_position() if slot != null else NOWHERE
 
 
+func get_player(peer_id: int) -> Player:
+	var slot := _slots().get_node_or_null(str(peer_id)) as PlayerSlot
+	return slot.player if slot != null else null
+
+
 func get_local_player() -> CharacterBody3D:
 	for s in _slots().get_children():
 		if (s as PlayerSlot).is_local():
