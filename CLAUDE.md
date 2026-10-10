@@ -17,6 +17,7 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 | `06-final-decisions.md` | adjudicated decisions D1–D7 **as amended by Cleanse's rulings P1–P10** (P rulings override everything above them in that file) |
 | `07-optimization.md` | per-aspect mobile budgets and measurement gates |
 | `08-player.md` | Player v1 (P6): touch-first first person, WALK/CUE/CARRY/RAGDOLL modes, touch layout, humanoid avatars, skins, screens |
+| `09-story.md` | "The Last Table" backstory: Gus, Velvet Moe, the Rope; per-Night intro cards, the phone, Gus's story lines, hazard flavor, endings (draft — §6 open questions) |
 
 Open questions listed in `05`/each doc §6 need the user's decision — do not resolve them silently in code.
 
