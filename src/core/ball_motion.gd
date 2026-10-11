@@ -31,6 +31,7 @@ class State extends RefCounted:
 class Params extends RefCounted:
 	var radius := 0.05715
 	var floor_y := 0.0  # ball-centre height when resting on the cloth
+	var cup_floor_y := -INF  # ball-centre height when resting on a pocket cup's floor; below the cloth plane a ball is dropping
 	var gravity := 9.8
 	var roll_mu := 0.035
 	var slide_mu := 0.2
@@ -46,6 +47,7 @@ static func make_params(spec: TableSpec, radius: float) -> Params:
 	var p := Params.new()
 	p.radius = radius
 	p.floor_y = spec.bed_height_m + radius
+	p.cup_floor_y = cup_floor_y(spec, radius)
 	p.gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity"))
 	p.roll_mu = spec.rolling_resistance
 	p.slide_mu = spec.cloth_friction
@@ -56,12 +58,19 @@ static func make_params(spec: TableSpec, radius: float) -> Params:
 	return p
 
 
+## Ball-centre height of a ball resting in a pocket cup (06 P30): the floor sits `cup_depth_m` under the cloth.
+static func cup_floor_y(spec: TableSpec, radius: float) -> float:
+	return spec.bed_height_m - spec.cup_depth_m + radius
+
+
 static func advance(s: State, dt: float, p: Params) -> void:
 	var t := dt
 	var phases := 0
 	while t > 0.0 and phases < MAX_PHASES:
 		phases += 1
-		if s.pos.y > p.floor_y + AIR_TOL or s.lin.y > AIR_VY:
+		if s.pos.y < p.floor_y - AIR_TOL and p.cup_floor_y > -INF:
+			t = _drop(s, t, p)  # under the cloth plane = over a hole: falling to the cup floor, which stops it
+		elif s.pos.y > p.floor_y + AIR_TOL or s.lin.y > AIR_VY:
 			t = _fly(s, t, p)
 		elif p.tilt == Vector2.ZERO:
 			t = _ground(s, t, p)
@@ -77,10 +86,23 @@ static func is_at_rest(s: State) -> bool:
 	return s.lin == Vector3.ZERO and s.ang == Vector3.ZERO
 
 
+## Falling into a pocket cup: ballistic down to `cup_floor_y`, where the felt-lined cup stops it dead (the host
+## sends the real bounce/roll as events). Returns the time left after landing.
+static func _drop(s: State, t: float, p: Params) -> float:
+	var left := _fly(s, t, p, p.cup_floor_y)
+	if left > 0.0 or s.pos.y <= p.cup_floor_y + AIR_TOL:
+		s.lin = Vector3.ZERO
+		s.ang = Vector3.ZERO
+		s.pos.y = maxf(s.pos.y, p.cup_floor_y)
+		return 0.0
+	return left
+
+
 ## Ballistic; returns the time left after landing (0 if still in the air).
-static func _fly(s: State, t: float, p: Params) -> float:
+static func _fly(s: State, t: float, p: Params, floor_y := NAN) -> float:
 	var g := p.gravity
-	var h := s.pos.y - p.floor_y
+	var floor_at := p.floor_y if is_nan(floor_y) else floor_y
+	var h := s.pos.y - floor_at
 	var vy := s.lin.y
 	var t_land := (vy + sqrt(vy * vy + 2.0 * g * maxf(h, 0.0))) / g
 	var step := minf(t, t_land)
@@ -88,7 +110,7 @@ static func _fly(s: State, t: float, p: Params) -> float:
 	s.lin.y = vy - g * step
 	if t_land > t:
 		return 0.0
-	s.pos.y = p.floor_y
+	s.pos.y = floor_at
 	s.lin.y = 0.0
 	return t - t_land
 

@@ -74,7 +74,7 @@ func _draw() -> void:
 	for pocket in d.pockets:
 		_circle(pocket.position, pocket.radius, COLOR_POCKET)
 	for drop in d.drops:
-		_box(drop.position, drop.size, COLOR_DROP)
+		_circle(drop.position, drop.radius, COLOR_DROP)
 	for rail in d.rails:
 		_seg(rail.a, rail.b, COLOR_RAIL)
 		var mid: Vector3 = (rail.a + rail.b) * 0.5
@@ -102,11 +102,10 @@ func _geometry() -> Dictionary:
 	var pockets := []
 	var drops := []
 	for ps in lay.pockets:
-		pockets.append({position = table.to_global(ps.position + y), radius = ps.mouth_width_m * 0.5})
-	for dz in lay.drop_zones:
-		var pos: Vector3 = dz.position
-		var size: Vector3 = dz.size
-		drops.append({position = table.to_global(pos + y), size = Vector2(size.x, size.z)})
+		var hole: TableLayout.Hole = lay.holes[ps.id]
+		pockets.append({position = table.to_global(ps.position + y), radius = hole.cup_radius})
+		# the pot sensor's top plane: a ball centre this deep (pot_depth_m) inside the circle is potted
+		drops.append({position = table.to_global(Vector3(hole.center.x, -s.pot_depth_m, hole.center.y) + y), radius = hole.apothem})
 
 	var rails := []
 	var jaws := []

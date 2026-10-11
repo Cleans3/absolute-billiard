@@ -6,12 +6,13 @@ extends RefCounted
 
 const TYPE_DIR := "res://src/resources/ball_types/"
 const SPACING_RADII := 2.4       # Bridson minimum spacing r, in ball radii
-const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket mouth + ball radius, in ball radii
+const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket hole + ball radius, in ball radii
 const CANDIDATES := 30           # Bridson k
 const SHRINK := 0.95             # spacing multiplier when a sample comes up short
 const MAX_PRIZES := 2            # 01 §2: "one or two per Round"
 const MAX_OBJECT_BALLS := 12     # 07 §1 phone budget; obstacles (stone_ball) count toward it (06 P8)
 const STONES_PER_RACK := 1       # [tune] when `stone_ball` is in the pool
+const CENTRE_TIE_M := 1e-4       # slots this close in distance to the centroid tie (06 P31)
 
 
 static func ball_type(id: StringName) -> BallType:
@@ -41,13 +42,43 @@ static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed
 		points[i] = points[j]
 		points[j] = t
 	points.resize(n)
-	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return _openness(spec, layout, a) > _openness(spec, layout, b))
 
+	# 06 P31: the black ball opens the Round in the middle of the formation; the rest are dealt by openness as before.
 	var types := compose(config, n, rng)
+	var black := _black_index(types)
 	var out: Array[Dictionary] = []
-	for i in n:
+	if black >= 0:
+		var mid := centre_slot(points, Vector2(layout.spots.foot.x, layout.spots.foot.z))
+		out.append({type = types[black], pos = points[mid]})
+		types.remove_at(black)
+		points.remove_at(mid)
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return _openness(spec, layout, a) > _openness(spec, layout, b))
+	for i in points.size():
 		out.append({type = types[i], pos = points[i]})
 	return out
+
+
+## The first penalty ("black") ball of `types`, or -1.
+static func _black_index(types: Array[BallType]) -> int:
+	for i in types.size():
+		if types[i].behaviour_tags.has(&"penalty"):
+			return i
+	return -1
+
+
+## The slot nearest the formation's centroid (06 P31); a tie goes to the slot nearer `foot`, then the lower index.
+static func centre_slot(points: Array[Vector2], foot: Vector2) -> int:
+	var centroid := Vector2.ZERO
+	for p in points:
+		centroid += p
+	centroid /= float(points.size())
+	var best := 0
+	for i in range(1, points.size()):
+		var d := points[i].distance_to(centroid)
+		var bd := points[best].distance_to(centroid)
+		if d < bd - CENTRE_TIE_M or (absf(d - bd) <= CENTRE_TIE_M and points[i].distance_to(foot) < points[best].distance_to(foot) - CENTRE_TIE_M):
+			best = i
+	return best
 
 
 ## Object balls in a Round: the Night's count plus any obstacles in the pool, capped at 12 (06 P8).
@@ -168,12 +199,13 @@ static func kitchen(spec: TableSpec) -> Rect2:
 	return r
 
 
-## Pocket mouths as Vector3(x, z, radius) — a ball centre must stay outside every one.
+## Pocket holes as Vector3(x, z, radius) — a ball centre must stay outside every one (a ball on a hole falls in).
 static func keepouts(spec: TableSpec, layout: TableLayout) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	var reach := spec.ball_radius_m * (1.0 + POCKET_KEEPOUT_RADII)
 	for p in layout.pockets:
-		out.append(Vector3(p.position.x, p.position.z, p.mouth_width_m * 0.5 + reach))
+		var hole: TableLayout.Hole = layout.holes[p.id]
+		out.append(Vector3(p.position.x, p.position.z, hole.cup_radius + (hole.cup_radius - hole.radius) + reach))
 	return out
 
 

@@ -10,8 +10,17 @@ extends RefCounted
 ##   [cushion depth, rail_width_m)  rail block — solid wood, full rail_height_m
 ## so the two never overlap and there is no gap between them.
 ##
-## Pocket wrap (plan.md T3.2, visual only — no collider changes, cushions/facings/drop zones
-## unchanged): each rail block's wood is length-extended past its cushion-truncated end at a
+## No seam is an edge-to-edge contact (06 P32): two meshes that merely touch can open a hairline under a phone GPU's
+## rounding and show the lit room behind the table as a bright line. Every abutting visual is sunk `_sink` (half the
+## slab) into its neighbour instead — the cushion wedge and the facing stubs run below the cloth plane and carry their
+## slope on into the rail block, a plug ties each rail block to the apron under it, the liner walls stand a hair
+## behind the cloth's own rim wall — so what a crack could show is always the dark rubber or liner, never the room.
+##
+## Pocket holes (06 P30): the cloth is the nose rectangle with every pocket's hole cut out of it (the same outline
+## the bed collider is built from), and each hole is lined by a dark cup — floor, walls, and a back wall on the arc
+## outside the nose rectangle. Moving Pockets adds a cloth-coloured cover ring per pocket, slid by table.gd.
+##
+## Pocket wrap (plan.md T3.2, visual only — no collider changes, cushions/facings unchanged): each rail block's wood is length-extended past its cushion-truncated end at a
 ## corner (table_geometry.gd's `c`), all the way out to the table's outer footprint. Two
 ## adjacent rails' extended blocks overlap along the outer edge of the corner square but each
 ## keeps its own cross-section width, so their union is an L that leaves the inner square
@@ -32,8 +41,8 @@ const LINER_COLOR := Color(0.12, 0.09, 0.07)
 const SIGHT_SIZE_RATIO := 0.35       # sight marker size as a multiple of ball radius
 
 
-static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
-	_build_cloth(parent, spec, y)
+static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float, osc_m := 0.0) -> void:
+	var cloth := _build_cloth(parent, spec, layout, y)
 	for rail in layout.rails:
 		_build_cushion(parent, spec, rail, y)
 		_build_rail_block(parent, spec, rail, y)
@@ -47,7 +56,10 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	for pos in layout.sights:
 		_build_sight(parent, spec, pos, y)
 	for pocket in layout.pockets:
-		_build_pocket_liner(parent, spec, pocket, y)
+		var hole: TableLayout.Hole = layout.holes[pocket.id]
+		_build_pocket_liner(parent, spec, hole, y)
+		if osc_m > 0.0:
+			_build_cover_mesh(parent, spec, hole, cloth.material_override)
 	_build_apron_and_legs(parent, spec, layout, y)
 	_merge_by_material(parent)
 
@@ -60,8 +72,8 @@ static func _merge_by_material(parent: Node3D) -> void:
 	var merged: Array[MeshInstance3D] = []
 	for c in parent.get_children():
 		var mi := c as MeshInstance3D
-		if mi == null or not mi.material_override is StandardMaterial3D or String(mi.name).begins_with("Liner_") or mi.name == &"Cloth":
-			continue  # liners keep their node: Table slides them with the oscillating pockets; the cloth so a skin can recolour it
+		if mi == null or not mi.material_override is StandardMaterial3D or mi.name == &"Cloth":
+			continue  # the cloth keeps its node so a skin can recolour it
 		var color := (mi.material_override as StandardMaterial3D).albedo_color
 		if not groups.has(color):
 			var st := SurfaceTool.new()
@@ -81,7 +93,8 @@ static func _merge_by_material(parent: Node3D) -> void:
 		parent.add_child(out)
 
 
-## Recolours the cloth after `build` (BarSkin felt, 06 P18); the cloth is the one visual that is never merged.
+## Recolours the cloth after `build` (BarSkin felt, 06 P18); the cloth is the one visual that is never merged. The
+## Moving Pockets covers share its material, so they follow.
 static func set_cloth_color(parent: Node3D, color: Color) -> void:
 	var cloth := parent.get_node_or_null(^"Cloth") as MeshInstance3D
 	if cloth != null:
@@ -104,15 +117,53 @@ static func _cushion_depth(spec: TableSpec) -> float:
 	return spec.ball_radius_m * 2.0  # must match table_builder.gd's cushion collider depth
 
 
-static func _build_cloth(parent: Node3D, spec: TableSpec, y: float) -> void:
+## How far a visual runs into the piece it abuts (see the file header).
+static func _sink(spec: TableSpec) -> float:
+	return spec.bed_thickness_m * 0.5
+
+
+## Cloth top = the bed outline triangulated at cloth height; each hole gets a rim wall `bed_thickness_m` deep so
+## the cut reads as cloth over slate, not a paper-thin sheet.
+static func _build_cloth(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> MeshInstance3D:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var outline := layout.bed_outline
+	var idx := Geometry2D.triangulate_polygon(outline)
+	for i in range(0, idx.size(), 3):
+		_facing_tri(st, _at(outline[idx[i]], y), _at(outline[idx[i + 1]], y), _at(outline[idx[i + 2]], y), Vector3.UP)
+	for hole: TableLayout.Hole in layout.holes.values():
+		for i in hole.inner.size() - 1:
+			_wall_quad(st, hole.inner[i], hole.inner[i + 1], hole.center, y - spec.bed_thickness_m, y)
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Cloth"
-	var box := BoxMesh.new()
-	box.size = Vector3(spec.length_m, spec.clearance_margin_m, spec.width_m)
-	mesh.mesh = box
+	mesh.mesh = st.commit()
 	mesh.material_override = _material(CLOTH_COLOR)
-	mesh.position = Vector3(0, y - box.size.y * 0.5, 0)
 	parent.add_child(mesh)
+	return mesh
+
+
+static func _at(p: Vector2, y: float) -> Vector3:
+	return Vector3(p.x, y, p.y)
+
+
+## A triangle whose visible side faces `normal` (Godot draws clockwise-wound faces), with that normal on its vertices.
+static func _facing_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, normal: Vector3) -> void:
+	if (b - a).cross(c - a).dot(normal) > 0.0:
+		var t := b
+		b = c
+		c = t
+	for v in [a, b, c]:
+		st.set_normal(normal)
+		st.add_vertex(v)
+
+
+## Vertical wall from `a` to `b` (table-local xz), `y0` to `y1`, facing toward `toward` (the hole axis).
+static func _wall_quad(st: SurfaceTool, a: Vector2, b: Vector2, toward: Vector2, y0: float, y1: float) -> void:
+	var mid := (a + b) * 0.5
+	var dir := (toward - mid).normalized()
+	var n := Vector3(dir.x, 0.0, dir.y)
+	_facing_tri(st, _at(a, y0), _at(b, y0), _at(b, y1), n)
+	_facing_tri(st, _at(a, y0), _at(b, y1), _at(a, y1), n)
 
 
 ## Triangular prism, cross-section (depth, height) in the rail's local XY: a near-vertical nose
@@ -121,7 +172,7 @@ static func _build_cloth(parent: Node3D, spec: TableSpec, y: float) -> void:
 static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.RailSegment, y: float) -> void:
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Cushion_" + String(rail.id)
-	mesh.mesh = _wedge_mesh(_cushion_depth(spec), spec.cushion_nose_h_m, rail.a.distance_to(rail.b))
+	mesh.mesh = _wedge_mesh(_cushion_depth(spec), spec.cushion_nose_h_m, rail.a.distance_to(rail.b), _sink(spec))
 	mesh.material_override = _material(CUSHION_COLOR)
 	var mid := (rail.a + rail.b) * 0.5
 	mesh.transform = Transform3D(TableGeometry.rail_basis(rail), mid + Vector3(0, y, 0))
@@ -164,8 +215,20 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	var mid := (a + b) * 0.5
 	var basis := TableGeometry.rail_basis(rail)
 	# local +X centre sits at depth0 + width/2, local +Y centre at rail_height_m/2 (block rests on cloth)
-	mesh.transform = Transform3D(basis, mid - rail.inward_normal * (depth0 + width * 0.5) + Vector3(0, y + spec.rail_height_m * 0.5, 0))
+	var at := mid - rail.inward_normal * (depth0 + width * 0.5)
+	mesh.transform = Transform3D(basis, at + Vector3(0, y + spec.rail_height_m * 0.5, 0))
 	parent.add_child(mesh)
+	# The block and the apron under it meet at one plane: a plug straddling it (`sink` each way, inset so none of its faces
+	# is coplanar with theirs) keeps a hairline there from opening onto the room — it would show wood.
+	var inset := _sink(spec) * 0.2
+	var plug := MeshInstance3D.new()
+	plug.name = "RailPlug_" + String(rail.id)
+	var pbox := BoxMesh.new()
+	pbox.size = Vector3(width - 2.0 * inset, _sink(spec) * 2.0, a.distance_to(b) - 2.0 * inset)
+	plug.mesh = pbox
+	plug.material_override = mesh.material_override
+	plug.transform = Transform3D(basis, at + Vector3(0, y, 0))
+	parent.add_child(plug)
 
 
 ## Angled facing wedge, same cross-section as the cushion (T5.2: "the cushion profile continued
@@ -185,7 +248,7 @@ static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, d
 		x = -x
 	var facing := MeshInstance3D.new()
 	facing.name = "Facing"
-	facing.mesh = _wedge_mesh(depth, h, length)
+	facing.mesh = _wedge_mesh(depth, h, length, _sink(spec))
 	facing.material_override = _material(CUSHION_COLOR)
 	# Same outward shift as the collider (table_builder.gd): inner face flush with the nose line,
 	# fused to the cushion end instead of straddling it with a visible gap or overlap. The wedge's
@@ -233,23 +296,73 @@ static func _build_sight(parent: Node3D, spec: TableSpec, pos: Vector3, y: float
 	parent.add_child(mesh)
 
 
-## The cup sits mostly below cloth level (a real liner is a leather pouch under the slate) but its
-## rim rises a little above so it reads as a visible dark ring inside the mouth, not an empty hole.
-## Reaches down through the apron's own depth (not just the near-cloth rim) so the side-pocket
-## mouth — the one gap the apron never closes, since that's the opening itself — always shows a
-## dark liner interior behind it instead of the level background (gamma F2: "floor visible").
-static func _build_pocket_liner(parent: Node3D, spec: TableSpec, pocket: PocketSpec, y: float) -> void:
+## The hole's cup, seen from above: dark walls from the cloth plane down to the floor `cup_depth_m` below, the floor,
+## and a back wall to rail height on the arc outside the nose rectangle (table_builder.gd's `_build_cup`, same ring).
+## Double-sided and unlit by the room's baked light: it is a pit, it should read as one. The ring stands `_sink / 5`
+## outside the cloth's own rim wall and reaches up to just under the cloth plane, so the cloth hides the join (two coplanar
+## walls z-fight cloth/dark, and an edge-to-edge join can open a hairline onto the room).
+static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var floor_y := y - spec.cup_depth_m
+	var grow := _sink(spec) * 0.2
+	var top := y - grow
+	var ring := PackedVector2Array()
+	for p in hole.ring:
+		ring.append(_grown(hole, p, grow))
+	for i in ring.size():
+		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, top)
+		_facing_tri(st, _at(hole.center, floor_y), _at(ring[i], floor_y), _at(ring[(i + 1) % ring.size()], floor_y), Vector3.UP)
+	for i in hole.outer.size() - 1:
+		# starts well under the ring wall's top: outside the nose rectangle there is no cloth rim wall, so a back wall that
+		# began at the cloth plane left a `bed_thickness_m` slit round the pocket's rear showing the room behind it
+		_wall_quad(st, _grown(hole, hole.outer[i], grow), _grown(hole, hole.outer[i + 1], grow), hole.center, y - spec.bed_thickness_m * 1.5, y + spec.rail_height_m)
 	var mesh := MeshInstance3D.new()
-	mesh.name = "Liner_" + String(pocket.id)
-	var cyl := CylinderMesh.new()
-	cyl.top_radius = pocket.mouth_width_m * 0.5
-	cyl.bottom_radius = cyl.top_radius * 0.8
-	cyl.height = spec.ball_radius_m * 1.2 + spec.apron_h_m
-	mesh.mesh = cyl
-	mesh.material_override = _material(LINER_COLOR)
-	var rim := spec.ball_radius_m * 0.15
-	mesh.position = pocket.position + Vector3(0, y + rim - cyl.height * 0.5, 0)
+	mesh.name = "Liner_" + String(hole.pocket_id)
+	mesh.mesh = st.commit()
+	var mat := _material(LINER_COLOR)
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mesh.material_override = mat
 	parent.add_child(mesh)
+
+
+## `p` moved `by` away from the hole's axis.
+static func _grown(hole: TableLayout.Hole, p: Vector2, by: float) -> Vector2:
+	return p + (p - hole.center).normalized() * by
+
+
+## Moving Pockets cover: top ring (flat, then ramped down at its rim) plus the inner rim wall, local to the
+## `Cover_<id>` body table_builder.gd made (origin = hole centre at cloth height). Shares the cloth's material.
+static func _build_cover_mesh(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, cloth_material: Material) -> void:
+	var body := parent.get_node_or_null(NodePath("Cover_" + String(hole.pocket_id)))
+	if body == null:
+		return
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var rings := TableBuilder.cover_rings(spec, hole)
+	for ring in rings:
+		for k in TableBuilder.COVER_SEGMENTS:
+			var d0 := Vector2.from_angle(TAU * k / TableBuilder.COVER_SEGMENTS)
+			var d1 := Vector2.from_angle(TAU * (k + 1) / TableBuilder.COVER_SEGMENTS)
+			var ai := _at(d0 * float(ring.r_in), float(ring.top_in))
+			var bi := _at(d1 * float(ring.r_in), float(ring.top_in))
+			var bo := _at(d1 * float(ring.r_out), float(ring.top_out))
+			var ao := _at(d0 * float(ring.r_out), float(ring.top_out))
+			var n := (bi - ai).cross(ao - ai).normalized()
+			if n.y < 0.0:
+				n = -n
+			_facing_tri(st, ai, bi, bo, n)
+			_facing_tri(st, ai, bo, ao, n)
+	var inner: Dictionary = rings[0]
+	for k in TableBuilder.COVER_SEGMENTS:
+		var d0 := Vector2.from_angle(TAU * k / TableBuilder.COVER_SEGMENTS) * float(inner.r_in)
+		var d1 := Vector2.from_angle(TAU * (k + 1) / TableBuilder.COVER_SEGMENTS) * float(inner.r_in)
+		_wall_quad(st, d0, d1, Vector2.ZERO, -spec.bed_thickness_m, float(inner.top_in))
+	var mesh := MeshInstance3D.new()
+	mesh.name = "CoverMesh"
+	mesh.mesh = st.commit()
+	mesh.material_override = cloth_material
+	body.add_child(mesh)
 
 
 static func _build_apron_and_legs(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
@@ -287,16 +400,19 @@ static func _build_apron_and_legs(parent: Node3D, spec: TableSpec, layout: Table
 			parent.add_child(mesh)
 
 
-static func _wedge_mesh(depth: float, height: float, length: float) -> ArrayMesh:
+## The wedge runs `sink` below the cloth plane and its slope carries on down to there, so it crosses the cloth edge and the
+## rail block face instead of touching them at an edge (the part under the plane is inside the rail block).
+static func _wedge_mesh(depth: float, height: float, length: float, sink: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var hz := length * 0.5
-	var p0 := Vector3(0.0, 0.0, -hz)   # nose base
+	var reach := depth * (height + sink) / height  # where the slope line through (depth, 0) meets the sunk base
+	var p0 := Vector3(0.0, -sink, -hz)   # nose base
 	var p1 := Vector3(0.0, height, -hz)  # nose tip (ball contact face is p0-p1)
-	var p2 := Vector3(depth, 0.0, -hz)   # outward base, where the rail block continues
-	var q0 := Vector3(0.0, 0.0, hz)
+	var p2 := Vector3(reach, -sink, -hz)   # outward base, inside the rail block
+	var q0 := Vector3(0.0, -sink, hz)
 	var q1 := Vector3(0.0, height, hz)
-	var q2 := Vector3(depth, 0.0, hz)
+	var q2 := Vector3(reach, -sink, hz)
 	_tri(st, p0, p2, p1)   # -Z end cap
 	_tri(st, q0, q1, q2)   # +Z end cap
 	_quad(st, p0, p1, q1, q0)  # nose face

@@ -68,8 +68,8 @@ func _run() -> void:
 	_pool()
 	_scoring()
 	_calls_and_clock()
-	_pockets()
-	_pocket_visuals()
+	await _pockets()
+	await _pocket_visuals()
 	_stone_nights()
 	_trick_tags()
 	await _bomb()
@@ -126,7 +126,43 @@ func _authored() -> void:
 					_check(entries[i].pos.distance_to(entries[j].pos) >= 2.0 * table.spec.ball_radius_m, "authored balls do not overlap")
 	var seeded := RackDropper.drop(table.spec, table.layout, NIGHT_1, 7, NIGHT_1.rounds_count + 1)
 	_check(seeded.size() == NIGHT_1.object_ball_count, "past the authored rounds the seeded drop takes over")
+	for sd in 20:  # 06 P31 / E5: every seeded rack puts black on the slot nearest its centroid, whatever the seed
+		for cfg in [NIGHT_1, NIGHT_5, _night_with_black()]:
+			_check_black_in_middle(RackDropper.drop(table.spec, table.layout, cfg, 1000 + sd, cfg.rounds_count + 1), "seeded %d night %d" % [1000 + sd, cfg.night_number])
+	# the N1 triangle: black is the middle ball of the third row (row 3 = x of the third rank, y = 0)
+	var tri := RackDropper.drop(table.spec, table.layout, NIGHT_1, 1, 1)
+	var rows: Array[float] = []
+	for e in tri:
+		if not rows.has(snappedf(e.pos.x, 0.001)):
+			rows.append(snappedf(e.pos.x, 0.001))
+	rows.sort()
+	for e in tri:
+		if e.type.behaviour_tags.has(&"penalty"):
+			_check(is_equal_approx(snappedf(e.pos.x, 0.001), rows[2]) and absf(e.pos.y) < 0.001, "N1 R1: black is the middle of the triangle's third row")
 	_check(RackDropper.drop(table.spec, table.layout, NIGHT_1, 7).size() == NIGHT_1.object_ball_count, "round_index 0 = seeded")
+
+
+## A pool that always rolls a penalty ball, so the seeded check has a black on every Night.
+func _night_with_black() -> NightConfig:
+	var cfg := NightConfig.new()
+	cfg.object_ball_count = 10
+	cfg.rounds_count = 1
+	cfg.unlocked_ball_types = [&"red_basic", &"blue_mid", &"gold_prize", &"black_penalty"]
+	return cfg
+
+
+## 06 P31: the penalty ball sits on the slot nearest the formation's centroid (ties: nearer the foot spot).
+func _check_black_in_middle(entries: Array[Dictionary], what: String) -> void:
+	var pts: Array[Vector2] = []
+	var black := -1
+	for i in entries.size():
+		pts.append(entries[i].pos)
+		if entries[i].type.behaviour_tags.has(&"penalty"):
+			black = i
+	if black < 0:
+		return  # no black this rack: nothing to place
+	var foot := Vector2(table.layout.spots.foot.x, table.layout.spots.foot.z)
+	_check(black == RackDropper.centre_slot(pts, foot), "%s: black must take the centre slot (got %d, centre %d)" % [what, black, RackDropper.centre_slot(pts, foot)])
 
 
 ## 3. drop pool: gimmicks once each, stone counted in the ≤12 cap.
@@ -241,17 +277,18 @@ func _pockets() -> void:
 	director._refresh_pocket_stats()
 	_check(is_equal_approx(table.pocket_radius_mult, 1.0) and table.pocket_osc_m == 0.0, "expiry restores the pockets")
 	# determinism: the same seed + time gives the same chute offsets on every run; another seed shifts them
-	var run_a := _chutes(SEED)
+	var run_a := await _chutes(SEED)
 	table.apply_pocket_stats(1.0, 0.0, SEED)
-	var run_b := _chutes(SEED)
-	var run_c := _chutes(SEED + 1)
+	var run_b := await _chutes(SEED)
+	var run_c := await _chutes(SEED + 1)
 	_check(run_a == run_b and not run_a.is_empty(), "same seed + time = same chute offsets across runs")
 	_check(run_a != run_c, "another seed = other phases")
+	await physics_frame
 	var moved := false
 	for a in table.get_children():
-		if a is Area3D and a.has_meta(&"pocket_id"):
+		if a is AnimatableBody3D and String(a.name).begins_with("Cover_"):
 			moved = moved or not a.position.is_equal_approx(a.get_meta(&"base_position"))
-	_check(moved, "chutes actually slide")
+	_check(moved, "openings actually slide")
 	_check(is_equal_approx(Table.pocket_offset(SEED, &"side_n", 1.7, 0.06), Table.pocket_offset(SEED, &"side_n", 1.7, 0.06)), "pure function")
 	_check(not is_equal_approx(Table.pocket_offset(SEED, &"side_n", 1.7, 0.06), Table.pocket_offset(SEED + 1, &"side_n", 1.7, 0.06)) \
 		or not is_equal_approx(Table.pocket_offset(SEED, &"side_s", 1.7, 0.06), Table.pocket_offset(SEED + 1, &"side_s", 1.7, 0.06)), "another seed shifts the phase")
@@ -259,24 +296,31 @@ func _pockets() -> void:
 	table.apply_pocket_stats(1.0, 0.0, SEED)
 
 
-## REQ#rules-2: the liner is drawn where the chute captures, at any clock value.
+## Moving Pockets move the REAL opening (adhoc-1011a T3): the cover ring's inner circle is the hole a ball falls
+## into, so its centre is the pocket centre plus the pure-function offset at any clock value, inside a cut that is
+## exactly one amplitude wider; no oscillation = opening at rest, no cover at all.
 func _pocket_visuals() -> void:
-	table.apply_pocket_stats(1.0, 0.06, SEED)
+	const AMP := 0.06
+	table.apply_pocket_stats(1.0, AMP, SEED)
+	for ps in table.layout.pockets:
+		var hole: TableLayout.Hole = table.layout.holes[ps.id]
+		_check(is_equal_approx(hole.cup_radius, hole.radius + AMP), "cut for %s is one amplitude wider than the opening" % ps.id)
+		_check(is_equal_approx(TableBuilder.cover_rings(table.spec, hole)[0].r_in, hole.radius), "cover %s inner circle is the opening" % ps.id)
 	for t in [0.0, 0.9, 1.7, 3.3, 5.5]:
 		table.set_pocket_time(t)
+		await physics_frame  # a kinematic cover takes a new position on the next physics step
 		for ps in table.layout.pockets:
-			var area := table.get_node("Drop_" + String(ps.id)) as Area3D
-			var liner := table.get_node("Liner_" + String(ps.id)) as MeshInstance3D
-			var tangent := Vector3(-ps.mouth_normal.y, 0.0, ps.mouth_normal.x).normalized()
-			var want := tangent * Table.pocket_offset(SEED, ps.id, t, 0.06)
-			var area_d: Vector3 = area.position - area.get_meta(&"base_position")
-			var liner_d: Vector3 = liner.position - liner.get_meta(&"base_position")
-			_check(area_d.is_equal_approx(want), "chute %s at t=%.1f follows the pure function" % [ps.id, t])
-			_check(liner_d.is_equal_approx(area_d), "liner %s at t=%.1f == capture position" % [ps.id, t])
+			var hole: TableLayout.Hole = table.layout.holes[ps.id]
+			var cover := table.get_node("Cover_" + String(ps.id)) as AnimatableBody3D
+			var tangent := Vector2(-ps.mouth_normal.y, ps.mouth_normal.x).normalized()
+			var want := hole.center + tangent * Table.pocket_offset(SEED, ps.id, t, AMP)
+			_check(Vector2(cover.position.x, cover.position.z).is_equal_approx(want), "opening %s at t=%.1f follows the pure function" % [ps.id, t])
+			_check(absf(Table.pocket_offset(SEED, ps.id, t, AMP)) <= hole.cup_radius - hole.radius + 1e-6, "opening %s stays inside the cut" % ps.id)
 	table.apply_pocket_stats(1.0, 0.0, SEED)
 	for ps in table.layout.pockets:
-		var liner := table.get_node("Liner_" + String(ps.id)) as MeshInstance3D
-		_check(liner.position.is_equal_approx(liner.get_meta(&"base_position")), "no oscillation = liner at rest")
+		_check(table.get_node_or_null("Cover_" + String(ps.id)) == null, "no oscillation = no cover on %s" % ps.id)
+		var hole: TableLayout.Hole = table.layout.holes[ps.id]
+		_check(is_equal_approx(hole.cup_radius, hole.radius), "no oscillation = the cut is the opening")
 
 
 ## REQ#rules-2: stone_ball comes from the Night 3 and Night 4 pools, one per rack, inside the 12 cap.
@@ -314,9 +358,10 @@ func _trick_tags() -> void:
 func _chutes(seed: int) -> Array[Vector3]:
 	table.apply_pocket_stats(1.0, 0.06, seed)
 	table.set_pocket_time(1.7)
+	await physics_frame  # a kinematic cover takes a new position on the next physics step
 	var out: Array[Vector3] = []
 	for a in table.get_children():
-		if a is Area3D and a.has_meta(&"pocket_id"):
+		if a is AnimatableBody3D and String(a.name).begins_with("Cover_"):
 			out.append(a.position)
 	return out
 

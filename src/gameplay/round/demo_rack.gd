@@ -16,7 +16,7 @@ const TYPES := {
 	gold = preload("res://src/resources/ball_types/gold_prize.tres"),
 	black = preload("res://src/resources/ball_types/black_penalty.tres"),
 }
-const RACK: Array[String] = ["red", "blue", "red", "red", "gold", "blue", "red", "black", "red", "blue"]
+const RACK: Array[String] = ["red", "blue", "red", "red", "black", "blue", "red", "gold", "red", "blue"]  # 06 P31: black on the third row's middle
 
 
 func _ready() -> void:

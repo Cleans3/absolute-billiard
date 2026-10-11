@@ -4,22 +4,25 @@ extends RefCounted
 ## Pure derivation from a TableSpec to a TableLayout (01 §2, plan.md contract): no scene nodes,
 ## no physics, deterministic and headless-callable (tests/physics/geometry_probe.gd).
 
-const DROP_CHUTE_RATIO := 40.0  # drop-zone chute depth as a multiple of ball radius
+const DROP_CHUTE_RATIO := 40.0  # SafetyFloor depth, a multiple of ball radius (the net under everything)
+const ARC_SEG_RADII := 1.0      # hole polygon edge length, in ball radii
+const MIN_ARC_SEGS := 3
+const SEAM_EPS := 1e-6
 
 
-## `pocket_mult` scales both mouth widths (03 `pocket_radius_mult`, e.g. the magnetic_pockets shop row).
-static func layout(spec: TableSpec, pocket_mult := 1.0) -> TableLayout:
+## `pocket_mult` scales both mouth widths (03 `pocket_radius_mult`, e.g. the magnetic_pockets shop row). `osc_m` is
+## the Moving Pockets amplitude: the bed is cut that much wider so a sliding cover (table_builder.gd) can move the
+## opening inside the cut.
+static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLayout:
 	var out := TableLayout.new()
 	var hl := spec.length_m * 0.5
 	var hw := spec.width_m * 0.5
 	var r := spec.ball_radius_m
-	# corner mouth is measured on the diagonal; along an edge from the nose corner it spans this
-	# much before the extra radius below — the straight cushion keeps its full outward depth (2R)
-	# right up to where it is truncated, so without the extra margin a dead-centre shot at the
-	# pocket grazes the outward corner of the cushion box with exactly zero clearance
+	# mouths are tip-to-tip nose gaps: along an edge a corner's tip sits `c` from the nose corner, and the two tips
+	# of one corner are c·√2 apart; a side pocket's tips are ±s from its axis
 	var corner_mouth := spec.corner_mouth_m * pocket_mult
 	var side_mouth := spec.side_mouth_m * pocket_mult
-	var c := corner_mouth / sqrt(2.0) + r
+	var c := corner_mouth / sqrt(2.0)
 	var s := side_mouth * 0.5
 	var pocket_out := r  # pocket centre sits just outside the playfield nose corner
 
@@ -30,13 +33,14 @@ static func layout(spec: TableSpec, pocket_mult := 1.0) -> TableLayout:
 		centre = Vector3.ZERO,
 	}
 
+	# [id, centre, tip-to-tip mouth, nominal hole radius = centre to a cushion tip]
 	var pocket_defs := [
-		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), corner_mouth],
-		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), corner_mouth],
-		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), corner_mouth],
-		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), corner_mouth],
-		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), side_mouth],
-		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), side_mouth],
+		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
+		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
+		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
+		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
+		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), side_mouth, sqrt(s * s + r * r)],
+		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), side_mouth, sqrt(s * s + r * r)],
 	]
 	var pockets_by_id := {}
 	for p in pocket_defs:
@@ -49,23 +53,8 @@ static func layout(spec: TableSpec, pocket_mult := 1.0) -> TableLayout:
 		ps.mouth_width_m = p[2]
 		out.pockets.append(ps)
 		pockets_by_id[id] = ps
-		var shelf: float = spec.corner_shelf_m if String(id).begins_with("corner") else spec.side_shelf_m
-		var foot := Vector2(ps.mouth_width_m + shelf * 2.0, ps.mouth_width_m + shelf * 2.0)
-		# strips actually built (T5.3, plan.md): a corner pocket sits outside the nose-to-nose
-		# rectangle on BOTH axes, so it gets two flush strips (one per axis); a side pocket only
-		# on one axis, so one strip. This is the single source of truth table_builder.gd builds
-		# from verbatim and debug_gizmos.gd draws verbatim — no re-derivation downstream.
-		var chute := spec.ball_radius_m * DROP_CHUTE_RATIO
-		var top := spec.ball_radius_m  # cloth-relative (y=0 here); Table adds bed height on build
-		var mid_y := top - chute * 0.5
-		var sign_x := signf(pos.x)
-		var sign_z := signf(pos.z)
-		if sign_x != 0.0:
-			var cx := sign_x * (hl + foot.x * 0.5)
-			out.drop_zones.append({pocket_id = id, position = Vector3(cx, mid_y, pos.z), size = Vector3(foot.x, chute, foot.y)})
-		if sign_z != 0.0:
-			var cz := sign_z * (hw + foot.y * 0.5)
-			out.drop_zones.append({pocket_id = id, position = Vector3(pos.x, mid_y, cz), size = Vector3(foot.x, chute, foot.y)})
+		var hole := _hole(spec, id, Vector2(pos.x, pos.z), float(p[3]), float(p[3]) + osc_m, hl, hw)
+		out.holes[id] = hole
 
 	# rail segments: [id, a, b, inward_normal, pocket at a, pocket at b]
 	var rail_defs := [
@@ -91,6 +80,97 @@ static func layout(spec: TableSpec, pocket_mult := 1.0) -> TableLayout:
 		out.rails.append(seg)
 
 	out.sights = _sights(hl, hw, c, s, spec.rail_width_m, spec.rail_height_m)
+	_bed(out, hl, hw)
+	return out
+
+
+## The pocket's hole: a circle of `cup_radius` round `center`, cut into the nose rectangle where it overlaps it. The
+## circle crosses the nose lines at two points (the cushion tips when cup_radius is the nominal radius); `inner` runs
+## between them through the playfield, `outer` the other way round.
+static func _hole(spec: TableSpec, id: StringName, center: Vector2, radius: float, cup_radius: float, hl: float, hw: float) -> TableLayout.Hole:
+	var r := spec.ball_radius_m
+	var k := sqrt(cup_radius * cup_radius - r * r)  # the pocket centre sits r outside the nose line it crosses
+	var sx := signf(center.x)
+	var sz := signf(center.y)
+	var p1: Vector2
+	var p2: Vector2
+	if sx == 0.0:  # side pocket: both crossings on the one nose line
+		p1 = Vector2(-k, sz * hw)
+		p2 = Vector2(k, sz * hw)
+	else:  # corner: one crossing on each nose line
+		p1 = Vector2(center.x - sx * k, sz * hw)
+		p2 = Vector2(sx * hl, center.y - sz * k)
+	var a1 := (p1 - center).angle()
+	var sweep := wrapf((p2 - center).angle() - a1, -PI, PI)
+	var mid := Vector2.from_angle(a1 + sweep * 0.5)
+	if mid.dot(-center) < 0.0:  # the short way round faces away from the table: take the long one
+		sweep -= signf(sweep) * TAU
+	var hole := TableLayout.Hole.new()
+	hole.pocket_id = id
+	hole.center = center
+	hole.radius = radius
+	hole.cup_radius = cup_radius
+	hole.inner = _arc(center, cup_radius, a1, sweep, p1, p2, r)
+	hole.outer = _arc(center, cup_radius, a1 + sweep, signf(sweep) * (TAU - absf(sweep)), p2, p1, r)
+	hole.ring = hole.inner.duplicate()
+	for i in range(1, hole.outer.size() - 1):
+		hole.ring.append(hole.outer[i])
+	hole.apothem = INF
+	for i in hole.ring.size():
+		var seg_a := hole.ring[i]
+		var seg_b := hole.ring[(i + 1) % hole.ring.size()]
+		hole.apothem = minf(hole.apothem, center.distance_to(Geometry2D.get_closest_point_to_segment(center, seg_a, seg_b)))
+	return hole
+
+
+## Points on the circle from angle `a0` sweeping `sweep` radians, first and last pinned to `from`/`to` exactly.
+static func _arc(center: Vector2, radius: float, a0: float, sweep: float, from: Vector2, to: Vector2, ball_r: float) -> PackedVector2Array:
+	var n := maxi(MIN_ARC_SEGS, ceili(absf(sweep) * radius / (ARC_SEG_RADII * ball_r)))
+	var out := PackedVector2Array()
+	for i in n + 1:
+		out.append(center + Vector2.from_angle(a0 + sweep * float(i) / float(n)) * radius)
+	out[0] = from
+	out[n] = to
+	return out
+
+
+## Distance along the nose rectangle's perimeter, starting at the west edge's midpoint and going north then east:
+## orders the pocket arcs round the outline without a wrap-around inside any of them.
+static func _perimeter_t(p: Vector2, hl: float, hw: float) -> float:
+	if absf(p.x + hl) < SEAM_EPS and p.y <= 0.0:
+		return -p.y
+	if absf(p.y + hw) < SEAM_EPS:
+		return hw + p.x + hl
+	if absf(p.x - hl) < SEAM_EPS:
+		return hw + 2.0 * hl + p.y + hw
+	if absf(p.y - hw) < SEAM_EPS:
+		return hw + 2.0 * hl + 2.0 * hw + hl - p.x
+	return hw + 2.0 * hl + 2.0 * hw + 2.0 * hl + hw - p.y
+
+
+## Nose rectangle with every `inner` arc cut out of it: the outline plus its convex pieces.
+static func _bed(out: TableLayout, hl: float, hw: float) -> void:
+	var arcs: Array[PackedVector2Array] = []
+	for hole: TableLayout.Hole in out.holes.values():
+		var arc := hole.inner
+		if _perimeter_t(arc[0], hl, hw) > _perimeter_t(arc[arc.size() - 1], hl, hw):
+			arc = _reversed(arc)
+		arcs.append(arc)
+	arcs.sort_custom(func(a: PackedVector2Array, b: PackedVector2Array) -> bool: return _perimeter_t(a[0], hl, hw) < _perimeter_t(b[0], hl, hw))
+	var outline := PackedVector2Array()
+	for arc in arcs:
+		outline.append_array(arc)
+	if Geometry2D.is_polygon_clockwise(outline):
+		outline = _reversed(outline)
+	out.bed_outline = outline
+	out.bed_pieces.clear()
+	for piece in Geometry2D.decompose_polygon_in_convex(outline):
+		out.bed_pieces.append(piece)
+
+
+static func _reversed(a: PackedVector2Array) -> PackedVector2Array:
+	var out := a.duplicate()
+	out.reverse()
 	return out
 
 
