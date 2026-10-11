@@ -10,6 +10,12 @@ extends RefCounted
 ##   [cushion depth, rail_width_m)  rail block — solid wood, full rail_height_m
 ## so the two never overlap and there is no gap between them.
 ##
+## No seam is an edge-to-edge contact (06 P32): two meshes that merely touch can open a hairline under a phone GPU's
+## rounding and show the lit room behind the table as a bright line. Every abutting visual is sunk `_sink` (half the
+## slab) into its neighbour instead — the cushion wedge and the facing stubs run below the cloth plane and carry their
+## slope on into the rail block, a plug ties each rail block to the apron under it, the liner walls stand a hair
+## behind the cloth's own rim wall — so what a crack could show is always the dark rubber or liner, never the room.
+##
 ## Pocket holes (06 P30): the cloth is the nose rectangle with every pocket's hole cut out of it (the same outline
 ## the bed collider is built from), and each hole is lined by a dark cup — floor, walls, and a back wall on the arc
 ## outside the nose rectangle. Moving Pockets adds a cloth-coloured cover ring per pocket, slid by table.gd.
@@ -111,6 +117,11 @@ static func _cushion_depth(spec: TableSpec) -> float:
 	return spec.ball_radius_m * 2.0  # must match table_builder.gd's cushion collider depth
 
 
+## How far a visual runs into the piece it abuts (see the file header).
+static func _sink(spec: TableSpec) -> float:
+	return spec.bed_thickness_m * 0.5
+
+
 ## Cloth top = the bed outline triangulated at cloth height; each hole gets a rim wall `bed_thickness_m` deep so
 ## the cut reads as cloth over slate, not a paper-thin sheet.
 static func _build_cloth(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> MeshInstance3D:
@@ -161,7 +172,7 @@ static func _wall_quad(st: SurfaceTool, a: Vector2, b: Vector2, toward: Vector2,
 static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.RailSegment, y: float) -> void:
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Cushion_" + String(rail.id)
-	mesh.mesh = _wedge_mesh(_cushion_depth(spec), spec.cushion_nose_h_m, rail.a.distance_to(rail.b))
+	mesh.mesh = _wedge_mesh(_cushion_depth(spec), spec.cushion_nose_h_m, rail.a.distance_to(rail.b), _sink(spec))
 	mesh.material_override = _material(CUSHION_COLOR)
 	var mid := (rail.a + rail.b) * 0.5
 	mesh.transform = Transform3D(TableGeometry.rail_basis(rail), mid + Vector3(0, y, 0))
@@ -204,8 +215,20 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	var mid := (a + b) * 0.5
 	var basis := TableGeometry.rail_basis(rail)
 	# local +X centre sits at depth0 + width/2, local +Y centre at rail_height_m/2 (block rests on cloth)
-	mesh.transform = Transform3D(basis, mid - rail.inward_normal * (depth0 + width * 0.5) + Vector3(0, y + spec.rail_height_m * 0.5, 0))
+	var at := mid - rail.inward_normal * (depth0 + width * 0.5)
+	mesh.transform = Transform3D(basis, at + Vector3(0, y + spec.rail_height_m * 0.5, 0))
 	parent.add_child(mesh)
+	# The block and the apron under it meet at one plane: a plug straddling it (`sink` each way, inset so none of its faces
+	# is coplanar with theirs) keeps a hairline there from opening onto the room — it would show wood.
+	var inset := _sink(spec) * 0.2
+	var plug := MeshInstance3D.new()
+	plug.name = "RailPlug_" + String(rail.id)
+	var pbox := BoxMesh.new()
+	pbox.size = Vector3(width - 2.0 * inset, _sink(spec) * 2.0, a.distance_to(b) - 2.0 * inset)
+	plug.mesh = pbox
+	plug.material_override = mesh.material_override
+	plug.transform = Transform3D(basis, at + Vector3(0, y, 0))
+	parent.add_child(plug)
 
 
 ## Angled facing wedge, same cross-section as the cushion (T5.2: "the cushion profile continued
@@ -225,7 +248,7 @@ static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, d
 		x = -x
 	var facing := MeshInstance3D.new()
 	facing.name = "Facing"
-	facing.mesh = _wedge_mesh(depth, h, length)
+	facing.mesh = _wedge_mesh(depth, h, length, _sink(spec))
 	facing.material_override = _material(CUSHION_COLOR)
 	# Same outward shift as the collider (table_builder.gd): inner face flush with the nose line,
 	# fused to the cushion end instead of straddling it with a visible gap or overlap. The wedge's
@@ -275,19 +298,25 @@ static func _build_sight(parent: Node3D, spec: TableSpec, pos: Vector3, y: float
 
 ## The hole's cup, seen from above: dark walls from the cloth plane down to the floor `cup_depth_m` below, the floor,
 ## and a back wall to rail height on the arc outside the nose rectangle (table_builder.gd's `_build_cup`, same ring).
-## Double-sided and unlit by the room's baked light: it is a pit, it should read as one.
+## Double-sided and unlit by the room's baked light: it is a pit, it should read as one. The ring stands `_sink / 5`
+## outside the cloth's own rim wall and reaches up to just under the cloth plane, so the cloth hides the join (two coplanar
+## walls z-fight cloth/dark, and an edge-to-edge join can open a hairline onto the room).
 static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var floor_y := y - spec.cup_depth_m
-	var ring := hole.ring
+	var grow := _sink(spec) * 0.2
+	var top := y - grow
+	var ring := PackedVector2Array()
+	for p in hole.ring:
+		ring.append(_grown(hole, p, grow))
 	for i in ring.size():
-		# stops under the cloth's own rim wall (`_build_cloth`): two coplanar walls over the top bed_thickness z-fight, and
-		# a cloth/dark flicker on the hole's rim is exactly the "bright line in the seam" 06 P32 forbids
-		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, y - spec.bed_thickness_m)
+		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, top)
 		_facing_tri(st, _at(hole.center, floor_y), _at(ring[i], floor_y), _at(ring[(i + 1) % ring.size()], floor_y), Vector3.UP)
 	for i in hole.outer.size() - 1:
-		_wall_quad(st, hole.outer[i], hole.outer[i + 1], hole.center, y, y + spec.rail_height_m)
+		# starts well under the ring wall's top: outside the nose rectangle there is no cloth rim wall, so a back wall that
+		# began at the cloth plane left a `bed_thickness_m` slit round the pocket's rear showing the room behind it
+		_wall_quad(st, _grown(hole, hole.outer[i], grow), _grown(hole, hole.outer[i + 1], grow), hole.center, y - spec.bed_thickness_m * 1.5, y + spec.rail_height_m)
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Liner_" + String(hole.pocket_id)
 	mesh.mesh = st.commit()
@@ -295,6 +324,11 @@ static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayo
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mesh.material_override = mat
 	parent.add_child(mesh)
+
+
+## `p` moved `by` away from the hole's axis.
+static func _grown(hole: TableLayout.Hole, p: Vector2, by: float) -> Vector2:
+	return p + (p - hole.center).normalized() * by
 
 
 ## Moving Pockets cover: top ring (flat, then ramped down at its rim) plus the inner rim wall, local to the
@@ -366,16 +400,19 @@ static func _build_apron_and_legs(parent: Node3D, spec: TableSpec, layout: Table
 			parent.add_child(mesh)
 
 
-static func _wedge_mesh(depth: float, height: float, length: float) -> ArrayMesh:
+## The wedge runs `sink` below the cloth plane and its slope carries on down to there, so it crosses the cloth edge and the
+## rail block face instead of touching them at an edge (the part under the plane is inside the rail block).
+static func _wedge_mesh(depth: float, height: float, length: float, sink: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var hz := length * 0.5
-	var p0 := Vector3(0.0, 0.0, -hz)   # nose base
+	var reach := depth * (height + sink) / height  # where the slope line through (depth, 0) meets the sunk base
+	var p0 := Vector3(0.0, -sink, -hz)   # nose base
 	var p1 := Vector3(0.0, height, -hz)  # nose tip (ball contact face is p0-p1)
-	var p2 := Vector3(depth, 0.0, -hz)   # outward base, where the rail block continues
-	var q0 := Vector3(0.0, 0.0, hz)
+	var p2 := Vector3(reach, -sink, -hz)   # outward base, inside the rail block
+	var q0 := Vector3(0.0, -sink, hz)
 	var q1 := Vector3(0.0, height, hz)
-	var q2 := Vector3(depth, 0.0, hz)
+	var q2 := Vector3(reach, -sink, hz)
 	_tri(st, p0, p2, p1)   # -Z end cap
 	_tri(st, q0, q1, q2)   # +Z end cap
 	_quad(st, p0, p1, q1, q0)  # nose face

@@ -285,7 +285,7 @@ func _build_lights(root_n: Node3D) -> void:
 	spot.spot_angle = 58.0
 	spot.spot_angle_attenuation = 1.4
 	spot.shadow_enabled = true
-	spot.shadow_bias = 0.015  # was 0.04: that much peter-panning detaches the rail/cushion shadows from their bases (06 P32)
+	spot.shadow_bias = 0.01  # was 0.04: that much peter-panning detaches the rail/cushion shadows from their bases (06 P32); 0.005-0.04 shows no acne on the cloth
 	spot.light_bake_mode = Light3D.BAKE_DYNAMIC
 	_add(root_n, spot, "TableLamp")
 	_light(root_n, "BarFill", Vector3(3.5, 2.6, 2.5), Color(1.0, 0.7, 0.4), 3.0, 6.0, Light3D.BAKE_DYNAMIC)
