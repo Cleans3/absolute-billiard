@@ -248,10 +248,12 @@ func _crack_pixels(a: Image, b: Image) -> Array[Vector2i]:
 				var c: int = stack.pop_back()
 				var cx := c % w
 				var cy := c / w
-				for n in [c - 1 if cx > 0 else -1, c + 1 if cx < w - 1 else -1, c - w if cy > 0 else -1, c + w if cy < h - 1 else -1]:
-					if n >= 0 and diff[n] == 1 and open[n] == 0:
-						open[n] = 1
-						stack.append(n)
+				for ny in range(maxi(cy - 1, 0), mini(cy + 2, h)):  # 8-connected: the tip of the open window under the apron
+					for nx in range(maxi(cx - 1, 0), mini(cx + 2, w)):  # can sit one diagonal step from the rest of it
+						var n := ny * w + nx
+						if diff[n] == 1 and open[n] == 0:
+							open[n] = 1
+							stack.append(n)
 	for i in w * h:
 		if diff[i] == 1 and open[i] == 0:
 			hit[i] = 1
