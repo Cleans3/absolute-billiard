@@ -131,35 +131,48 @@ func _client() -> void:
 	intent.power = 0.5
 	table.sim.request_shot(intent)
 	await _until(func() -> bool: return _started == 1, "shot_started_net")
-	# every frame of the cue ball on this client: [y rel. table, visible, pocketed, retired]
+	# every frame of the cue ball on this client: [y rel. table, visible, pocketed]; and each streamed lifecycle flag as it
+	# lands (the scratch respawn follows RETIRED within a frame or two, so the per-frame poll alone can miss `retired`)
 	var trace: Array[Array] = []
+	var flags: Array[Array] = []
+	table.sim.ball_flag_applied.connect(func(b: Ball, flag: int) -> void:
+		if b == cue:
+			flags.append([flag, table.to_local(b.global_position).y]))
+	var landed := func(flag: int) -> bool:
+		return flags.any(func(f: Array) -> bool: return f[0] == flag)
 	var t0 := Time.get_ticks_msec()
-	while not cue.retired and Time.get_ticks_msec() - t0 < 25000:
+	while not landed.call(BallEventCodec.Flag.RESTORED) and Time.get_ticks_msec() - t0 < 25000:
 		await process_frame
-		trace.append([table.to_local(cue.global_position).y, cue.visible, cue.is_pocketed, cue.retired])
-	assert(cue.retired, "the potted cue ball must be retired on the client")
+		trace.append([table.to_local(cue.global_position).y, cue.visible, cue.is_pocketed])
+	assert(landed.call(BallEventCodec.Flag.POCKETED) and landed.call(BallEventCodec.Flag.RETIRED), "the potted cue ball must be flagged and retired on the client")
+	assert(landed.call(BallEventCodec.Flag.RESTORED), "the scratched cue ball must be respawned on the client")
 	await create_timer(0.5).timeout
 	var cloth := table.spec.bed_height_m
 	var r := table.spec.ball_radius_m
+	var pot_y := INF
+	for f in flags:
+		if f[0] == BallEventCodec.Flag.POCKETED and pot_y == INF:
+			pot_y = float(f[1])
 	var i_pot := -1
-	var i_ret := trace.size() - 1
 	for i in trace.size():
 		if i_pot < 0 and trace[i][2]:
 			i_pot = i
-	assert(i_pot >= 0, "the client never saw the pot flag")
 	var min_before := INF
 	var max_step := 0.0
+	var last_pot_y := INF  # the ball's height in its last frame as a pot, i.e. when the scratch respawn (or the hide) took it out
 	for i in trace.size():
-		if i < i_pot:
+		if i_pot >= 0 and i < i_pot:
 			min_before = minf(min_before, float(trace[i][0]))
-		if i > 0:
+		if trace[i][2]:
+			last_pot_y = float(trace[i][0])
+		if i > 0 and not (trace[i - 1][2] and not trace[i][2]):  # the respawn is a deliberate teleport, every other step must be continuous
 			max_step = maxf(max_step, absf(float(trace[i][0]) - float(trace[i - 1][0])))
 		if not trace[i][1]:  # hidden
 			assert(float(trace[i][0]) <= cloth - r, "ball hidden above the cloth (y %.3f)" % float(trace[i][0]))
-	print("pocketpair: client frames=%d pot at #%d y=%.3f, retired at #%d y=%.3f, lowest y before the flag %.3f, max step %.3f" % [trace.size(), i_pot, float(trace[i_pot][0]), i_ret, float(trace[i_ret][0]), min_before, max_step])
-	assert(float(trace[i_pot][0]) <= cloth - r, "client flagged the pot with the ball still near the cloth (y %.3f)" % float(trace[i_pot][0]))
+	print("pocketpair: client frames=%d pot flag y=%.3f, last pot-frame y=%.3f, lowest y before the flag %.3f, max step %.3f" % [trace.size(), pot_y, last_pot_y, min_before, max_step])
+	assert(pot_y <= cloth - r, "client flagged the pot with the ball still near the cloth (y %.3f)" % pot_y)
 	assert(min_before <= cloth + r - 0.02, "the ball never visibly dropped before the pot flag (lowest y %.3f)" % min_before)
-	assert(float(trace[i_ret][0]) <= cloth - r, "retired above the cloth (y %.3f)" % float(trace[i_ret][0]))
+	assert(last_pot_y <= cloth - r, "the pot ended (retired / respawned) with the ball above the cloth (y %.3f)" % last_pot_y)
 	assert(max_step <= 0.25, "ball teleported %.3f m in one frame" % max_step)
 	var d2 := FileAccess.open(_file("client_done"), FileAccess.WRITE)
 	d2.store_string("1")

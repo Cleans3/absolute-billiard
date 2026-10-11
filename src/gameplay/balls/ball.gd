@@ -203,8 +203,8 @@ func _emit_resting_changed(v: bool) -> void:
 
 
 func _set_resting(v: bool) -> void:
-	if is_resting == v:
-		return
+	if is_resting == v or (v and is_pocketed and not retired):
+		return  # a pot only finishes at RETIRED (A1): a ball settling on the cup floor must not end the shot before it
 	is_resting = v
 	_emit_resting_changed.call_deferred(v)
 
