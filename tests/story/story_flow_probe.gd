@@ -47,7 +47,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await SoloSupport.until_playable(self)
+	await SoloSupport.until_playable(self, 60.0, true)
 	var level := current_scene
 	var loop: GameLoop = level.get_node("GameLoop")
 	var director: StoryDirector = level.get_node("StoryDirector")
