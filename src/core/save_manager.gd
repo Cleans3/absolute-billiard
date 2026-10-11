@@ -186,6 +186,18 @@ static func save_story_seen(campaign: int, nights: Array[int]) -> void:
 	_story_put("story_seen", campaign, nights)
 
 
+## The Nights whose phone call this player already heard in `campaign`, so a Resume of a Night-start checkpoint stays quiet.
+static func story_called(campaign: int) -> Array[int]:
+	var out: Array[int] = []
+	for n: Variant in _story_get("story_called", campaign):
+		out.append(int(n))
+	return out
+
+
+static func save_story_called(campaign: int, nights: Array[int]) -> void:
+	_story_put("story_called", campaign, nights)
+
+
 ## The Gus story lines this player already heard in `campaign`, by their text.
 static func story_said(campaign: int) -> Array[String]:
 	var out: Array[String] = []

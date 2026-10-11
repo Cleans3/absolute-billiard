@@ -102,6 +102,13 @@ func _run() -> void:
 	await _frames(2)
 	_check(not director.calling and not gus.chat.is_holding(), "the call ends and Gus may talk again")
 	_check(not director.ringing, "an answered phone stays quiet")
+	_check(SaveManager.story_called(loop.campaign_seed) == [1], "Night 1's call is recorded as heard for this campaign")
+	for i in 2:  # Resume of Night 1's start checkpoint, twice: the heard call does not ring again (gamma F3)
+		loop.round_index = 0
+		loop.night_index = 0
+		loop._begin_night()
+		await _frames(3)
+		_check(director.answered and not director.ringing and not phone.is_ringing(), "resume %d of an answered Night's start: the phone stays quiet" % (i + 1))
 
 	# --- C2: the ignored phone, C1: Night 2's cards, C8: velvet ---
 	loop.night_index = 1

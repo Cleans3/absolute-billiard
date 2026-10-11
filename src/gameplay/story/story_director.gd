@@ -82,7 +82,7 @@ func _on_peers_away_changed() -> void:
 # --- the Night ------------------------------------------------------------------------------------------------------------------
 
 func _on_night_started(night_number: int, _quota: int) -> void:
-	answered = false
+	answered = SaveManager.story_called(game_loop.campaign_seed).has(night_number)  # a resumed Night-start stays quiet
 	_end_call()
 	_ring(false)
 	_feed_gus()
@@ -142,6 +142,11 @@ func _on_interaction(_peer_id: int, kind: StringName, _target_id: int, payload: 
 		return
 	answered = true
 	_ring(false)
+	var night := game_loop.current_night().night_number
+	var called := SaveManager.story_called(game_loop.campaign_seed)
+	if not called.has(night):
+		called.append(night)
+		SaveManager.save_story_called(game_loop.campaign_seed, called)
 	if bool(payload.get(&"replay", false)):  # a peer that came back late: it only learns the phone is quiet
 		return
 	_start_call()

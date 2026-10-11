@@ -80,7 +80,9 @@ a new campaign and survives a Resume.
   length. Gus stays quiet while the call plays.
 - Answering is optional. If nobody does, it stops ringing when the Round goes live, and Gus covers
   for it with one line from the `phone_ignored` pool (§4.3).
-- Once answered, the phone stays quiet until the next Night.
+- Once answered, the phone stays quiet until the next Night. Each player's profile records the Nights
+  whose call they heard (`story_called`, campaign-keyed like `story_seen`), so resuming a Night-start
+  checkpoint after answering does not ring it again.
 
 ### 3.3 Gus
 - `gus_lines` from Night N **join** his existing pools from Night N onward (P24 keeps the
@@ -89,8 +91,8 @@ a new campaign and survives a Resume.
   `0.35 [tune]` (a share of rolls, not a raw weight next to the others). Each line is said at most
   once per campaign, so the story drips out instead of looping.
 - His tone shifts by Night: jokes at Night 1, nervous at 3, honest at 5. Night 5 is the only one
-  where he drops the sarcasm (A.1): his negative reaction pools and sales pitches are muted that
-  Night.
+  where he drops the sarcasm (A.1): his negative reactions, sales pitches, specials of the day and
+  cash jokes are muted that Night; he keeps his pep talks and his story lines.
 
 ### 3.4 Hazards as Moe's people
 - Every `Event` gains one flavor line, `story_line: String`, shown under its name on the vote card

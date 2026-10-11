@@ -267,9 +267,11 @@ func _ambient_pool() -> StringName:
 	if story_left() > 0 and rng.randf() < STORY_SHARE:
 		return &"story"
 	var intermission := _loop != null and _loop.phase == GameLoop.Phase.INTERMISSION
+	if is_final_night():
+		return &"pep"  # 09 §3.3: Night 5 drops the sarcasm — no pitches, specials or cash jokes, only pep and story
 	var weights := {
 		&"pep": 2.0 if intermission else 4.0,
-		&"pitch": 0.0 if is_final_night() else (4.0 if intermission else 2.0),
+		&"pitch": 4.0 if intermission else 2.0,
 		&"special": (3.0 if intermission else 1.0) if not shelf_names().is_empty() else 0.0,
 	}
 	var cash := _cash_state()

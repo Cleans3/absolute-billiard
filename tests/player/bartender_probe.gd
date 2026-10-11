@@ -211,10 +211,12 @@ func _story(level: Node, chat: BartenderChat) -> void:
 
 	loop.night_index = loop.nights.size() - 1  # the Buyout Night
 	_check(chat.is_final_night(), "the last campaign Night is the Buyout Night")
-	var pitched := false
+	var said5 := {}
 	for i in 600:
-		pitched = pitched or chat._ambient_pool() == &"pitch"
-	_check(not pitched, "no sales pitch on the Buyout Night")
+		said5[chat._ambient_pool()] = true
+	said5.erase(&"pep")
+	said5.erase(&"story")
+	_check(said5.is_empty(), "the Buyout Night is pep and story only: no pitch, special or cash joke (%s)" % [said5.keys()])
 	chat._queued = &""
 	chat.react(&"neg_miss", 3)
 	_check(chat._queued == &"", "no negative reaction on the Buyout Night")
