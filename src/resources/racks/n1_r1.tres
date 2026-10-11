@@ -4,5 +4,5 @@
 
 [resource]
 script = ExtResource("1")
-type_ids = Array[StringName]([&"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"black_penalty"])
+type_ids = Array[StringName]([&"red_basic", &"red_basic", &"red_basic", &"red_basic", &"black_penalty", &"red_basic", &"red_basic", &"red_basic", &"red_basic", &"red_basic"])
 positions = PackedVector2Array(0.5121, 0.0000, 0.5529, -0.0482, 0.5529, 0.0482, 0.5936, -0.0964, 0.5936, 0.0000, 0.5936, 0.0964, 0.6343, -0.1446, 0.6343, -0.0482, 0.6343, 0.0482, 0.6343, 0.1446)

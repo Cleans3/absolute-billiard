@@ -12,6 +12,7 @@ const SHRINK := 0.95             # spacing multiplier when a sample comes up sho
 const MAX_PRIZES := 2            # 01 §2: "one or two per Round"
 const MAX_OBJECT_BALLS := 12     # 07 §1 phone budget; obstacles (stone_ball) count toward it (06 P8)
 const STONES_PER_RACK := 1       # [tune] when `stone_ball` is in the pool
+const CENTRE_TIE_M := 1e-4       # slots this close in distance to the centroid tie (06 P31)
 
 
 static func ball_type(id: StringName) -> BallType:
@@ -41,13 +42,43 @@ static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed
 		points[i] = points[j]
 		points[j] = t
 	points.resize(n)
-	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return _openness(spec, layout, a) > _openness(spec, layout, b))
 
+	# 06 P31: the black ball opens the Round in the middle of the formation; the rest are dealt by openness as before.
 	var types := compose(config, n, rng)
+	var black := _black_index(types)
 	var out: Array[Dictionary] = []
-	for i in n:
+	if black >= 0:
+		var mid := centre_slot(points, Vector2(layout.spots.foot.x, layout.spots.foot.z))
+		out.append({type = types[black], pos = points[mid]})
+		types.remove_at(black)
+		points.remove_at(mid)
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return _openness(spec, layout, a) > _openness(spec, layout, b))
+	for i in points.size():
 		out.append({type = types[i], pos = points[i]})
 	return out
+
+
+## The first penalty ("black") ball of `types`, or -1.
+static func _black_index(types: Array[BallType]) -> int:
+	for i in types.size():
+		if types[i].behaviour_tags.has(&"penalty"):
+			return i
+	return -1
+
+
+## The slot nearest the formation's centroid (06 P31); a tie goes to the slot nearer `foot`, then the lower index.
+static func centre_slot(points: Array[Vector2], foot: Vector2) -> int:
+	var centroid := Vector2.ZERO
+	for p in points:
+		centroid += p
+	centroid /= float(points.size())
+	var best := 0
+	for i in range(1, points.size()):
+		var d := points[i].distance_to(centroid)
+		var bd := points[best].distance_to(centroid)
+		if d < bd - CENTRE_TIE_M or (absf(d - bd) <= CENTRE_TIE_M and points[i].distance_to(foot) < points[best].distance_to(foot) - CENTRE_TIE_M):
+			best = i
+	return best
 
 
 ## Object balls in a Round: the Night's count plus any obstacles in the pool, capped at 12 (06 P8).
