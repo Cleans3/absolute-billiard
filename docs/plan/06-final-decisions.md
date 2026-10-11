@@ -170,7 +170,7 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 
 **P6 — Player v1 now.** The Player module is no longer deferred: touch-first first-person player, cue control and bar interaction per `08-player.md`. Cosmetics and gamepad stay later.
 
-**P7 — Noray relay host.** The self-hosted relay runs on the old GenCloud VPS (`160.191.243.188`, the ex-Minecraft/Palworld box). `net_config.tres` points there by default; a fork edits one field.
+**P7 — Noray relay host.** The self-hosted relay runs on a dedicated GenCloud VPS (`160.191.243.191`, Ubuntu 24.04, 1 vCPU / 1 GB; moved 2026-10-12 from the cancelled `160.191.243.188`). `net_config.tres` points there by default; a fork edits one field.
 
 **P8 — Open questions closed with alpha's defaults.** bomb scatters and removes only itself · split = one spawn per pot · no house pocket · stone counts toward the ≤12 cap · fouls cost no Cash · hostile cap 2/Turn, no per-Round cap · `ice_water` refunds nothing · **netcode is silent at rest**: heartbeat 2 Hz only while a Shot is live (07 §3 over 04 §3), one full-state on join/resume.
 
@@ -198,7 +198,7 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 
 # Cleanse's rulings (2026-10-09) — testing on the phone
 
-**P19 — The phone is the testing ground.** Cleanse plays every change on an Android phone, not on the desktop. When a change is finished and ready to test (merged to `main`, probes green), run `src/tools/publish_apk.sh` in the same session: it builds the debug APK and replaces the download on the relay box's share page. Then hand Cleanse the link `http://160.191.243.188:8892/`. A change that isn't on that page hasn't reached testing yet. Desktop runs and probes are for development only. iOS stays out of scope until there is a Mac.
+**P19 — The phone is the testing ground.** Cleanse plays every change on an Android phone, not on the desktop. When a change is finished and ready to test (merged to `main`, probes green), run `src/tools/publish_apk.sh` in the same session: it builds the debug APK and replaces the download on the relay box's share page. Then hand Cleanse the link `http://160.191.243.191:8892/`. A change that isn't on that page hasn't reached testing yet. Desktop runs and probes are for development only. iOS stays out of scope until there is a Mac.
 
 # Cleanse's rulings (2026-10-10) — polish pass 2, from the first phone test (override P3's Intermission screen, P12's top stat bar, 08 §2.4 "arms hidden in first person")
 

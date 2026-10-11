@@ -21,7 +21,7 @@ The design docs are authoritative. Code is implemented **from** them, never the 
 
 Open questions listed in `05`/each doc §6 need the user's decision — do not resolve them silently in code.
 
-**Testing happens on the phone (06 P19).** A change is ready to test only once it is merged to `main` with the probes green and `src/tools/publish_apk.sh` has run. Then give Cleanse `http://160.191.243.188:8892/` to download and install it.
+**Testing happens on the phone (06 P19).** A change is ready to test only once it is merged to `main` with the probes green and `src/tools/publish_apk.sh` has run. Then give Cleanse `http://160.191.243.191:8892/` to download and install it.
 
 ## Engine & commands
 
@@ -37,7 +37,7 @@ godot --path . --headless -s tests/physics/probe.gd   # physics feel probe (roll
 tests/run_all.sh                        # every probe + every pair probe; prints ALL PROBES OK
 bash tests/net/pair.sh tests/net/campaign_pair_probe.gd   # two peers (host + client) run one pair probe; prints PAIR OK
 bash src/tools/android_export.sh        # gradle debug APK (deep-link intent-filters) → build/android/ab.apk
-src/tools/publish_apk.sh                # build + put the APK on the relay box: phone opens http://160.191.243.188:8892/ and installs
+src/tools/publish_apk.sh                # build + put the APK on the relay box: phone opens http://160.191.243.191:8892/ and installs
 src/tools/m0_device_run.sh --quick      # M0 phone gate (07 §9): export, adb install, fixtures, budget table
 ```
 
@@ -61,7 +61,7 @@ Planned layout (04 §4): `src/core` net/save/shared motion · `src/gameplay` Tab
 
 M0–M7 built (2026-09-30), polish pass 06 P11–P18 built (2026-10-02), polish pass 2 06 P20–P28 built (2026-10-10), story + table pass 06 P29–P32 built (2026-10-11), every milestone's code and probes on `main`; what is still open needs hardware or a user run (bottom).
 
-- **Boot → play.** `Lobby.tscn` (`LobbyUI`: Host / Join code / Advanced IP / Solo / Resume / Steam when available) → `NetManager` (autoload: roster, seat order, `start_game`, `all_peers_ready` barrier) → `MainLevel.tscn`. Solo = `NetManager.host_solo()` on `OfflineMultiplayerPeer`. Lobby code = Noray OID (6-char Crockford); share link `http://160.191.243.188:8892/j/<code>` and `absolutebilliard://j/<code>` both open the app (gradle build injects the intent-filters, `addons/deeplink`).
+- **Boot → play.** `Lobby.tscn` (`LobbyUI`: Host / Join code / Advanced IP / Solo / Resume / Steam when available) → `NetManager` (autoload: roster, seat order, `start_game`, `all_peers_ready` barrier) → `MainLevel.tscn`. Solo = `NetManager.host_solo()` on `OfflineMultiplayerPeer`. Lobby code = Noray OID (6-char Crockford); share link `http://160.191.243.191:8892/j/<code>` and `absolutebilliard://j/<code>` both open the app (gradle build injects the intent-filters, `addons/deeplink`).
 - **Sync (M3).** Host strikes with `PhysicsSim.active_cue` after `shot_validator`; streams 25 B-intent / ≤21 B contact + divergence events (`BallEventCodec`, s16 fixed point), clients replay through `BallMotion.advance` 100 ms behind (`at_playback`). Balls freeze at rest and thaw at strike — anything that moves a resting ball outside a strike must thaw it first. Background/resume: `NetManager.backgrounded` + `request_full_state`. `tests/net/rpc_table_probe.gd` fails if any `@rpc` drifts from 04 §5.
 - **Game (01/02/03).** `RoundDirector` (racks incl. authored N1/N5, gimmick balls bomb/split/joker/stone, call-pocket, host shot clock, shuffle, pocket radius/oscillation), `GameLoop` (Night/Round, checkpoints each Round via `SaveManager`, Endless), `EconomyManager` (Bartender: random tiered Drinks shelf rerolled each Intermission + fixed Upgrades, Mystery tier with buff+debuff, scratch fine, camera rigs + scorer, cue specs), `StreamManager`, `EffectManager`/`EventScheduler` (drinks, events + vote, world interactions via `WorldInteractions`).
 - **Player (08).** `player.gd` WALK/CUE/CARRY/RAGDOLL, every body a `Humanoid` (procedural skinned mesh, `PhysicalBoneSimulator3D` ragdoll on a host `PlayerSpawner.knock`; the bartender NPC uses it too). `CueController` is the one `ShotIntent` source for touch (`src/ui/TouchControls`) and desktop keys; remote peers are puppets fed by 10 Hz poses. Skins (P18, free in test mode): `SkinCatalog`, profile + roster `char_skin`/`bar_skin`, `MainLevel/BarSkins` picks a crew bar skin each Round.
@@ -74,6 +74,6 @@ M0–M7 built (2026-09-30), polish pass 06 P11–P18 built (2026-10-02), polish 
 
 Table reads as a real pool table at scale **2.0** (regulation × `TableSpec.scale`), everything derived from `REG_*` constants — no metre literal outside `TableSpec` in `src/gameplay/{table,balls,round}`. Data → pure geometry → scene split: `table_geometry.gd` → `table_builder.gd` → `table_visuals.gd`; `table.gd` only orchestrates. `Ball.is_resting` (not Jolt's `sleeping`) is what `PhysicsSim` counts toward `awake`. GameLoop keeps `round_director` typed `Node` on purpose: the economy probe injects a fake director. Debug tooling in `src/debug/` (NetGraph on F8, SimDiff) — see `src/debug/README.md`.
 
-Relay box 160.191.243.188 runs Noray, the share page and the tunnel relay; join-by-code verified against it through the tunnel (`pair.sh tests/net/pair_probe.gd --noray [--relay-only]`, 2026-09-30).
+Relay box 160.191.243.191 runs Noray, the share page and the tunnel relay; join-by-code verified against it through the tunnel (`pair.sh tests/net/pair_probe.gd --noray [--relay-only]`, 2026-10-12). `ufw` is on: ssh + the relay ports only (`deploy/noray/vps/firewall.sh`).
 
-**Open, needs the user:** direct punch over a friendly NAT unmeasured (the dev network is symmetric, every join from it is relayed); `ufw` fails on the relay box, so it has no firewall; GodotSteam not fetched (Steam API names unverified, its peer has no channels); M0 numbers on a real phone (`m0_device_run.sh`); iOS/macOS exports unverified (no Mac); polish pass 2 on the phone: mirror cost, voice blips, touch pickers, and whether the 07 materials row (`≤ 12`, MainLevel now adds 5 dynamic) is raised or the props atlased; story/table pass on the phone: the seam glare (not reproducible on desktop — needs a phone screenshot if it persists), real-pocket feel and the 324-shape table collision cost, story text sizes (vote-card flavor line, phone bubble), Moe's voice.
+**Open, needs the user:** direct punch over a friendly NAT unmeasured (the dev network is symmetric, every join from it is relayed); GodotSteam not fetched (Steam API names unverified, its peer has no channels); M0 numbers on a real phone (`m0_device_run.sh`); iOS/macOS exports unverified (no Mac); polish pass 2 on the phone: mirror cost, voice blips, touch pickers, and whether the 07 materials row (`≤ 12`, MainLevel now adds 5 dynamic) is raised or the props atlased; story/table pass on the phone: the seam glare (not reproducible on desktop — needs a phone screenshot if it persists), real-pocket feel and the 324-shape table collision cost, story text sizes (vote-card flavor line, phone bubble), Moe's voice.
