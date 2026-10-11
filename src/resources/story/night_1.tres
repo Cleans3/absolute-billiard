@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StoryNight" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/story/story_night.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night = 1
+intro_cards = Array[String](["You bet on yourselves. Against Velvet Moe. In his own pool hall.", "You lost. Moe doesn't want your money. He wants it *earned*. On stream. Where people can watch.", "Gus's Corner Pocket. One table. One camera. Gus says it's the only bar in town that would have you.", "Moe wants $600 by closing. Gus says it's a warm-up. Gus is lying."])
+call = Array[String](["Evening. You don't know my voice yet, so let me be clear.", "Six hundred. Tonight. Smile for the camera.", "Gus? Pour them something cheap. They're paying."])
+gus_lines = Array[String](["First Night! I love a first Night. Everybody's so hopeful.", "Moe's a reasonable man. He reasons with a crowbar, but he reasons.", "Don't look at the phone. It can tell.", "My first Night I owed him forty dollars. That was 1979."])
+paid_line = "Huh. You paid. That's the most interesting thing that's happened in this bar in years."
+short_line = "Six hundred dollars. You couldn't find six hundred dollars. Gus, lock the door."
+chat_line = "first rack's always the loudest. enjoy it"
+ending_cards = Array[String]([])

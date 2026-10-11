@@ -28,6 +28,7 @@ visual_hook = &"blackout"
 script = ExtResource("3_v1pva")
 id = &"lights_out"
 display_name = "Lights Out"
+story_line = "Someone forgot to pay the electric. Someone was told to forget."
 tier = 2
 effects = Array[ExtResource("1_1prb6")]([SubResource("Resource_5c6d4")])
 reward_mult = 1.8

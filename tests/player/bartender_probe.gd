@@ -142,6 +142,8 @@ func _run() -> void:
 		pools_after.append(said[i][1])
 	_check(pools_after == [&"neg_scratch"], "scratch + foul together: one remark, the scratch (%s)" % [pools_after])
 
+	await _story(level, chat)
+
 	finished = true
 	print("BARTENDER OK" if fails == 0 else "BARTENDER FAIL (%d)" % fails)
 	quit(0 if fails == 0 else 1)
@@ -161,3 +163,74 @@ func _pools() -> void:
 				_check(line.contains("{drink}"), "special line names the drink: '%s'" % line)
 	for pool in [&"pep", &"special", &"pitch", &"pos_pot", &"pos_trick", &"neg_scratch", &"neg_foul", &"neg_miss", &"cash_low", &"cash_high"]:
 		_check(BartenderLines.POOLS.has(pool), "pool %s exists" % pool)
+
+
+## 09 §3.3: Gus's story lines. Cumulative from Night 1, said once per campaign (and that survives a resume: the said set lives in the
+## profile), 0.35 of the ambient rolls while any remain, and on the Buyout Night no sarcasm: no `neg_*` reaction, no `pitch`.
+func _story(level: Node, chat: BartenderChat) -> void:
+	var loop: GameLoop = level.get_node("GameLoop")
+	var director: StoryDirector = level.get_node("StoryDirector")
+	var campaign := loop.campaign_seed
+	_check(not BartenderLines.POOLS.has(&"phone_ignored") and not BartenderLines.POOLS.has(&"story"), "story pools stay outside POOLS")
+	_check(BartenderLines.lines_of(&"phone_ignored").size() == 3 and BartenderLines.GESTURE.has(&"story") and BartenderLines.GESTURE.has(&"phone_ignored"), "phone_ignored has its three lines; both story pools have a gesture")
+	var night1: Array[String] = loop.nights[0].story.gus_lines
+	var home_night := loop.night_index
+	chat.hold(0.0)
+
+	SaveManager.save_story_said(campaign, [] as Array[String])
+	director._feed_gus()
+	_check(chat.story_left() == night1.size(), "Night 1 unlocks its %d lines (%d)" % [night1.size(), chat.story_left()])
+	var first := chat.pick(&"story")
+	_check(first == night1[0] and chat.story_left() == night1.size() - 1, "the story is told in order, one line at a time: %s" % first)
+	_check(SaveManager.story_said(campaign) == [night1[0]], "the said line is in the profile, keyed by this campaign")
+	director._feed_gus()  # a resume / a reloaded level: the said set comes back from the profile
+	_check(chat.story_left() == night1.size() - 1 and chat.pick(&"story") == night1[1], "a heard line is not told again after a reload")
+	for i in 2:
+		chat.pick(&"story")
+	_check(chat.story_left() == 0 and chat.pick(&"story") == "", "a told story is spent")
+	var picked_story := false
+	for i in 300:
+		picked_story = picked_story or chat._ambient_pool() == &"story"
+	_check(not picked_story, "nothing rolls the story pool once it is spent")
+	_check(SaveManager.story_said(campaign + 1).is_empty(), "another campaign starts with nothing heard")
+
+	loop.night_index = 2  # Night 3: Nights 1-3 are unlocked (4 lines each)
+	SaveManager.save_story_said(campaign, [] as Array[String])
+	director._feed_gus()
+	_check(chat.story_left() == 12 and chat.pick(&"story") == night1[0], "Night 3 holds the lines of Nights 1-3 (%d)" % chat.story_left())
+	loop.night_index = 1
+	SaveManager.save_story_said(campaign, [] as Array[String])
+	director._feed_gus()
+	chat.rng.seed = 11
+	var rolls := 3000
+	var story_rolls := 0
+	for i in rolls:
+		story_rolls += 1 if chat._ambient_pool() == &"story" else 0
+	var share := float(story_rolls) / rolls
+	_check(share > 0.30 and share < 0.40, "about %.0f%% of the ambient rolls go to the story while lines remain (%.3f)" % [BartenderChat.STORY_SHARE * 100.0, share])
+
+	loop.night_index = loop.nights.size() - 1  # the Buyout Night
+	_check(chat.is_final_night(), "the last campaign Night is the Buyout Night")
+	var pitched := false
+	for i in 600:
+		pitched = pitched or chat._ambient_pool() == &"pitch"
+	_check(not pitched, "no sales pitch on the Buyout Night")
+	chat._queued = &""
+	chat.react(&"neg_miss", 3)
+	_check(chat._queued == &"", "no negative reaction on the Buyout Night")
+	chat.react(&"pos_trick", 3)
+	_check(chat._queued == &"pos_trick", "the positive ones stay")
+	chat._queued = &""
+	loop.night_index = 3
+	var pitched4 := false
+	for i in 600:
+		pitched4 = pitched4 or chat._ambient_pool() == &"pitch"
+	_check(pitched4, "Night 4 still pitches")
+	loop.night_index = home_night
+
+	chat.hold(5.0)  # Moe is on the phone
+	chat.react(&"pos_trick", 3)
+	_check(chat.is_holding() and chat._queued == &"", "no reaction while Moe is on the phone")
+	chat.release_hold()
+	chat.react(&"pos_trick", 3)
+	_check(chat._queued == &"pos_trick", "he talks again once the call is over")

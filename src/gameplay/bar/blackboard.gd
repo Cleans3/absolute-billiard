@@ -4,7 +4,8 @@ extends Node3D
 ## effect, the last Round's result and the Night's ask. Everything the lean HUD no longer carries. Pure presentation: it listens
 ## to the mirrored game state (the same signals on every peer) and rewrites a line only when its text really changed, so a
 ## quiet Round costs nothing. Hype moves in 5% steps for that reason. The slate (smears, chalk rules, hype bar) is one shader
-## quad; the lines are Label3D, which keep their mipmaps and stay readable from across the room.
+## quad; the lines are Label3D, which keep their mipmaps and stay readable from across the room. The story (docs/plan/09 §3.4-3.5):
+## the running Hazard's flavor line sits under its name, and the debt line is Moe's ledger.
 
 const ROUND_CASH := [&"shot", &"tip", &"scratch", &"off_table", &"world"]  ## Cash reasons that make up a Round's result
 const REASONS := {&"timer": "Time up", &"cleared": "Table cleared", &"shots": "Out of shots"}
@@ -28,6 +29,7 @@ var _counting := false  ## Cash since the Round began still counts towards `_las
 @onready var _viewers_label: Label3D = %Viewers
 @onready var _hype_label: Label3D = %Hype
 @onready var _hazard: Label3D = %Hazard
+@onready var _hazard_story: Label3D = %HazardStory
 @onready var _hazard_icon: Sprite3D = %HazardIcon
 @onready var _drinks: Label3D = %Drinks
 @onready var _footer: Label3D = %Footer
@@ -72,8 +74,7 @@ func _on_round_ended(reason: StringName, round_points: int) -> void:
 func _on_cash_changed(_balance: int, delta: int, reason: StringName) -> void:
 	if _counting and ROUND_CASH.has(reason):
 		_round_cash += delta
-		if not _last.is_empty():  # a client's last shot of the Round can land just after round_ended
-			_refresh_footer()
+	_refresh_footer()  # the ledger's "paid so far" follows the purse; a label is only rewritten when its text changed
 
 
 func _on_viewers(viewers: int, hype: float) -> void:
@@ -114,6 +115,7 @@ func _refresh_live() -> void:
 	for e in live:
 		events.append(e.display_name)
 	_write(_hazard, ", ".join(events) if not events.is_empty() else "none")
+	_write(_hazard_story, live[0].story_line if not live.is_empty() else "")
 	_hazard_icon.visible = not live.is_empty()
 	if not live.is_empty():
 		_hazard_icon.texture = IconCatalog.hazard(live[0])
@@ -131,10 +133,31 @@ func _refresh_footer() -> void:
 	var last := "none yet"
 	if not _last.is_empty():
 		last = "%s · %s$%d" % [_last, "+" if _round_cash >= 0 else "-", absi(_round_cash)]
-	var next := ""
-	if game_loop != null and not game_loop.nights.is_empty():
-		next = "   ·   NEXT NIGHT $%d" % game_loop.ask_for(game_loop.night_index + 1)
-	_write(_footer, "LAST ROUND  %s\nTONIGHT OWE $%d%s" % [last, _ask, next])
+	_write(_footer, "LAST ROUND  %s\n%s" % [last, ledger()])
+
+
+## Moe's ledger (09 §3.5): the Night's demand and what the crew has paid so far; the Buyout and the Endless rate worded as Moe would.
+## Cash can be negative after a scratch fine, and the ledger shows it as it is.
+func ledger() -> String:
+	var index := game_loop.night_index if game_loop != null else 0
+	var last_night := game_loop.nights.size() - 1 if game_loop != null and not game_loop.nights.is_empty() else 4
+	if index > last_night:
+		return "MOE RAISED THE RATE · %s" % money(_ask)
+	if index == last_night:
+		return "THE BUYOUT · %s · LAST CALL" % money(_ask)
+	return "MOE WANTS %s · PAID SO FAR %s" % [money(_ask), money(economy.cash if economy != null else 0)]
+
+
+## $1,350 / -$25: thousands grouped, the sign in front of the dollar sign.
+static func money(amount: int) -> String:
+	var digits := str(absi(amount))
+	var out := ""
+	for i in digits.length():
+		out += digits[i]
+		var left := digits.length() - 1 - i
+		if left > 0 and left % 3 == 0:
+			out += ","
+	return ("-$" if amount < 0 else "$") + out
 
 
 ## Label3D rebuilds its mesh on every assignment, even of the same text: write only a change.

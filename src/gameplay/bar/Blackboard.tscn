@@ -79,7 +79,7 @@ pixel_size = 0.001
 horizontal_alignment = 0
 
 [node name="HazardRow" type="Node3D" parent="Text"]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.13, 0.2, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.13, 0.25, 0)
 
 [node name="HazardCap" type="Label3D" parent="Text/HazardRow"]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.32, 0.16, 0)
@@ -104,6 +104,21 @@ outline_size = 0
 pixel_size = 0.001
 horizontal_alignment = 0
 
+[node name="HazardStory" type="Label3D" parent="Text/HazardRow"]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.1, 0)
+modulate = Color(1, 0.62, 0.78, 0.9)
+outline_modulate = Color(0, 0, 0, 0)
+text = ""
+font = ExtResource("3_font")
+font_size = 76
+outline_size = 0
+pixel_size = 0.001
+horizontal_alignment = 0
+vertical_alignment = 0
+autowrap_mode = 3
+width = 1250.0
+
 [node name="HazardIcon" type="Sprite3D" parent="Text/HazardRow"]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, 0.06, 0)
@@ -113,12 +128,12 @@ alpha_cut = 1
 
 [node name="Drinks" type="Label3D" parent="Text"]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.13, 0.04, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.13, -0.05, 0)
 modulate = Color(0.95, 0.85, 0.55, 1)
 outline_modulate = Color(0, 0, 0, 0)
 text = "DRINKS  none"
 font = ExtResource("3_font")
-font_size = 115
+font_size = 105
 outline_size = 0
 pixel_size = 0.001
 horizontal_alignment = 0
@@ -126,12 +141,12 @@ vertical_alignment = 0
 
 [node name="Footer" type="Label3D" parent="Text"]
 unique_name_in_owner = true
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, -0.5, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.45, -0.55, 0)
 modulate = Color(0.93, 0.92, 0.85, 1)
 outline_modulate = Color(0, 0, 0, 0)
 text = "LAST ROUND  none yet"
 font = ExtResource("3_font")
-font_size = 130
+font_size = 120
 outline_size = 0
 pixel_size = 0.001
 horizontal_alignment = 0

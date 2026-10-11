@@ -282,7 +282,7 @@ func send_full_state(peer_id: int) -> void:
 	if _round_id == "":
 		return
 	_full_state_rpc.rpc_id(peer_id, _round_id, _seed, _shot_index, current_shooter_id, _round_active, shot_in_progress, shot_clock_left, _rack_blob(), table.sim.snapshot_frame(), table.sim.pocket_time())
-	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager", &"../BarSkins"]:
+	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager", &"../BarSkins", &"../StoryDirector"]:
 		var node := get_node_or_null(NodePath(n))
 		if node != null and node.has_method(&"resync_peer"):
 			node.call(&"resync_peer", peer_id)

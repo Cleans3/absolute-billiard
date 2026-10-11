@@ -347,7 +347,7 @@ func _refresh_ready() -> void:
 
 func _push_state() -> void:
 	if is_inside_tree() and multiplayer.is_server():
-		round_state.rpc(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
+		round_state.rpc(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason, campaign_seed)
 
 
 func _push_ready() -> void:
@@ -357,14 +357,15 @@ func _push_ready() -> void:
 
 ## Host: a client came back from the background (RoundDirector.send_full_state); it just needs the numbers.
 func resync_peer(peer_id: int) -> void:
-	round_state.rpc_id(peer_id, night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason)
+	round_state.rpc_id(peer_id, night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason, campaign_seed)
 	ready_state.rpc_id(peer_id, ready_peers, waiting_peers)
 
 
 ## Clients: adopt the host's numbers and re-emit the signals the host raised, in the host's order.
 @rpc("authority", "call_remote", "reliable", 3)
-func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p_shots: int, p_points: int, p_seed: int, p_reason: StringName) -> void:
+func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p_shots: int, p_points: int, p_seed: int, p_reason: StringName, p_campaign: int) -> void:
 	var was := phase
+	campaign_seed = p_campaign  # story keys its per-player profile entries by it (09 §2.3)
 	night_index = p_night
 	round_index = p_round
 	time_left = p_time_left

@@ -31,6 +31,8 @@
 [ext_resource type="Script" path="res://src/gameplay/bar_room/bar_skin_director.gd" id="skins_director"]
 [ext_resource type="Script" path="res://src/gameplay/player/lean_feedback.gd" id="lean_fb"]
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Mirror.tscn" id="mirror_scene"]
+[ext_resource type="Script" path="res://src/gameplay/story/story_director.gd" id="story_director"]
+[ext_resource type="Script" path="res://src/ui/story_cards.gd" id="story_cards"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -99,6 +101,12 @@ game_loop = NodePath("../GameLoop")
 round_director = NodePath("../RoundDirector")
 table = NodePath("../Table")
 
+[node name="StoryDirector" type="Node" parent="." node_paths=PackedStringArray("game_loop", "world", "cards")]
+script = ExtResource("story_director")
+game_loop = NodePath("../GameLoop")
+world = NodePath("../WorldInteractions")
+cards = NodePath("../UILayer/StoryCards")
+
 [node name="LeanFeedback" type="Node3D" parent="." node_paths=PackedStringArray("world", "effects", "table", "spawner")]
 script = ExtResource("lean_fb")
 world = NodePath("../WorldInteractions")
@@ -157,6 +165,9 @@ capture_mouse = true
 [node name="PhaseScreen" parent="UILayer" node_paths=PackedStringArray("game_loop", "economy") instance=ExtResource("ui_phase")]
 game_loop = NodePath("../../GameLoop")
 economy = NodePath("../../EconomyManager")
+
+[node name="StoryCards" type="Control" parent="UILayer"]
+script = ExtResource("story_cards")
 
 [node name="PauseMenu" parent="UILayer" instance=ExtResource("ui_pause")]
 

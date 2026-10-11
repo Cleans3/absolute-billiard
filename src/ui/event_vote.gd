@@ -4,7 +4,7 @@ extends UIModal
 ## over the Intermission screen and closes when the vote resolves for this peer (a pick, the 20 s clock, the Event
 ## applying, the phase leaving Intermission). A single-card offer is a forced scripted_first Event: an announcement.
 
-const CARD_MIN_SIZE := Vector2(236.0, 236.0)  # >= ~9 mm on a phone; room for the hazard's icon over its name and numbers
+const CARD_MIN_SIZE := Vector2(280.0, 350.0)  # >= ~9 mm on a phone; room for the hazard's icon, name, story line (3 wrapped rows) and numbers
 const ICON_SIZE := 92.0
 
 @export var scheduler: EventScheduler
@@ -86,12 +86,18 @@ func _card(id: StringName, e: Event, forced: bool) -> Button:
 	plate.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	plate.add_child(icon)
 	box.add_child(plate)
-	for line: Array in [[e.display_name, &"CardName"], ["×%.2f reward" % e.reward_mult, &""], ["%+d s" % roundi(e.round_time_add_sec), &"Caption"]]:
+	# name, the Rope's flavor line under it (09 §3.4, wrapped to the card), then the numbers
+	for line: Array in [[e.display_name, &"CardName"], [e.story_line, &"Caption"], ["×%.2f reward" % e.reward_mult, &""], ["%+d s" % roundi(e.round_time_add_sec), &"Caption"]]:
+		if line[0] == "":
+			continue
 		var l := Label.new()
 		l.text = line[0]
 		l.theme_type_variation = line[1]
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if line[0] == e.story_line:
+			l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			l.custom_minimum_size = Vector2(CARD_MIN_SIZE.x - 28.0, 0.0)
 		box.add_child(l)
 	card.add_child(box)
 	return card

@@ -12,6 +12,8 @@ const WORD_GAP_SEC := 0.07
 const PUNCT_GAP_SEC := 0.28
 const VOWELS := "aeiouyAEIOUY"
 
+var pitch_mult := 1.0   ## Moe's phone voice (09 §3.2): 0.6, with `length_mult` 1.4
+var length_mult := 1.0  ## stretches every syllable and gap: a slower voice
 var blips_played := 0   ## for probes
 
 var _blips: Array[AudioStreamWAV] = []
@@ -40,7 +42,7 @@ func speak(text: String) -> void:
 		if VOWELS.contains(c):
 			if not in_vowel:
 				var lift := 0.5 if text.substr(i).find("?") >= 0 and text.substr(i).find("?") < 6 else 0.0
-				_events.append(Vector2(pause + SYLLABLE_SEC, float((word_hash + c.unicode_at(0)) % PITCHES.size()) + lift))
+				_events.append(Vector2((pause + SYLLABLE_SEC) * length_mult, float((word_hash + c.unicode_at(0)) % PITCHES.size()) + lift))
 				pause = 0.0
 			in_vowel = true
 		else:
@@ -69,7 +71,7 @@ func _process(delta: float) -> void:
 	_next = _events[0].x if not _events.is_empty() else 0.0
 	var idx := int(e.y)
 	stream = _blips[idx]
-	pitch_scale = (1.18 if e.y - float(idx) > 0.0 else 1.0) * randf_range(0.95, 1.06)
+	pitch_scale = (1.18 if e.y - float(idx) > 0.0 else 1.0) * randf_range(0.95, 1.06) * pitch_mult
 	play()
 	blips_played += 1
 

@@ -24,7 +24,7 @@ func _run() -> void:
 	root.add_child(lobby)
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
-	await _until(func() -> bool: return current_scene != null and current_scene.name == "MainLevel" and root.get_node_or_null("LoadingScreen") == null, "MainLevel without its loading screen")
+	await SoloSupport.until_playable(self)  # past Night 1's story cards: an open modal would block the player and hold the toast
 	var level := current_scene
 	var gl: GameLoop = level.get_node("GameLoop")
 	await _until(func() -> bool: return gl.phase == GameLoop.Phase.INTERMISSION, "Intermission")

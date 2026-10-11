@@ -1,6 +1,7 @@
-[gd_resource type="Resource" script_class="NightConfig" load_steps=2 format=3]
+[gd_resource type="Resource" script_class="NightConfig" load_steps=3 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/economy/night_config.gd" id="1"]
+[ext_resource type="Resource" path="res://src/resources/story/night_2.tres" id="story"]
 
 [resource]
 script = ExtResource("1")
@@ -13,3 +14,4 @@ object_ball_count = 10
 base_viewers = 250
 hazard_tiers = Array[int]([0, 1, 2])
 unlocked_ball_types = Array[StringName]([&"red_basic", &"black_penalty"])
+story = ExtResource("story")

@@ -4,7 +4,9 @@ extends Node
 ## purse; reactions to the play (scratch, foul, miss, pot, trick shot) a beat after the shot settles. Lines come from
 ## `BartenderLines` through a shuffle bag per pool, so nothing repeats until a pool is used up and never back to back.
 ## Everything here is cosmetic and local: each peer runs its own director; reactions are seeded by the shot so most
-## peers hear the same remark.
+## peers hear the same remark. The story (09 §3.3): `story` lines join the ambient rolls at STORY_SHARE, each said once per
+## campaign (the said set lives in the player's profile); on the final Night he drops the sarcasm (no `neg_*` reaction, no
+## `pitch`); while Moe is on the phone he holds his tongue (`hold`).
 
 signal said(text: String, pool: StringName)
 
@@ -14,8 +16,9 @@ const REACT_DELAY_SEC := Vector2(0.9, 1.8)
 const GAP_SEC := 1.0                       ## silence after a line
 const RECENT_MAX := 12                     ## lines not repeated while a fresh one exists
 const LOW_SHARE := 0.35                    ## Cash under this share of the quota counts as behind
+const STORY_SHARE := 0.35                  ## [tune] of the ambient rolls go to the story pool while it has unsaid lines
 const REACT_CHANCE := {&"neg_scratch": 1.0, &"pos_trick": 1.0, &"neg_foul": 0.75, &"pos_pot": 0.45, &"neg_miss": 0.55}
-const PRIORITY := {&"neg_scratch": 3, &"pos_trick": 3, &"neg_foul": 2, &"pos_pot": 1, &"neg_miss": 1}
+const PRIORITY := {&"neg_scratch": 3, &"pos_trick": 3, &"neg_foul": 2, &"pos_pot": 1, &"neg_miss": 1, &"phone_ignored": 2}
 
 var rng := RandomNumberGenerator.new()
 
@@ -32,6 +35,9 @@ var _queued_seed := 0
 var _shooter := 0
 var _shot_seed := 1                        ## of the shot being resolved: peers seeded alike pick alike
 var _last_scratch_msec := -100000
+var _story: Array[String] = []             ## the story lines unlocked so far, in telling order
+var _said: Array[String] = []              ## which of them this player heard in this campaign (per peer, in the profile)
+var _hold_left := 0.0                      ## Moe is on the phone: no ambient talk, no reactions
 
 
 func _ready() -> void:
@@ -55,6 +61,10 @@ func bind(level: Node) -> void:
 
 func _process(delta: float) -> void:
 	_busy = maxf(0.0, _busy - delta)
+	if _hold_left > 0.0:
+		_hold_left -= delta
+		_queued = &""
+		return
 	if _queued != &"":
 		_queued_in -= delta
 		if _queued_in <= 0.0 and _busy <= 0.0:
@@ -101,6 +111,8 @@ func _on_intermission() -> void:
 
 ## A reaction line, a beat later. One waits at a time; a higher priority replaces a lower one, a chance gates the mild ones.
 func react(pool: StringName, seed: int) -> void:
+	if _hold_left > 0.0 or (String(pool).begins_with("neg_") and is_final_night()):
+		return
 	if rng.randf() > float(REACT_CHANCE.get(pool, 1.0)):
 		return
 	if _queued != &"" and int(PRIORITY[pool]) < int(PRIORITY[_queued]):
@@ -110,19 +122,78 @@ func react(pool: StringName, seed: int) -> void:
 	_queued_in = rng.randf_range(REACT_DELAY_SEC.x, REACT_DELAY_SEC.y)
 
 
+# --- story ------------------------------------------------------------------------------------------
+
+## The Night's story lines (cumulative from Night 1, telling order). Loads which of them this player already heard.
+func set_story_pool(lines: Array[String]) -> void:
+	_story = lines.duplicate()
+	_said = SaveManager.story_said(_campaign())
+
+
+func story_left() -> int:
+	var n := 0
+	for line in _story:
+		if not _said.has(line):
+			n += 1
+	return n
+
+
+## A line of a pool outside the ambient mix (phone_ignored), a beat later, like a reaction.
+func say_from(pool: StringName, seed := 1) -> void:
+	react(pool, seed)
+
+
+## Moe is on the phone: silence for `seconds`, and no chatter right after it.
+func hold(seconds: float) -> void:
+	_hold_left = seconds
+	_queued = &""
+	_ambient_in = maxf(_ambient_in, seconds + 4.0)
+
+
+func release_hold() -> void:
+	_hold_left = 0.0
+
+
+func is_holding() -> bool:
+	return _hold_left > 0.0
+
+
+## The Buyout Night: the sarcasm is off (09 §3.3).
+func is_final_night() -> bool:
+	return _loop != null and not _loop.nights.is_empty() and _loop.night_index == _loop.nights.size() - 1
+
+
+func _campaign() -> int:
+	return _loop.campaign_seed if _loop != null else 0
+
+
+## The first unsaid line, remembered per campaign.
+func _pick_story() -> String:
+	for line in _story:
+		if not _said.has(line):
+			_said.append(line)
+			SaveManager.save_story_said(_campaign(), _said)
+			return _fill(line)
+	return ""
+
+
 # --- picking -----------------------------------------------------------------------------------------
 
 func say(pool: StringName, seed := 0) -> void:
 	if pool == &"special" and shelf_names().is_empty():
-		pool = &"pitch"
+		pool = &"pep" if is_final_night() else &"pitch"
 	var text := pick(pool, seed)
+	if text == "":
+		return
 	_busy = line_seconds(text) + GAP_SEC
 	said.emit(text, pool)
 
 
 ## The next line of a pool with its tokens filled. `seed` != 0 picks by that number (reactions) instead of the bag.
 func pick(pool: StringName, seed := 0) -> String:
-	var lines: Array = BartenderLines.POOLS[pool]
+	if pool == &"story":
+		return _pick_story()
+	var lines: Array = BartenderLines.lines_of(pool)
 	var i := -1
 	if seed != 0:
 		i = absi(seed) % lines.size()
@@ -193,10 +264,12 @@ func shelf_names() -> PackedStringArray:
 
 
 func _ambient_pool() -> StringName:
+	if story_left() > 0 and rng.randf() < STORY_SHARE:
+		return &"story"
 	var intermission := _loop != null and _loop.phase == GameLoop.Phase.INTERMISSION
 	var weights := {
 		&"pep": 2.0 if intermission else 4.0,
-		&"pitch": 4.0 if intermission else 2.0,
+		&"pitch": 0.0 if is_final_night() else (4.0 if intermission else 2.0),
 		&"special": (3.0 if intermission else 1.0) if not shelf_names().is_empty() else 0.0,
 	}
 	var cash := _cash_state()

@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StoryNight" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/story/story_night.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night = 3
+intro_cards = Array[String](["Moe's collectors came in tonight. They don't play. They 'help'.", "The table feels different. The lights feel different. Gus doesn't feel anything. Gus has had three drinks."])
+call = Array[String](["My associates will be in the room tonight. Don't thank them.", "Thirteen fifty. The viewers like it when it's close."])
+gus_lines = Array[String](["If the table leans, lean with it. That's life advice.", "Gus's rule: never ask who sharpened the pockets.", "I used to have a pool cue signed by a champion. Moe has it now. He uses it to point.", "You're getting better. That's worse for me, somehow."])
+paid_line = "Good. The city saw that. The city is learning."
+short_line = "Three Nights. I'll admit I'd started to like the show."
+chat_line = "if the table leans, lean with it"
+ending_cards = Array[String]([])

@@ -253,6 +253,9 @@ func _vote() -> void:
 	var ids: Array[StringName] = [FxCatalog.EVENTS[0].id, FxCatalog.EVENTS[1].id, FxCatalog.EVENTS[2].id]
 	vote._on_offer(1, 1, ids)
 	_check(vote.visible and router.is_modal_open() and vote._cards.get_child_count() == 3, "an offer opens the vote modal with three cards")
+	for i in 3:  # 09 §3.4: each card carries its hazard's story line (wrapped; fit is checked in tests/story/story_ui_probe.gd)
+		var story_labels := vote._cards.get_child(i).find_children("*", "Label", true, false).filter(func(l: Label) -> bool: return l.text == FxCatalog.EVENTS[i].story_line)
+		_check(FxCatalog.EVENTS[i].story_line != "" and story_labels.size() == 1, "vote card %d shows its story line" % i)
 	vote._left = 0.01
 	vote._process(0.05)
 	_check(not vote.visible, "the vote hides when its clock runs out (the host resolves then)")

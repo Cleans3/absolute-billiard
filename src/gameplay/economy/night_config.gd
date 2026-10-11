@@ -11,10 +11,12 @@ extends Resource
 @export var base_viewers := 100
 @export var hazard_tiers: Array[int] = [0, 1, 2]
 @export var unlocked_ball_types: Array[StringName] = [&"red_basic", &"blue_mid", &"gold_prize", &"black_penalty"]  # the .tres Nights start at tier 1 + penalty; the Shop adds the rest
+@export var story: StoryNight  # the Night's cards, phone call, Gus lines and ending text (09); presentation only
 
 
 const ENDLESS_QUOTA_MULT := 1.6  # strictly above the campaign's ×1.5 (02 §3.4)
 const ENDLESS_VIEWERS_STEP := 300
+const ENDLESS_STORY := preload("res://src/resources/story/endless.tres")
 
 
 ## Night 6+: Night `night_number` generated from the last authored Night. Hazard tiers become 1 / 2 / 3.
@@ -25,6 +27,7 @@ static func endless(last: NightConfig, night_number: int) -> NightConfig:
 	c.quota = roundi(last.quota * pow(ENDLESS_QUOTA_MULT, steps))
 	c.base_viewers = last.base_viewers + ENDLESS_VIEWERS_STEP * steps
 	c.hazard_tiers = [1, 2, 3]
+	c.story = ENDLESS_STORY  # every Endless Night shares one story resource (09 §2.3)
 	return c
 ## Hand-authored racks by Round (index = round - 1); a missing entry falls back to the seeded drop.
 @export var authored_racks: Array[RackLayout] = []
