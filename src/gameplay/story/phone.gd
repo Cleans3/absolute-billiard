@@ -36,7 +36,7 @@ func _ready() -> void:
 	voice.length_mult = MOE_LENGTH
 	add_child(voice)
 	bubble = SpeechBubble.new()
-	bubble.position = Vector3(0.0, 0.2, 0.1)
+	bubble.position = Vector3(0.0, 0.2, 0.5)  # in front of the back-bar shelf's bottles, which would otherwise cut into it
 	add_child(bubble)
 	_bell = AudioStreamPlayer3D.new()
 	_bell.stream = _render_bell()

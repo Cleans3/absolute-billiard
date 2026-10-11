@@ -51,6 +51,7 @@ func _run() -> void:
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
 	await SoloSupport.until_playable(self, 60.0, true)
+	lobby.free()  # we added it by hand, so the scene change did not take it with it
 	level = current_scene
 	loop = level.get_node("GameLoop")
 	cards = level.get_node("UILayer/StoryCards")
