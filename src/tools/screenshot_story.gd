@@ -129,8 +129,13 @@ func _run() -> void:
 
 	# the phase screens
 	loop.night_index = 0
+	loop._begin_night()  # Night 1 again, so the screens carry its number
+	await _until(func() -> bool: return cards.is_open(), 3.0)
+	cards.close()
+	econ.quota_evaluated.emit(600, 600, false)
 	loop._set_phase(GameLoop.Phase.RECKONING)
 	await _shot("11_reckoning_night1_paid_line")
+	econ.quota_evaluated.emit(0, 600, true)
 	loop._set_phase(GameLoop.Phase.GAME_OVER)
 	await _shot("12_game_over_night1_short_line")
 	loop.night_index = 4

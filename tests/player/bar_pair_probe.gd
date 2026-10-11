@@ -90,6 +90,7 @@ func _run() -> void:
 	await _until(func() -> bool: return rd.get_balls().size() > 5 and rd.get("_round_active"), "rack on this peer")
 	await _until(func() -> bool: return level.get_node("PlayerSlots").get_child_count() == 2, "both slots")
 	player = level.get_node("PlayerSpawner").get_local_player() as Player
+	level.get_node("UILayer/StoryCards").close()  # Night 1's intro is not under test: an open modal blocks grabbing
 	if role == "host":
 		await _host()
 	else:
