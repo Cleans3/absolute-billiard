@@ -193,8 +193,23 @@ const POOLS := {
 	],
 }
 
+## Story pools kept apart from POOLS: those are P24's >= 15-line ambient pools. `story` itself is not here, it is built per
+## Night from StoryNight.gus_lines (BartenderChat.set_story_pool).
+const PHONE_IGNORED := [
+	"That was for me. Probably. Let's say it was for me.",
+	"If anyone asks, the phone's broken. The phone is not broken.",
+	"He'll call back. He always calls back.",
+]
+
+
+## The lines of a reaction pool or of phone_ignored.
+static func lines_of(pool: StringName) -> Array:
+	return PHONE_IGNORED if pool == &"phone_ignored" else POOLS[pool]
+
+
 ## Which gesture accompanies which pool (Bartender.GESTURES).
 const GESTURE := {
+	&"story": &"hip", &"phone_ignored": &"shrug",
 	&"pep": &"cheer", &"special": &"sweep", &"pitch": &"shrug", &"pos_pot": &"cheer", &"pos_trick": &"flourish",
 	&"neg_scratch": &"hip", &"neg_foul": &"hip", &"neg_miss": &"shrug", &"cash_low": &"shrug", &"cash_high": &"flourish",
 }

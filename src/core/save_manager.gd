@@ -170,3 +170,59 @@ static func save_skins(char_skin: StringName, bar_skin: StringName) -> void:
 	d["char_skin"] = String(char_skin)
 	d["bar_skin"] = String(bar_skin)
 	_write_profile(d)
+
+
+# --- story (09 §2.3, 06 P29): per player, keyed by campaign, never in SaveProfile (the host's blob overwrites every peer's) -----
+
+## The Nights whose intro cards this player already opened in `campaign` (GameLoop.campaign_seed).
+static func story_seen(campaign: int) -> Array[int]:
+	var out: Array[int] = []
+	for n: Variant in _story_get("story_seen", campaign):
+		out.append(int(n))
+	return out
+
+
+static func save_story_seen(campaign: int, nights: Array[int]) -> void:
+	_story_put("story_seen", campaign, nights)
+
+
+## The Gus story lines this player already heard in `campaign`, by their text.
+static func story_said(campaign: int) -> Array[String]:
+	var out: Array[String] = []
+	for l: Variant in _story_get("story_said", campaign):
+		out.append(str(l))
+	return out
+
+
+static func save_story_said(campaign: int, lines: Array[String]) -> void:
+	_story_put("story_said", campaign, lines)
+
+
+## The campaigns that can still be resumed (their checkpoint exists), as profile keys.
+static func checkpoint_campaigns() -> PackedStringArray:
+	var out := PackedStringArray()
+	if not DirAccess.dir_exists_absolute(checkpoint_dir()):
+		return out
+	for file in DirAccess.get_files_at(checkpoint_dir()):
+		var p := load_checkpoint(checkpoint_dir().path_join(file))
+		if p != null:
+			out.append(str(p.campaign_seed))
+	return out
+
+
+static func _story_get(key: String, campaign: int) -> Array:
+	var by_campaign: Variant = _read_profile().get(key, {})
+	return by_campaign.get(str(campaign), []) if by_campaign is Dictionary else []
+
+
+## Writes one campaign's list and drops the campaigns that no longer have a checkpoint (KEEP_CHECKPOINTS), keeping this one.
+static func _story_put(key: String, campaign: int, values: Array) -> void:
+	var d := _read_profile()
+	var by_campaign: Dictionary = d.get(key, {}) if d.get(key, {}) is Dictionary else {}
+	by_campaign[str(campaign)] = values.duplicate()
+	var alive := checkpoint_campaigns()
+	for c: String in by_campaign.keys():
+		if c != str(campaign) and not alive.has(c):
+			by_campaign.erase(c)
+	d[key] = by_campaign
+	_write_profile(d)

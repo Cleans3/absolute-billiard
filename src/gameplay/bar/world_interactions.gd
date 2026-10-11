@@ -110,6 +110,14 @@ func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: i
 			if game_loop == null or game_loop.phase != GameLoop.Phase.INTERMISSION:
 				return &"not_intermission"
 			return _reach(peer_id, kind, target_id)
+		if kind == &"answer_phone":  # 09 §3.2: ringing, and not yet answered this Night, is StoryDirector's to say
+			if game_loop == null or game_loop.phase != GameLoop.Phase.INTERMISSION:
+				return &"not_ringing"
+			var near := _reach(peer_id, kind, target_id)
+			if near != &"":
+				return near
+			var story := get_tree().get_first_node_in_group(&"story_director")
+			return story.call(&"answer_block") if story != null else &"not_ringing"
 		if kind != &"bar_buy" and kind != &"bar_serve":
 			return &"unknown_kind"
 		var drink := FxCatalog.drink(payload.get(&"drink_id", &""))
@@ -232,6 +240,8 @@ func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:
 	if kind == &"go_live":
 		game_loop.toggle_ready(peer_id)
 		return
+	if kind == &"answer_phone":
+		return  # nothing to apply on the host: every peer's StoryDirector reacts to the broadcast
 	var target := int(payload.get(&"target_peer", peer_id)) if kind == &"bar_serve" else peer_id
 	bar_purchase_requested.emit(kind, peer_id, payload[&"drink_id"], target)
 

@@ -28,6 +28,7 @@ var _talk_left := 0.0
 
 
 func _ready() -> void:
+	add_to_group(&"bartender")  # StoryDirector finds him here (09 §4.1)
 	if skin != null:
 		_humanoid.apply_skin(skin)
 	_humanoid.set_quirk(Humanoid.QUIRK_BARKEEP)
