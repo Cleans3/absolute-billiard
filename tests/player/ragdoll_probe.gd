@@ -336,6 +336,7 @@ func _player() -> void:
 	_check(not player.is_ragdoll(), "no stumble without the stat")
 	var fx: EffectManager = level.get_node("EffectManager")
 	fx.apply(&"static_stumble", me, me)
+	spawner.set_process(false)  # the effect stays live to the end: its real 1 Hz roll (2/min) would knock the player in later checks
 	await _wait(0.2)
 	spawner._process(1000.0)
 	await _wait(0.2)
