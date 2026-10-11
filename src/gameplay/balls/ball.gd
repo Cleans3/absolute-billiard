@@ -18,7 +18,6 @@ const MISCUE_SCATTER_DEG := 4.0
 const JUMP_MIN_ELEVATION_DEG := 30.0
 const MASSE_MIN_ELEVATION_DEG := 45.0
 const MASSE_MIN_SPIN := 0.60
-const FALL_FLOOR_Y := -100.0  # BallMotion floor for a pocketed ball: free fall until retired
 const POCKET_SETTLE_SEC := 0.4  # a potted ball is retired this long after it reaches the cup
 
 static var _g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))  # hoisted: per-tick lookup
@@ -127,7 +126,7 @@ func pocket(pocket_id: StringName) -> void:
 	is_pocketed = true
 	pocketed_in = pocket_id
 	if motion != null:
-		motion.floor_y = FALL_FLOOR_Y  # the model lets it fall through the cloth plane, like Jolt does
+		motion.floor_y = motion.cup_floor_y  # the model lets it fall through the cloth plane onto the cup floor, like Jolt
 	net_flag.emit(self, BallEventCodec.Flag.POCKETED)
 	get_tree().create_timer(POCKET_SETTLE_SEC).timeout.connect(_retire_if_pocketed)  # let it settle in the cup first
 
@@ -181,7 +180,7 @@ func net_apply_flag(flag: int) -> void:
 	match flag:
 		BallEventCodec.Flag.POCKETED:
 			is_pocketed = true
-			motion.floor_y = FALL_FLOOR_Y
+			motion.floor_y = motion.cup_floor_y
 		BallEventCodec.Flag.RETIRED:
 			retired = true
 			visible = false

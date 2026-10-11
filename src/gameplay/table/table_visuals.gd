@@ -282,7 +282,9 @@ static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayo
 	var floor_y := y - spec.cup_depth_m
 	var ring := hole.ring
 	for i in ring.size():
-		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, y)
+		# stops under the cloth's own rim wall (`_build_cloth`): two coplanar walls over the top bed_thickness z-fight, and
+		# a cloth/dark flicker on the hole's rim is exactly the "bright line in the seam" 06 P32 forbids
+		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, y - spec.bed_thickness_m)
 		_facing_tri(st, _at(hole.center, floor_y), _at(ring[i], floor_y), _at(ring[(i + 1) % ring.size()], floor_y), Vector3.UP)
 	for i in hole.outer.size() - 1:
 		_wall_quad(st, hole.outer[i], hole.outer[i + 1], hole.center, y, y + spec.rail_height_m)

@@ -75,7 +75,7 @@ func _physics_process(_delta: float) -> void:
 			_flags.erase(f)
 			var pp := _p(f[1])
 			match f[2]:
-				BallEventCodec.Flag.POCKETED: pp.floor_y = Ball.FALL_FLOOR_Y
+				BallEventCodec.Flag.POCKETED: pp.floor_y = pp.cup_floor_y
 				BallEventCodec.Flag.RETIRED: _retired[f[1]] = true
 				BallEventCodec.Flag.RESTORED:
 					_retired.erase(f[1])
