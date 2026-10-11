@@ -44,6 +44,7 @@ StoryNight (Resource)          src/resources/story/story_night.gd
   paid_line: String            # Reckoning line when the Quota is met
   short_line: String           # the Game over line for this Night (Moe collects)
   chat_line: String            # one stream-chat message from the viewer "velvet" (§3.7)
+  ending_cards: Array[String]  # Night 5 only: the three Buyout cards (A.3)
 ```
 
 `src/resources/story/night_1.tres` … `night_5.tres`, `endless.tres`. `NightConfig` gains one
@@ -108,8 +109,9 @@ a new campaign and survives a Resume.
 | Pocket Jackpot | "Moe likes a show. One pocket pays like a slot machine tonight." |
 
 ### 3.5 The ledger on the wall
-The blackboard's footer stops saying "TONIGHT OWE $600" and becomes Moe's ledger. Text only, same
-data:
+The blackboard's footer stops saying "TONIGHT OWE $600" and becomes Moe's ledger. Its old "NEXT
+NIGHT" line gives its space to the hazard's story line (§3.4): the ledger shows each Night's ask as
+soon as that Night starts. Text only, same data:
 - Nights 1–4: `MOE WANTS $600 · PAID SO FAR $X`
 - Night 5: `THE BUYOUT · $4,500 · LAST CALL`
 - Endless: `MOE RAISED THE RATE · $4,800`
@@ -125,7 +127,7 @@ Cash can be negative after a scratch fine (P16); the ledger shows it as it is (`
 ### 3.7 The twist: Moe is in the chat
 Moe is real, and he never needed a seat: he watches from the stream chat. Every Night, 15 s
 `[tune]` after Round 1 goes live, every peer shows one stream-chat line from the viewer **velvet**
-(the Night's `chat_line`) as a toast. It costs nothing and pays nothing. Nobody comments on it until
+(the Night's `chat_line`) as a toast, held until no modal is open. It costs nothing and pays nothing. Nobody comments on it until
 the ending (A.3) says who velvet is.
 
 ## 4. Godot implementation sketch
@@ -134,8 +136,9 @@ the ending (A.3) says who velvet is.
 - `StoryDirector` (Node, child of `MainLevel`, `src/gameplay/story/story_director.gd`). It listens
   to `GameLoop.night_started`, `intermission_started`, `phase_changed(phase)` (`state_changed` has no
   argument). It opens the cards, arms the phone, and hands Gus his pool. It runs on every peer and owns
-  no networked state except the phone's "answered this Night" flag, which the host resyncs through
-  `RoundDirector.send_full_state`.
+  no networked state except the phone's "answered this Night" flag. The host replays it to a peer
+  that comes back: through `RoundDirector.send_full_state` once a Round exists, and on
+  `NetManager.peers_away_changed` before Round 1 (when `send_full_state` has nothing to send).
 - `StoryCards` (UIModal, `src/ui/story_cards.gd/.tscn`): one modal in the `UIRouter` stack, at
   priority above PhaseScreen and below EventVote, `keep_on_phase = true` (the NIGHT_START →
   INTERMISSION phase change must not close it). Tap advances, Skip closes.
@@ -151,8 +154,9 @@ the ending (A.3) says who velvet is.
 - **Phone:** `request_world_interaction(answer_phone, 0, {})`. The host validates it in
   INTERMISSION, with `_reach`, and not already answered this Night. It goes out through the
   existing `world_interaction_applied` broadcast, and every peer plays the same call. The
-  "answered" flag rides `RoundDirector.send_full_state` (StoryDirector joins its resync list), so a
-  resumed client doesn't hear it ring again.
+  "answered" flag is replayed as the same interaction with `{replay: true}` (silent), so a resumed
+  or rejoining client doesn't hear it ring again. `round_state` carries `campaign_seed` so every peer
+  keys its story profile to the same campaign.
   **No new `@rpc`**, so the 04 §5 table only gains a row in the kinds table.
 - **Gus:** stays cosmetic and per peer (P24), with the story pool seeded per Night.
 

@@ -11,6 +11,7 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | 04 | [04-architecture-netcode.md](04-architecture-netcode.md) | mobile-first platform matrix, ENet+Noray (Steam optional), event-based sync, RPC/channel table, SaveProfile broadcast, M0 perf spike | omp → opus rewrite |
 | 07 | [07-optimization.md](07-optimization.md) | per-aspect mobile budgets: physics, render, net, memory, GDScript, load, battery, assets, CI gates | opus |
 | 08 | [08-player.md](08-player.md) | Player v1: touch-first first person, WALK/CUE/CARRY modes, touch layout, desktop parity, avatars | alpha (claude), 2026-09-30 (P6) |
+| 09 | [09-story.md](09-story.md) | "The Last Table": Gus, Velvet Moe, the Rope; intro cards, the phone, Gus's story lines, hazard flavor, Moe's ledger, endings, velvet in the chat | alpha (claude), 2026-10-11 (P29) |
 
 ## Cross-module signal map (post-rewrite, 2026-08-29)
 
@@ -26,6 +27,10 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | World interactions (03) | `request_world_interaction(kind, target_id)` client→host (04) | EffectManager (03) with `owner_peer_id` |
 | PhysicsSim (01/04) | `shot_started`, `push_contact_events` (reliable ch1, 30 Hz flush), `push_heartbeat` (unreliable_ordered ch2, 2 Hz) | clients dead-reckon + interpolate |
 | SaveManager (04) | `SaveProfile` broadcast each Round end | every peer (any friend can re-host) |
+| GameLoop (02) | `night_started(n, quota)`, `intermission_started`, `phase_changed(phase)` | StoryDirector (09): opens StoryCards, rings the phone, hands Gus his story pool, velvet's chat toast |
+| WorldInteractions (03) | `answer_phone` → `world_interaction_applied` (every peer) | StoryDirector (09) plays Moe's call at the phone; `BartenderChat` holds Gus |
+| StoryDirector (09) | `BartenderChat` story pool / `phone_ignored` line | Bartender (P24) |
+| `NightConfig.story` / `Event.story_line` (09) | read by | PhaseScreen (paid/short lines, ending cards), Blackboard (Moe's ledger, hazard flavor), EventVote |
 
 Autoload: `NetManager` only. `SaveManager` static. `GameLoop`, `EconomyManager`, `StreamManager`, `EffectManager`, `EventScheduler`, `RoundDirector` = `MainLevel` children; `PhysicsSim` = Table-scene node. (D7)
 
