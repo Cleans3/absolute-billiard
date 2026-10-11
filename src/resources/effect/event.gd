@@ -6,6 +6,7 @@ enum Opportunity { NONE, NEXT_POT, RANDOM_POCKET }
 
 @export var id: StringName
 @export var display_name := ""
+@export var story_line := ""  ## 09 §3.4: who sent it, shown under the name on the vote card and the blackboard; no mechanical effect
 @export var tier := 1
 @export var effects: Array[Effect] = []
 @export var reward_mult := 1.0

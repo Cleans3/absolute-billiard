@@ -27,6 +27,7 @@ duration_sec = -1.0
 script = ExtResource("3_5fv4h")
 id = &"moving_pockets"
 display_name = "Moving Pockets"
+story_line = "The Rope 'fixed' the pockets. Now the pockets move."
 tier = 2
 effects = Array[ExtResource("1_rjsnj")]([SubResource("Resource_winfg")])
 reward_mult = 1.7

@@ -104,6 +104,21 @@ outline_size = 0
 pixel_size = 0.001
 horizontal_alignment = 0
 
+[node name="HazardStory" type="Label3D" parent="Text/HazardRow"]
+unique_name_in_owner = true
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, -0.1, 0)
+modulate = Color(1, 0.62, 0.78, 0.9)
+outline_modulate = Color(0, 0, 0, 0)
+text = ""
+font = ExtResource("3_font")
+font_size = 84
+outline_size = 0
+pixel_size = 0.001
+horizontal_alignment = 0
+vertical_alignment = 0
+autowrap_mode = 3
+width = 1250.0
+
 [node name="HazardIcon" type="Sprite3D" parent="Text/HazardRow"]
 unique_name_in_owner = true
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.15, 0.06, 0)

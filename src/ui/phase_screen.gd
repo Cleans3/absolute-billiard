@@ -105,14 +105,24 @@ func _on_phase_changed(phase: GameLoop.Phase) -> void:
 			close()
 			_announce()
 		GameLoop.Phase.RECKONING:
-			_present("Night %d reckoning" % _night_number, _reckoning, "Next Night", host, false)
+			_present("Night %d reckoning" % _night_number, _story_line(true) + _reckoning, "Next Night", host, false)
 		GameLoop.Phase.GAME_OVER:
-			_present("Game over", _reckoning, "", host, true)
+			_present("Game over", _story_line(false) + _reckoning, "", host, true)
 		GameLoop.Phase.CAMPAIGN_WON:
 			_present("Campaign won", _reckoning, "Endless", host, true)
 		_:
 			_wanted = false
 			close()
+
+
+## Moe's line for the Night over the numbers (09 §3.6): the Night's `paid_line` once the Quota is met, its `short_line` when it
+## was missed; no line (an Endless Night, the Buyout's own ending) is just the numbers.
+func _story_line(met: bool) -> String:
+	if game_loop == null or game_loop.nights.is_empty():
+		return ""
+	var story := game_loop.current_night().story
+	var line := "" if story == null else (story.paid_line if met else story.short_line)
+	return "" if line.is_empty() else line + "\n"
 
 
 ## Two short lines (one toast is 600 px wide): how the last Round went and what Cash is, then what is next.

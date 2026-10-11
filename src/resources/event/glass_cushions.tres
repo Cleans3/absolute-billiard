@@ -22,5 +22,6 @@ duration_sec = -1.0
 script = ExtResource("3_gwicg")
 id = &"glass_cushions"
 display_name = "Glass Cushions"
+story_line = "New cushions, courtesy of Moe. Mind the bounce."
 effects = Array[ExtResource("1_wxr60")]([SubResource("Resource_sqm2p")])
 reward_mult = 1.3

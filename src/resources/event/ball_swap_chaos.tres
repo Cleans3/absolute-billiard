@@ -21,6 +21,7 @@ duration_sec = -1.0
 script = ExtResource("3_7uol3")
 id = &"ball_swap_chaos"
 display_name = "Ball Swap Chaos"
+story_line = "Somebody's been rearranging the rack. Nobody saw who."
 tier = 2
 effects = Array[ExtResource("1_rhfyr")]([SubResource("Resource_16wvt")])
 reward_mult = 1.6

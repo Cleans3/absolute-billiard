@@ -21,6 +21,7 @@ duration_sec = -2.0
 script = ExtResource("3_3ynbp")
 id = &"bouncer"
 display_name = "Bouncer"
+story_line = "The Rope sent a 'doorman'. He doesn't let balls out."
 effects = Array[ExtResource("1_c7vo7")]([SubResource("Resource_tluqj")])
 reward_mult = 1.2
 min_night = 2
