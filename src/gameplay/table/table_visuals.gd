@@ -35,7 +35,7 @@ const CUSHION_COLOR := Color(0.03, 0.22, 0.10)
 const RAIL_COLOR := Color(0.35, 0.20, 0.08)
 const APRON_COLOR := Color(0.22, 0.12, 0.05)
 const LEG_COLOR := Color(0.18, 0.10, 0.04)
-const SIGHT_COLOR := Color(0.92, 0.88, 0.75)
+const SIGHT_COLOR := Color(0.42, 0.38, 0.30)  # dim inlay: near-white sights under the lamp read as glints along the cushion gap (06 P32)
 const LINER_COLOR := Color(0.12, 0.09, 0.07)
 
 const SIGHT_SIZE_RATIO := 0.35       # sight marker size as a multiple of ball radius
