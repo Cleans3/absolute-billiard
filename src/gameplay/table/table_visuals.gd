@@ -13,8 +13,12 @@ extends RefCounted
 ## No seam is an edge-to-edge contact (06 P32): two meshes that merely touch can open a hairline under a phone GPU's
 ## rounding and show the lit room behind the table as a bright line. Every abutting visual is sunk `_sink` (half the
 ## slab) into its neighbour instead — the cushion wedge and the facing stubs run below the cloth plane and carry their
-## slope on into the rail block, a plug ties each rail block to the apron under it, the liner walls stand a hair
-## behind the cloth's own rim wall — so what a crack could show is always the dark rubber or liner, never the room.
+## slope on into the rail block, a plug ties each rail block to the apron under it, a leg runs up into its apron, the
+## liner walls stand a full `_sink` behind the cloth's own rim wall (so a mesh a few mm off cannot slide in front of it
+## and open a slot between the two), the cloth's top edge and rim wall run on into the cushion at each jaw tip
+## (`_tucked`), and a side pocket's block ends run on into the pocket — so what a crack could show is always the dark
+## rubber or liner, never the room. The checker is `src/tools/screenshot_table_seams.gd leaks=1 sweep=1 jitter=<mm>`
+## (07 §2): 0 cracks over 94 views at jitter 0 / 1 / 2 / 4 mm.
 ##
 ## Pocket holes (06 P30): the cloth is the nose rectangle with every pocket's hole cut out of it (the same outline
 ## the bed collider is built from), and each hole is lined by a dark cup — floor, walls, and a back wall on the arc
@@ -26,7 +30,8 @@ extends RefCounted
 ## keeps its own cross-section width, so their union is an L that leaves the inner square
 ## nearest the pocket open — a picture-frame closing the two rails at 90° without covering the
 ## mouth. Side pockets need no length extension (the two rails already meet exactly at the
-## mouth boundary); `_build_side_horn` caps each of those four rail ends with a short wood nub
+## mouth boundary), only a block end that runs `_sink` on into the pocket, so the pocket's back wall crosses that end
+## face at a real angle and not along its corner edge; `_build_side_horn` caps each of those four rail ends with a short wood nub
 ## along the same facing direction as the rubber jaw stub, so the flat end-cap face doesn't
 ## read as the plank "just stopping".
 
@@ -127,19 +132,39 @@ static func _sink(spec: TableSpec) -> float:
 static func _build_cloth(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> MeshInstance3D:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	var outline := layout.bed_outline
+	var tucked := {}  # tip vertex -> where the cloth really ends, run on into the cushion
+	for hole: TableLayout.Hole in layout.holes.values():
+		var arc := _tucked(spec, hole.inner)
+		tucked[hole.inner[0]] = arc[0]
+		tucked[hole.inner[hole.inner.size() - 1]] = arc[arc.size() - 1]
+		for i in arc.size() - 1:
+			_wall_quad(st, arc[i], arc[i + 1], hole.center, y - spec.bed_thickness_m, y)
+	var outline := PackedVector2Array()
+	for p in layout.bed_outline:
+		outline.append(tucked.get(p, p))
 	var idx := Geometry2D.triangulate_polygon(outline)
 	for i in range(0, idx.size(), 3):
 		_facing_tri(st, _at(outline[idx[i]], y), _at(outline[idx[i + 1]], y), _at(outline[idx[i + 2]], y), Vector3.UP)
-	for hole: TableLayout.Hole in layout.holes.values():
-		for i in hole.inner.size() - 1:
-			_wall_quad(st, hole.inner[i], hole.inner[i + 1], hole.center, y - spec.bed_thickness_m, y)
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Cloth"
 	mesh.mesh = st.commit()
 	mesh.material_override = _material(CLOTH_COLOR)
 	parent.add_child(mesh)
 	return mesh
+
+
+## `arc` with each end moved on past its nose-line point along the end chord, `2 x bed_thickness_m` further: that is into the
+## cushion body, so the cloth's top edge and rim wall end deep inside the rubber instead of on the tip's one vertical line
+## where cloth, cushion, facing and apron all meet (06 P32: a phone-GPU hairline there showed the room at the jaw tips).
+## The end is replaced, not added to: the wall's top edge must stay the very edge the top triangles share (a vertex on the
+## middle of that edge is a T-junction, a pinhole in the cloth).
+static func _tucked(spec: TableSpec, arc: PackedVector2Array) -> PackedVector2Array:
+	var n := arc.size()
+	var by := spec.bed_thickness_m * 2.0
+	var out := arc.duplicate()
+	out[0] = arc[0] + (arc[0] - arc[1]).normalized() * by
+	out[n - 1] = arc[n - 1] + (arc[n - 1] - arc[n - 2]).normalized() * by
+	return out
 
 
 static func _at(p: Vector2, y: float) -> Vector3:
@@ -206,6 +231,14 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	var ext := _wood_extent(spec, rail)
 	var a: Vector3 = ext[0]
 	var b: Vector3 = ext[1]
+	# A side pocket's block end runs `_sink` on into the pocket (see the header): the pocket's back wall then crosses the
+	# end face at a real angle, where meeting the block's corner edge tangentially left a throat a jittered mesh opened.
+	var run := (rail.b - rail.a).normalized() * _sink(spec)
+	match rail.id:
+		&"rail_n_w", &"rail_s_w":
+			b += run
+		&"rail_n_e", &"rail_s_e":
+			a -= run
 	var mesh := MeshInstance3D.new()
 	mesh.name = "RailBlock_" + String(rail.id)
 	var box := BoxMesh.new()
@@ -298,14 +331,15 @@ static func _build_sight(parent: Node3D, spec: TableSpec, pos: Vector3, y: float
 
 ## The hole's cup, seen from above: dark walls from the cloth plane down to the floor `cup_depth_m` below, the floor,
 ## and a back wall to rail height on the arc outside the nose rectangle (table_builder.gd's `_build_cup`, same ring).
-## Double-sided and unlit by the room's baked light: it is a pit, it should read as one. The ring stands `_sink / 5`
-## outside the cloth's own rim wall and reaches up to just under the cloth plane, so the cloth hides the join (two coplanar
-## walls z-fight cloth/dark, and an edge-to-edge join can open a hairline onto the room).
+## Double-sided and unlit by the room's baked light: it is a pit, it should read as one. The ring stands `_sink`
+## outside the cloth's own rim wall and reaches up to `_sink` under the cloth plane, so the cloth sheet overhangs it: the join
+## is hidden (two coplanar walls z-fight cloth/dark), and no mesh a few mm off can bring the ring in front of the rim wall,
+## which would leave a slot between the two for a sight line to run down and out under the cloth.
 static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	var floor_y := y - spec.cup_depth_m
-	var grow := _sink(spec) * 0.2
+	var grow := _sink(spec)
 	var top := y - grow
 	var ring := PackedVector2Array()
 	for p in hole.ring:
