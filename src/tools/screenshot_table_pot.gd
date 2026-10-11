@@ -55,7 +55,7 @@ func _shoot(out_dir: String, tag: String, pocket_id: StringName, rig: StringName
 	var s := table.spec
 	var y := s.bed_height_m + s.ball_radius_m + s.clearance_margin_m
 	var p := Vector3(ps.position.x, 0.0, ps.position.z)
-	var dir := Vector3(-signf(ps.position.x), 0.0, -signf(ps.position.z)).normalized() if pocket_id.begins_with("corner") else Vector3(0, 0, signf(ps.position.z))
+	var dir := Vector3(-signf(ps.position.x), 0.0, -signf(ps.position.z)).normalized() if pocket_id.begins_with("corner") else Vector3(0, 0, -signf(ps.position.z))
 	dir = -dir  # toward the pocket
 	var side := dir.cross(Vector3.UP).normalized()
 	var start := p - dir * 0.55 + side * offset_r * s.ball_radius_m
