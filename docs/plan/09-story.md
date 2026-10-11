@@ -24,8 +24,10 @@ system and no rule changes.
 room we already have (`BarRoom`), with the story in its details:
 
 - A **wanted-style poster of Moe** that someone has defaced to read "VELVET MOE — DO NOT ASK".
-  It is the only portrait of him, and the face is scratched out.
-- A **"Gus's Corner Pocket — est. 1979" sign** above the back bar.
+  It is the only portrait of him, and the face is scratched out. It takes the "live band" poster's
+  slot on the west wall (same atlas cell, so no new material and no layout change).
+- A **"Gus's Corner Pocket — est. 1979" sign**: the 2-wide banner over the entrance (north wall),
+  replacing "open late". The back bar wall is keep-clear, so the sign greets you at the door instead.
 - A **wall phone** behind the counter. It rings once per Night (§3.2).
 - The **blackboard's debt line** reads as Moe's demand (§3.5).
 
@@ -41,14 +43,18 @@ StoryNight (Resource)          src/resources/story/story_night.gd
   gus_lines: Array[String]     # extra ambient lines for Gus, unlocked from this Night on
   paid_line: String            # Reckoning line when the Quota is met
   short_line: String           # the Game over line for this Night (Moe collects)
+  chat_line: String            # one stream-chat message from the viewer "velvet" (§3.7)
 ```
 
 `src/resources/story/night_1.tres` … `night_5.tres`, `endless.tres`. `NightConfig` gains one
 field, `story: StoryNight`, so `GameLoop.night_at(i)` keeps being the one place a Night comes from.
 Generated Endless Nights point at `endless.tres`.
 
-`SaveProfile` gains `story_seen: PackedInt32Array`, the Nights whose intro this player has already
-watched. It is per player, not per campaign, so a replay can skip what you already know (§3.1).
+`story_seen` (the Nights whose intro this player has already watched) is **per player**, so it lives
+in the player's own `user://profile.json` (the `save_skins` pattern), never in `SaveProfile`: the
+host's checkpoint blob overwrites every peer's copy. The same goes for Gus's said-story set (§3.3),
+which is per peer because Gus is cosmetic per peer (P24); it is keyed to the campaign so it resets on
+a new campaign and survives a Resume.
 
 ## 3. Rules
 
@@ -57,15 +63,20 @@ watched. It is per player, not per campaign, so a replay can skip what you alrea
   the dimmed bar, one tap per card, with a **Skip** button.
 - The first time a player reaches a given Night, they see its cards. After that the cards are
   skippable with a single tap and are auto-skipped on Resume.
-- Online, the cards are **local**: nobody waits on anyone. Intermission starts underneath, and the
-  GO LIVE pedestal already covers who is ready.
+- Online, the cards are **local**: each peer pages at its own speed and Intermission starts
+  underneath. Nobody can miss the Round: GO LIVE (P20) needs every connected player's press, and a
+  player can't press it while the cards are open. A slow reader holds the start the same way an open
+  bartender menu already does; four short cards are a few seconds.
+- On Resume the cards of a Night this player has already seen do not open. A mid-Night resume never
+  opens them.
 - At most 4 cards per Night, each at most 140 characters. They are read on a phone between turns.
 
 ### 3.2 The phone
 - During each Night's first Intermission, the wall phone rings until someone answers. It is an
   `Interactable` behind the counter, prompt "Answer the phone".
 - Answering puts Moe **on speaker**. Every player sees the call as subtitles (a speech bubble above
-  the phone), with lower, slower voice blips than Gus's (P24's blips at another pitch).
+  the phone), with lower, slower voice blips than Gus's: P24's blips at ×0.6 pitch and ×1.4 syllable
+  length. Gus stays quiet while the call plays.
 - Answering is optional. If nobody does, it stops ringing when the Round goes live, and Gus covers
   for it with one line from the `phone_ignored` pool (§4.3).
 - Once answered, the phone stays quiet until the next Night.
@@ -73,10 +84,12 @@ watched. It is per player, not per campaign, so a replay can skip what you alrea
 ### 3.3 Gus
 - `gus_lines` from Night N **join** his existing pools from Night N onward (P24 keeps the
   pep / special / pitch / reaction pools).
-- Story lines are drawn at weight `0.35 [tune]` against the other ambient pools. Each one is said at
-  most once per campaign, so the story drips out instead of looping.
+- While unsaid story lines remain, each ambient roll picks the story pool with probability
+  `0.35 [tune]` (a share of rolls, not a raw weight next to the others). Each line is said at most
+  once per campaign, so the story drips out instead of looping.
 - His tone shifts by Night: jokes at Night 1, nervous at 3, honest at 5. Night 5 is the only one
-  where he drops the sarcasm (A.1).
+  where he drops the sarcasm (A.1): his negative reaction pools and sales pitches are muted that
+  Night.
 
 ### 3.4 Hazards as Moe's people
 - Every `Event` gains one flavor line, `story_line: String`, shown under its name on the vote card
@@ -101,40 +114,53 @@ data:
 - Night 5: `THE BUYOUT · $4,500 · LAST CALL`
 - Endless: `MOE RAISED THE RATE · $4,800`
 
+Cash can be negative after a scratch fine (P16); the ledger shows it as it is (`-$25`).
+
 ### 3.6 Endings (phase screens, text only)
 - **Reckoning, Quota met:** the Night's `paid_line`, from Moe on the phone.
 - **Game over (Quota missed):** the Night's `short_line`. Same screen and buttons as today.
 - **Campaign won (Buyout paid):** three cards (A.3), then the existing Endless / Menu buttons.
 - **Endless:** every Endless Night opens with one card from `endless.tres`.
 
+### 3.7 The twist: Moe is in the chat
+Moe is real, and he never needed a seat: he watches from the stream chat. Every Night, 15 s
+`[tune]` after Round 1 goes live, every peer shows one stream-chat line from the viewer **velvet**
+(the Night's `chat_line`) as a toast. It costs nothing and pays nothing. Nobody comments on it until
+the ending (A.3) says who velvet is.
+
 ## 4. Godot implementation sketch
 
 ### 4.1 Nodes and files
 - `StoryDirector` (Node, child of `MainLevel`, `src/gameplay/story/story_director.gd`). It listens
-  to `GameLoop.night_started`, `intermission_started`, `state_changed`. It opens the cards, arms the
-  phone, and hands Gus his pool. It runs on every peer and owns no networked state.
+  to `GameLoop.night_started`, `intermission_started`, `phase_changed(phase)` (`state_changed` has no
+  argument). It opens the cards, arms the phone, and hands Gus his pool. It runs on every peer and owns
+  no networked state except the phone's "answered this Night" flag, which the host resyncs through
+  `RoundDirector.send_full_state`.
 - `StoryCards` (UIModal, `src/ui/story_cards.gd/.tscn`): one modal in the `UIRouter` stack, at
-  priority above PhaseScreen. Tap advances, Skip closes.
+  priority above PhaseScreen and below EventVote, `keep_on_phase = true` (the NIGHT_START →
+  INTERMISSION phase change must not close it). Tap advances, Skip closes.
 - `Phone` prop: an `Interactable` at the back bar (an exact spot that `decor_plan.gd`'s keep-clear
   accepts), kind `answer_phone`, a bare kind like `go_live`.
 - Content: `src/resources/story/*.tres`. The `story_line` field goes on `src/resources/effect/event.gd`
   and into the 8 event `.tres` files.
-- Art: two new posters in `src/tools/make_posters.py` (`p_wanted_moe`, `p_corner_pocket_sign`), in
-  the same atlas, so no new material.
+- Art: two posters in `src/tools/make_posters.py` (`p_wanted_moe`, `p_corner_pocket_sign`) replace
+  "live band" and the "open late" banner in their atlas cells, so no new material and no new layout.
 
 ### 4.2 Networking
 - **Cards:** local, no RPC.
 - **Phone:** `request_world_interaction(answer_phone, 0, {})`. The host validates it in
   INTERMISSION, with `_reach`, and not already answered this Night. It goes out through the
   existing `world_interaction_applied` broadcast, and every peer plays the same call. The
-  "answered" flag rides GameLoop's `full_state`, so a resumed client doesn't hear it ring again.
+  "answered" flag rides `RoundDirector.send_full_state` (StoryDirector joins its resync list), so a
+  resumed client doesn't hear it ring again.
   **No new `@rpc`**, so the 04 §5 table only gains a row in the kinds table.
 - **Gus:** stays cosmetic and per peer (P24), with the story pool seeded per Night.
 
 ### 4.3 Gus pools
 `bartender_lines.gd` gains the `story` pool, filled from the current `StoryNight.gus_lines`, and
-`phone_ignored`. `bartender_chat.gd` adds `story` to the ambient draw at `0.35 [tune]` and keeps a
-`said_story` set in the campaign checkpoint, so "once per campaign" survives a Resume.
+`phone_ignored`, kept apart from `POOLS` (those small pools are not P24's ≥15-line ambient pools).
+`bartender_chat.gd` gives `story` its `0.35 [tune]` share (§3.3) and keeps a `said_story` set in the
+player profile (§2.3), so "once per campaign" survives a Resume.
 
 ## 5. Interfaces to other modules
 
@@ -148,24 +174,21 @@ data:
 | `Blackboard` | `GameLoop` / `EconomyManager` | footer text per §3.5 |
 | `EventVote` / `Blackboard` | `Event.story_line` | flavor under the name |
 
-## 6. Open questions (Cleanse decides)
+## 6. Decisions (06 P29, 2026-10-11 — Cleanse delegated all four)
 
-1. **The twist.** The draft ending says Gus *was* Velvet Moe all along: the bar is his collection
-   office, and the "owner in debt" act is how he keeps crews paying. The alternative: Moe is real,
-   and the twist is that he was in the stream chat every night. Pick one before Appendix A is written in
-   full.
-2. **Should the story ever touch the rules?** The draft is presentation only. One option: on Night 4,
-   if the crew is ahead, Gus quietly offers a "favor" drink, and accepting it unlocks the true
-   ending. That would be a real branch, with economy and design work.
-3. **Moe's voice.** Lower blips are the default. A short real voice line (one recorded "Evening.")
-   would be the first non-generated audio file.
-4. **Skip policy online.** Cards are local, so a slow reader never holds anyone up, but they might
-   miss the first Round's start. The alternative is that Round 1 of a Night waits until every peer
-   has closed its cards. Only that would change GO LIVE.
+1. **The twist: Moe is real, and he was in the stream chat every Night** (§3.7, A.3). Not "Gus was
+   Moe": Moe phones the bar while Gus stands behind the counter, and Night 5 only works if Gus's
+   honesty is real.
+2. **The story never touches the rules.** Text, posters and the phone only. The Night 4 favor branch
+   stays in Later.
+3. **Moe's voice is P24's blips, lower and slower** (×0.6 pitch, ×1.4 length). No recorded audio.
+4. **Cards stay local; GO LIVE is the wait.** Nobody can miss the Round start, because every
+   connected player must press GO LIVE, and an open card holds that player's press (§3.1). GO LIVE
+   itself is unchanged.
 
 ## 7. MVP cut vs later
 
-**MVP (one slice):**
+**MVP (one slice, built 2026-10-11):**
 - `StoryNight` resources with the Appendix A text.
 - `StoryCards` at NIGHT_START.
 - The phone with the speaker-call subtitle.
@@ -174,6 +197,7 @@ data:
 - The blackboard ledger wording.
 - The two posters.
 - The Reckoning, Game over and Campaign won lines.
+- velvet's chat line each Night.
 - Probes: every campaign Night has a StoryNight. Cards open once and skip. The phone rings, can be
   answered once, and survives a resume (pair probe). No story line repeats inside a campaign.
 
@@ -188,6 +212,8 @@ data:
 
 ### A.1 Night by Night
 
+Every chat line below is shown as `velvet: <text>`.
+
 **Night 1 — "The Bet"** (Quota $600)
 - Intro cards:
   1. "You bet on yourselves. Against Velvet Moe. In his own pool hall."
@@ -201,6 +227,7 @@ data:
   · "My first Night I owed him forty dollars. That was 1979."
 - Paid: "Huh. You paid. That's the most interesting thing that's happened in this bar in years."
 - Short: "Six hundred dollars. You couldn't find six hundred dollars. Gus, lock the door."
+- Chat: "first rack's always the loudest. enjoy it"
 
 **Night 2 — "Interest"** (Quota $900)
 - Intro cards:
@@ -213,6 +240,7 @@ data:
   · "That wanted poster? I didn't scratch the face out. I found it like that."
 - Paid: "Nine hundred. You're starting to look like an investment."
 - Short: "Interest is a funny thing. It keeps going after you stop."
+- Chat: "nice cushions"
 
 **Night 3 — "The Rope"** (Quota $1,350)
 - Intro cards:
@@ -226,6 +254,7 @@ data:
   He uses it to point." · "You're getting better. That's worse for me, somehow."
 - Paid: "Good. The city saw that. The city is learning."
 - Short: "Three Nights. I'll admit I'd started to like the show."
+- Chat: "if the table leans, lean with it"
 
 **Night 4 — "The Ledger"** (Quota $2,000)
 - Intro cards:
@@ -240,6 +269,7 @@ data:
   always calls on the fourth Night."
 - Paid: "Then it's settled. Tomorrow, the Buyout. Everything. Bring a crowd."
 - Short: "So close. People always are, on the fourth Night."
+- Chat: "page one. then forty more"
 
 **Night 5 — "Last Call"** (Buyout $4,500)
 - Intro cards:
@@ -252,7 +282,9 @@ data:
   first one I'd bet on." · "If this goes wrong, the back door sticks. Kick it twice."
   · "Pour's on the house tonight. Don't tell Moe. Actually, tell him." · "Whatever he says on that
   phone, you don't owe him your nerve."
+- Paid: the ending (A.3) replaces the Reckoning line.
 - Short: "Gus. Close the bar. The show's over."
+- Chat: "last call"
 
 ### A.2 Ignored phone (`phone_ignored`)
 - "That was for me. Probably. Let's say it was for me."
@@ -263,9 +295,8 @@ data:
 1. "The Buyout clears live, in front of more viewers than this bar has ever had."
 2. "The phone rings one last time. Moe: 'Paid in full. The city saw. You're free.' A pause.
    'Gus, my office. Tomorrow.'"
-3. "Gus pours you a drink and doesn't charge for it. Then he takes the wanted poster down, turns it
-   over, and you see the face underneath for the first time. It's an old photo of Gus. Signed:
-   'Velvet'."
+3. "The chat scrolls one last line. velvet: 'good show. same table tomorrow?' Gus reads the name
+   twice. 'He was in the chat. Every Night. He never missed a shot.'"
 
 Endless (`endless.tres`), one card per Night: "Somebody bought Gus's debt. The rate went up. The
-stream goes on."
+stream goes on." Chat: "same table. new rate".

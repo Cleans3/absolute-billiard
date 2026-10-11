@@ -257,6 +257,7 @@ Non-shooters roam the bar. Every one of those interactions is one RPC pair, and 
 | `prop_use` | stool, jukebox, light switch | proximity, cooldown | 03 Effect |
 | `table_bump` | table | proximity, per-Round budget, shot is live | 03 `table_tilt` Effect |
 | `go_live` | the pedestal (no `WorldInteraction` resource, like `bar_buy`) | phase is Intermission, proximity | 02 §3.1 `GameLoop.toggle_ready` |
+| `answer_phone` | the wall phone (bare kind, target 0, like `go_live`) | phase is Intermission, proximity, the phone is ringing and not yet answered this Night | 09 §3.2 `StoryDirector`; the answered flag rides `RoundDirector.send_full_state` |
 
 The host is the only validator; a rejected request comes back as `world_interaction_rejected` and the client rolls back its optimistic animation. `request_drink_purchase` from the old draft is gone — under P3 the bartender NPC is the shop, so buying a drink is `bar_buy`. Every applied interaction becomes an `Effect` with `owner_peer_id` (D6), and physics-altering Effects are applied to the authoritative `PhysicsSim` first, then broadcast; clients never simulate an alteration locally.
 

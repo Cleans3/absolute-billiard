@@ -73,11 +73,11 @@ const POSTERS: Array = [
 	[&"p_shark", 2, 0, 1, &"S", -2.6, 1.95, 1.0],
 	[&"p_tournament", 3, 0, 1, &"S", 3.3, 2.75, 1.0],
 	[&"p_happyhour", 0, 1, 1, &"W", 3.55, 1.95, 1.0],
-	[&"p_band", 1, 1, 1, &"W", 4.95, 1.95, 1.0],
+	[&"p_wanted_moe", 1, 1, 1, &"W", 4.95, 1.95, 1.0],
 	[&"p_chalk", 2, 1, 1, &"W", -0.6, 1.95, 1.0],
 	[&"p_billiards", 3, 1, 1, &"E", -5.95, 1.95, 1.0],
 	[&"p_noscratch", 3, 2, 1, &"E", -0.8, 1.95, 1.0],
-	[&"p_open_late", 0, 2, 2, &"N", -3.4, 1.85, 1.9],
+	[&"p_corner_pocket_sign", 0, 2, 2, &"N", -3.4, 1.85, 1.9],
 ]
 
 ## The dartboard: a disc using the atlas square at col 2, row 2 (256x256 inside a 256x300 cell).

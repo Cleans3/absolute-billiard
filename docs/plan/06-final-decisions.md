@@ -219,3 +219,13 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 **P27 — Stay where you shot.** After firing, the player keeps the spot they shot from, snapped to free floor. Backing out of aiming still returns them to where they stood before.
 
 **P28 — A richer bar from CC0 packs.** Stylized low-poly CC0 props (Kenney / Quaternius style) and generated poster art. Licenses are kept beside the assets under `assets/third_party/`. The decor is baked into the lightmap and atlased. The spin and elevation controls open enlarged pickers on tap. The table's inner-edge glare is removed.
+
+# Cleanse's rulings (2026-10-11) — the story build and the second table pass (override 01's "pot = sensor at the nose line", the authored racks' black-ball spots, 09 §6's open questions)
+
+**P29 — The story is presentation only; Moe is real.** Build 09 as written with its §6 decisions: Moe is a real loan shark who watches every Night from the stream chat as "velvet" (that is the twist, not "Gus was Moe"); no rule branch (the Night 4 favor drink stays Later); Moe speaks in P24's blips, lower and slower, with no recorded audio; intro cards are local per player, and GO LIVE's every-player press is what keeps a slow reader from missing the Round. Cleanse delegated these four calls.
+
+**P30 — Real pockets, generously big.** A pocket is a hole: the bed and the cloth are cut open at every pocket, a ball that rolls over the hole falls into it under gravity, drops into a pocket cup below the cloth, and only then counts as potted. No ball is potted or hidden while it is still on or above the cloth. Pocket mouths are widened well past regulation (corner ≥ 2.5 ball diameters, side ≥ 2.7) so a slightly off-line shot still drops. Pocket hazards and upgrades (radius ×, Moving Pockets) move and resize the real hole, not only a sensor.
+
+**P31 — The black ball starts in the middle.** In every opening formation, authored or seeded, the black ball takes the spot nearest the formation's centre: the middle of the triangle's third row in a triangle rack, the most central slot in a scatter. If a rack has more than one black ball, the others keep their spots.
+
+**P32 — No glare in the table's seams.** Where the cushions meet the rails and the cloth, nothing shines: no bright line, sparkle or light leak at any camera angle a player can reach. P28's matte materials stay; the seams themselves are closed.

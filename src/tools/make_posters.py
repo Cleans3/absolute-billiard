@@ -163,21 +163,6 @@ def p_happy_hour():
     return c.done()
 
 
-def p_live_band():
-    c = Cell(CW, CH, "#0a0a0f")
-    c.rays(CW / 2, 120, 260, 24, "#14142a", "#0a0a0f")
-    for r, col in ((104, "#00e5ff"), (96, "#0a0a0f"), (88, "#ff2d95")):
-        c.ellipse(CW / 2, 120, r * 0.9, r * 0.9, col)
-    c.ellipse(CW / 2, 120, 76, 76, "#141414")
-    for r in (64, 52, 40):
-        c.ellipse(CW / 2, 120, r, r, None, "#262626", 2)
-    c.ellipse(CW / 2, 120, 26, 26, "#ff2d95")
-    c.ellipse(CW / 2, 120, 4, 4, "#0a0a0f")
-    c.text(CW / 2, 232, "LIVE", 54, "#00e5ff", stroke=2, stroke_fill="#005a66")
-    c.text(CW / 2, 276, "TONIGHT 9PM", 26, "#ff2d95")
-    c.border(8, "#00e5ff", 3)
-    return c.done()
-
 
 def p_chalk_cue():
     c = Cell(CW, CH, "#0b5d2a")
@@ -230,13 +215,49 @@ def p_no_scratch():
     return c.done()
 
 
-def banner():
-    c = Cell(CW * 2, CH, "#0c0a14")
-    c.rect(10, 10, CW * 2 - 10, CH - 10, None, "#ff2d95", 5)
-    c.rect(22, 22, CW * 2 - 22, CH - 22, None, "#00e5ff", 3)
-    c.text(CW, 112, "OPEN LATE", 94, "#ff2d95", stroke=3, stroke_fill="#7a1650")
-    c.text(CW, 196, "POOL - DRINKS - GLORY", 34, "#00e5ff")
-    c.text(CW, 246, "NO REFUNDS ON SCRATCHES", 20, "#f4f0e6")
+
+def p_wanted_moe():
+    """09 §2.2: the only portrait of Velvet Moe, face scratched out, defaced to read DO NOT ASK."""
+    c = Cell(CW, CH, "#e2d2a8")
+    rnd = random.Random(1979)
+    for _ in range(140):  # foxing: an old, handled sheet
+        x, y, r = rnd.uniform(0, CW), rnd.uniform(0, CH), rnd.uniform(1, 5)
+        c.ellipse(x, y, r, r, "#d4c08f")
+    c.border(10, "#5a2a4a", 3)
+    c.text(CW / 2, 36, "WANTED", 40, "#3b1a2e")
+    c.rect(52, 58, CW - 52, 196, "#cbb98d", "#3b1a2e", 3)
+    c.ellipse(CW / 2, 196, 74, 46, "#4a2140")  # velvet jacket shoulders, cut at the frame
+    c.rect(48, 198, CW - 48, 246, "#e2d2a8")
+    c.rect(52, 58, CW - 52, 196, None, "#3b1a2e", 3)
+    c.ellipse(CW / 2, 128, 34, 40, "#c79a74")  # the face
+    c.rect(84, 86, 172, 94, "#2b1222")  # hat brim
+    c.rect(98, 62, 158, 88, "#2b1222")  # hat crown
+    c.rect(98, 80, 158, 84, "#7a2a5c")  # band
+    for _ in range(28):  # scratched out: a blade, many times, by an angry hand
+        x0, y0 = CW / 2 + rnd.uniform(-46, 46), 128 + rnd.uniform(-48, 40)
+        a = rnd.uniform(-0.6, 0.6) + (math.pi / 4 if rnd.random() < 0.5 else -math.pi / 4)
+        l = rnd.uniform(28, 64)
+        c.line([(x0 - math.cos(a) * l / 2, y0 - math.sin(a) * l / 2), (x0 + math.cos(a) * l / 2, y0 + math.sin(a) * l / 2)],
+               "#f1e6c8" if rnd.random() < 0.6 else "#8a7a58", rnd.uniform(1.5, 3.5))
+    c.text(CW / 2, 222, "VELVET MOE", 36, "#5a2a4a")
+    c.text(CW / 2, 262, "DO NOT ASK", 34, "#b3201b", stroke=1, stroke_fill="#5a0e0b")
+    c.line([(56, 278), (204, 274)], "#b3201b", 3)
+    return c.done()
+
+
+def corner_pocket_sign():
+    """09 §2.2: the bar's own name over the entrance. 2-wide banner cell."""
+    c = Cell(CW * 2, CH, "#1a0f0a")
+    for i in range(0, CH, 22):  # dark wood planks
+        c.rect(0, i, CW * 2, i + 20, "#24150d")
+    c.rect(12, 12, CW * 2 - 12, CH - 12, None, "#c8963e", 6)
+    c.rect(26, 26, CW * 2 - 26, CH - 26, None, "#7a5320", 2)
+    c.text(CW, 92, "GUS'S", 58, "#f2c14e", stroke=2, stroke_fill="#6b4410")
+    c.text(CW, 166, "CORNER POCKET", 78, "#f2c14e", stroke=3, stroke_fill="#6b4410")
+    c.line([(96, 216), (CW * 2 - 96, 216)], "#c8963e", 3)
+    c.text(CW, 246, "EST. 1979  -  ONE TABLE, ONE STREAM", 24, "#e9d9b0")
+    for x in (150, CW * 2 - 150):
+        ball(c, x, 92, 20, "#101010", 8)
     return c.done()
 
 
@@ -264,7 +285,7 @@ def dartboard():
     return c.done()
 
 
-POSTERS = [p_eight_ball, p_cold_beer, p_shark, p_tournament, p_happy_hour, p_live_band, p_chalk_cue, p_billiards, p_no_scratch]
+POSTERS = [p_eight_ball, p_cold_beer, p_shark, p_tournament, p_happy_hour, p_wanted_moe, p_chalk_cue, p_billiards, p_no_scratch]
 
 
 def main():
@@ -272,7 +293,7 @@ def main():
     atlas = Image.new("RGB", (AW, AH), (255, 255, 255))  # the bottom strip stays white: untextured props sample it
     for i, fn in enumerate(POSTERS[:8]):
         atlas.paste(fn(), ((i % 4) * CW, (i // 4) * CH))
-    atlas.paste(banner(), (0, 2 * CH))
+    atlas.paste(corner_pocket_sign(), (0, 2 * CH))
     atlas.paste(dartboard(), (2 * CW, 2 * CH))
     atlas.paste(POSTERS[8](), (3 * CW, 2 * CH))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)

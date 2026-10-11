@@ -77,6 +77,7 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | `round_time_add_sec` | `float` | Round length delta, positive or negative — the honest knob the old `energy_drink` faked |
 | `warning_lead_time_sec` | `float` | telegraph before activation, default `3.0 [tune]`; emitted with `event_warning` for a forced `scripted_first` Event (a voted one is telegraphed by the vote itself) |
 | `opportunity`, `opportunity_mult` | `enum {NONE, NEXT_POT, RANDOM_POCKET}`, `float` | the two opportunity Events' targeted payoff (§3.6), read through `EffectManager.pot_bonus()` |
+| `story_line` | `String` | 09 §3.4 flavor ("The Rope sent a 'doorman'…"), shown under the name on the vote card and the blackboard; no mechanical effect |
 
 ### 2.6 `WorldInteraction` (`Resource`)
 | field | type | notes |
