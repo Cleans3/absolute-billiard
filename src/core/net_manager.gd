@@ -55,7 +55,7 @@ func _ready() -> void:
 	Settings.load_all()  # volume, key bindings: the one boot-time load (docs/plan/06 P11)
 	_init_steam()
 	multiplayer.peer_connected.connect(_on_peer_connected)
-	multiplayer.peer_connected.connect(_relax_timeout)
+	multiplayer.peer_connected.connect(_tune_peer)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(func() -> void: _fail(&"connection_failed"))
@@ -256,6 +256,7 @@ func _push_roster(roster: Array) -> void:
 ## Noray host path replaces this with a relay-registered peer; both end in _install_host.
 func _install_host(peer: MultiplayerPeer) -> void:
 	_set_step(&"")
+	_cap_bandwidth(peer)
 	multiplayer.multiplayer_peer = peer
 	_roster = [_host_entry()]
 	session_started.emit(true)
@@ -520,7 +521,7 @@ func _on_peer_disconnected(peer_id: int) -> void:
 
 func _on_connected_to_server() -> void:
 	_set_step(&"")
-	_relax_timeout(HOST_ID)
+	_tune_peer(HOST_ID)
 	var pick := SkinCatalog.local_pick()
 	register_skins.rpc_id(HOST_ID, pick.char_skin, pick.bar_skin)  # ahead of peer_ready on the same channel: the roster is final before slots spawn
 	session_started.emit(false)
@@ -596,14 +597,25 @@ func host_away_text() -> String:
 	return "Host away %d s · connection drops in ~%d s" % [waited, maxi(config.peer_timeout_min_ms / 1000 - waited, 0)]
 
 
-## ENet default (5 s min / 30 s max) would drop a phone that spent 30 s in the background.
-func _relax_timeout(peer_id: int) -> void:
+## A server host left at "unlimited" bandwidth (0) makes ENet clamp every client's packet throttle to 1-4 of 32 in its first
+## 1 s pass (measured: the clients' pose stream then dies for seconds); an explicit cap no link reaches avoids the clamp,
+## and only when set on the server, right after it is created (NetConfig.bandwidth_bytes_per_sec).
+func _cap_bandwidth(peer: MultiplayerPeer) -> void:
+	var enet := peer as ENetMultiplayerPeer
+	if enet != null:
+		enet.get_host().bandwidth_limit(config.bandwidth_bytes_per_sec, config.bandwidth_bytes_per_sec)
+
+
+## Per-peer ENet tuning, on both ends of every link. Timeouts: the default (5 s min / 30 s max) would drop a phone that
+## spent 30 s in the background. Throttle: never closes (NetConfig), so RTT jitter cannot starve the pose stream.
+func _tune_peer(peer_id: int) -> void:
 	var enet := multiplayer.multiplayer_peer as ENetMultiplayerPeer
 	if enet == null:
 		return
 	var p := enet.get_peer(peer_id)
 	if p != null:
 		p.set_timeout(config.peer_timeout_limit, config.peer_timeout_min_ms, config.peer_timeout_max_ms)
+		p.throttle_configure(config.throttle_interval_ms, config.throttle_acceleration, config.throttle_deceleration)
 
 
 func _fail(reason: StringName) -> void:
