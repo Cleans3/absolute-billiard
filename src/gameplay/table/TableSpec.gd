@@ -10,8 +10,10 @@ extends Resource
 const REG_LENGTH := 2.54
 const REG_WIDTH := 1.27
 const REG_BALL_RADIUS := 0.028575
-const REG_CORNER_MOUTH := 0.1175
-const REG_SIDE_MOUTH := 0.130
+## Mouth = the tip-to-tip gap between the two cushion noses at a pocket, what a player sees (06 P30). Past
+## regulation on purpose (reg. corner ~2.06 D, side ~2.27 D): both 2.8 D here, floors are corner 2.5 D / side 2.7 D.
+const REG_CORNER_MOUTH := 0.160
+const REG_SIDE_MOUTH := 0.160
 const REG_CUSHION_NOSE_H := 0.036
 const REG_RAIL_WIDTH := 0.178
 const REG_RAIL_TOP_H := 0.042
@@ -22,6 +24,10 @@ const REG_SIDE_SHELF := 0.005
 const REG_CORNER_FACING_DEG := 142.0
 const REG_SIDE_FACING_DEG := 103.0
 const REG_CUE_REACH := 1.75
+## Pocket cups (06 P30): the bed is cut open at every pocket and a cup hangs below the cut.
+const CUP_DEPTH_RADII := 5.0   # cup floor below the cloth, in ball radii (>= 2 D)
+const POT_DEPTH_RADII := 1.5   # a ball is potted once its centre is this far below the cloth top, inside a cup
+const REG_BED_THICKNESS := 0.01
 
 @export var scale := 2.0
 
@@ -90,6 +96,12 @@ var foot_spot_x: float:
 	get: return length_m / 4.0
 var cue_reach_m: float:
 	get: return REG_CUE_REACH * scale
+var cup_depth_m: float:
+	get: return CUP_DEPTH_RADII * ball_radius_m
+var pot_depth_m: float:
+	get: return POT_DEPTH_RADII * ball_radius_m
+var bed_thickness_m: float:
+	get: return REG_BED_THICKNESS * scale
 
 
 ## 01 §3 "Cushions": restitution falls with normal impact speed so hard hits rebound flatter.

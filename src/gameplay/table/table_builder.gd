@@ -1,9 +1,10 @@
 class_name TableBuilder
 extends RefCounted
 
-## Static bodies and drop-plane areas from a TableLayout — collision only (01 §2, plan.md T1.4).
-## Cushion colliders sit at nose height; the angled facings replace the old free jaw cylinders
-## so a ball approaching a pocket off-angle rattles against a shaped jaw, not a peg.
+## Static bodies and pocket sensors from a TableLayout — collision only (01 §2, 06 P30). Cushion colliders sit at
+## nose height; the angled facings replace the old free jaw cylinders so a ball approaching a pocket off-angle
+## rattles against a shaped jaw, not a peg. The bed is the nose rectangle with a hole cut at every pocket (convex
+## pieces, never a trimesh), a cup hangs under each hole, and a ball is potted by reaching the cup (table.gd).
 ## Visuals are table_visuals.gd's job — this file never adds a MeshInstance3D.
 
 # 07 §1 layer bits: balls 1, table (bed + rails) 2, pockets 3, world 4 (players, props). Ball mask = 1|2|3.
@@ -12,6 +13,14 @@ const LAYER_POCKET := 1 << 2
 const BALL_LAYER := 1
 
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
+const CUP_FRICTION := 0.02        # a spinning ball hitting a grippy wall climbs it; the cup only has to hold the ball
+const CUP_BOUNCE := 0.1           # effective restitution of the cup floor and walls: a felt pouch, a ball dies in it
+const COVER_LIFT_M := 0.0015      # Moving Pockets cover top above the cloth: never coplanar with the bed (E2)
+const COVER_BEVEL_M := 0.015      # ... and ramped down to the cloth over this width, so a ball rolls up it unbothered
+const COVER_OVERLAP_M := 0.02     # cover reaches this far past the widest cut, onto the bed
+const COVER_SEGMENTS := 32
+const BACK_WALL_TRIM_SEGS := 2     # ... and it starts this many arc segments past each cushion tip (the facing stub covers those)
+const BACK_WALL_RADII := 4.0      # pocket back wall height above the cloth: past a ball's top, so no edge kicks one upward
 
 
 ## A collider a fast ball could cross within one physics step is a tunnelling/ghost-collision
@@ -27,12 +36,17 @@ static func _min_step_safe_thickness(spec: TableSpec) -> float:
 	return spec.max_ball_speed_mps / PhysicsSim.LIVE_TICK
 
 
-static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
-	_build_bed(parent, spec, y)
+## `osc_m` > 0 (Moving Pockets) adds one sliding cover per pocket over the widened cut (see `_build_cover`).
+static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float, osc_m := 0.0) -> void:
+	_build_bed(parent, spec, layout, y)
 	for rail in layout.rails:
 		_build_cushion(parent, spec, rail, y)
 	for pocket in layout.pockets:
-		_build_drop_zone(parent, spec, layout, pocket, y)
+		var hole: TableLayout.Hole = layout.holes[pocket.id]
+		_build_cup(parent, spec, hole, y)
+		_build_sensor(parent, spec, hole, y)
+		if osc_m > 0.0:
+			_build_cover(parent, spec, hole, y)
 	_build_safety_floor(parent, spec, y)
 
 
@@ -45,19 +59,30 @@ static func _cloth_material(spec: TableSpec) -> PhysicsMaterial:
 	return m
 
 
-static func _build_bed(parent: Node3D, spec: TableSpec, y: float) -> void:
+## Flat convex prisms, one body: Jolt's internal-edge removal works within a body, so a ball rolls over the seams
+## between pieces exactly as over one slab (tests/physics/probe.gd roll-out and seam probe hold that).
+static func _build_bed(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "Bed"
 	body.collision_layer = LAYER_TABLE
 	body.collision_mask = 0
 	body.physics_material_override = _cloth_material(spec)
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = Vector3(spec.length_m, spec.clearance_margin_m * 2.0, spec.width_m)
-	shape.shape = box
-	shape.position = Vector3(0, y - box.size.y * 0.5, 0)
-	body.add_child(shape)
+	for piece in layout.bed_pieces:
+		var shape := CollisionShape3D.new()
+		shape.shape = _prism(piece, y - spec.bed_thickness_m, y)
+		body.add_child(shape)
 	parent.add_child(body)
+
+
+## Convex prism over `poly` (table-local xz, convex) from `y0` up to `y1`.
+static func _prism(poly: PackedVector2Array, y0: float, y1: float) -> ConvexPolygonShape3D:
+	var pts := PackedVector3Array()
+	for p in poly:
+		pts.append(Vector3(p.x, y0, p.y))
+		pts.append(Vector3(p.x, y1, p.y))
+	var shape := ConvexPolygonShape3D.new()
+	shape.points = pts
+	return shape
 
 
 ## Box at nose height, inner face on the playfield edge (rail.a/b), extending outward by 2R — the
@@ -140,46 +165,118 @@ static func _add_facing_shape(body: StaticBody3D, spec: TableSpec, at: Vector3, 
 	body.add_child(shape)
 
 
-## A pot is a ball's centre actually leaving the bed (01 §2): the bed and straight cushions are
-## exactly the nose-to-nose rectangle (spec.length_m × spec.width_m), so a centre is off it —
-## genuinely unsupported, falling — the moment EITHER its x or its z (not necessarily both) passes
-## hl/hw. TableGeometry.layout() is the single source of truth for the strip list (T5.3): this
-## just builds exactly what it describes, no re-derivation, so the gizmo (which also reads
-## layout.drop_zones directly) can never drift from what actually gets built.
-static func _build_drop_zone(parent: Node3D, spec: TableSpec, layout: TableLayout, pocket: PocketSpec, y: float) -> void:
+## The pocket cup under a hole: a floor `cup_depth_m` below the cloth and a wall all round it up to the cloth plane,
+## then — on the outer arc, outside the nose rectangle, where the rail wood stands — a back wall so a fast ball
+## cannot skip across the hole and out of the table. Walls are thick (a full-power step cannot cross them)
+## and stand outward of the ring; one body, felt-like (absorbent) so a ball that drops stays dropped.
+static func _build_cup(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
+	var body := StaticBody3D.new()
+	body.name = "Cup_" + String(hole.pocket_id)
+	body.collision_layer = LAYER_TABLE
+	body.collision_mask = 0
+	var pm := PhysicsMaterial.new()
+	pm.friction = CUP_FRICTION
+	pm.rough = true
+	pm.bounce = spec.ball_restitution - CUP_BOUNCE
+	pm.absorbent = true
+	body.physics_material_override = pm
+	var t := maxf(spec.ball_radius_m * 2.0, _min_step_safe_thickness(spec))
+	var floor_y := y - spec.cup_depth_m
+	var floor_shape := CollisionShape3D.new()
+	floor_shape.shape = _prism(hole.ring, floor_y - t, floor_y)
+	body.add_child(floor_shape)
+	# The cup's own tops stay off the playing surface: a second body's coplanar edge on the cloth is a ghost bump (the
+	# same seam the cushion/facing comment above fights). Under the bed the slab rim is the hole's wall; outside the
+	# nose rectangle there is no bed, so the wall climbs to back-wall height there.
+	_add_wall(body, hole.ring, true, hole.center, t, floor_y, y - spec.bed_thickness_m)
+	_add_wall(body, hole.outer, false, hole.center, t, y - spec.bed_thickness_m, y + BACK_WALL_RADII * spec.ball_radius_m, BACK_WALL_TRIM_SEGS)
+	parent.add_child(body)
+
+
+## Thick wall along the polyline `pts` (closed ring or open arc), standing on the outward side of it, from `y0` to `y1`.
+## `trim` drops that many segments off each end of an open arc: at a cushion tip the ring's outward normal leans back
+## into the playfield, and a wall extruded there would stand on the cloth beside the rail.
+static func _add_wall(body: StaticBody3D, pts: PackedVector2Array, closed: bool, center: Vector2, t: float, y0: float, y1: float, trim := 0) -> void:
+	var n := pts.size()
+	for i in range(trim, (n if closed else n - 1 - trim)):
+		var a := pts[i]
+		var b := pts[(i + 1) % n]
+		var na := (a - center).normalized() * t
+		var nb := (b - center).normalized() * t
+		var shape := CollisionShape3D.new()
+		shape.shape = _prism(PackedVector2Array([a, b, b + nb, a + na]), y0, y1)
+		body.add_child(shape)
+
+
+## Pot sensor (06 P30 pot rule): a cylinder in the cup whose top sits `pot_depth_m + R` under the cloth, so the ball's
+## own sphere touches it exactly when its CENTRE is `pot_depth_m` below the cloth top. Anything that deep is in a cup.
+static func _build_sensor(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
 	var area := Area3D.new()
-	area.name = "Drop_" + String(pocket.id)
-	area.set_meta(&"pocket_id", pocket.id)
+	area.name = "Drop_" + String(hole.pocket_id)
+	area.set_meta(&"pocket_id", hole.pocket_id)
 	area.collision_layer = LAYER_POCKET
 	area.collision_mask = BALL_LAYER
 	area.monitorable = false
-	for dz in layout.drop_zones:
-		if dz.pocket_id != pocket.id:
-			continue
-		var pos: Vector3 = dz.position
-		var size: Vector3 = dz.size
-		_add_drop_strip(area, size, pos + Vector3(0, y, 0))
+	var top := y - spec.pot_depth_m - spec.ball_radius_m
+	var bottom := y - spec.cup_depth_m
+	var cyl := CylinderShape3D.new()
+	cyl.radius = hole.apothem
+	cyl.height = top - bottom
+	var shape := CollisionShape3D.new()
+	shape.shape = cyl
+	shape.position = Vector3(hole.center.x, (top + bottom) * 0.5, hole.center.y)
+	area.add_child(shape)
 	parent.add_child(area)
 
 
-static func _add_drop_strip(area: Area3D, size: Vector3, position: Vector3) -> void:
-	var shape := CollisionShape3D.new()
-	var box := BoxShape3D.new()
-	box.size = size
-	shape.shape = box
-	shape.position = position
-	area.add_child(shape)
+## Moving Pockets (E2): the bed hole is cut as wide as the whole sweep, and this kinematic ring — an annulus whose
+## inner circle is the real opening — slides over the cut on the shared pocket clock, so the opening moves and
+## everything else of the cut stays cloth. Its top is lifted above the cloth and ramped down at the rim, never
+## coplanar with the bed. Local origin = the hole centre at cloth height; table.gd slides it along the rail.
+static func _build_cover(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, y: float) -> void:
+	var body := AnimatableBody3D.new()
+	body.name = "Cover_" + String(hole.pocket_id)
+	body.sync_to_physics = true
+	body.collision_layer = LAYER_TABLE
+	body.collision_mask = 0
+	body.physics_material_override = _cloth_material(spec)
+	body.position = Vector3(hole.center.x, y, hole.center.y)
+	for ring in cover_rings(spec, hole):
+		for k in COVER_SEGMENTS:
+			var a0 := TAU * k / COVER_SEGMENTS
+			var a1 := TAU * (k + 1) / COVER_SEGMENTS
+			var d0 := Vector2.from_angle(a0)
+			var d1 := Vector2.from_angle(a1)
+			var pts := PackedVector3Array()
+			for e in [[d0, ring.r_in, ring.top_in], [d1, ring.r_in, ring.top_in], [d1, ring.r_out, ring.top_out], [d0, ring.r_out, ring.top_out]]:
+				var v: Vector2 = e[0] * float(e[1])
+				pts.append(Vector3(v.x, -spec.bed_thickness_m, v.y))
+				pts.append(Vector3(v.x, float(e[2]), v.y))
+			var shape := ConvexPolygonShape3D.new()
+			shape.points = pts
+			var cs := CollisionShape3D.new()
+			cs.shape = shape
+			body.add_child(cs)
+	parent.add_child(body)
 
 
-## Every drop-zone chute above this depth has already caught a genuinely potted ball; anything
-## that reaches here fell through a gap in the rail/bed coverage instead of a real pocket and
-## should stop, not free-fall forever accelerating under gravity.
+## The cover's profile, shared by collider and mesh: [{r_in, r_out, top_in, top_out}], tops relative to the cloth.
+static func cover_rings(spec: TableSpec, hole: TableLayout.Hole) -> Array[Dictionary]:
+	var outer := hole.cup_radius + (hole.cup_radius - hole.radius) + COVER_OVERLAP_M
+	return [
+		{r_in = hole.radius, r_out = outer - COVER_BEVEL_M, top_in = COVER_LIFT_M, top_out = COVER_LIFT_M},
+		{r_in = outer - COVER_BEVEL_M, r_out = outer, top_in = COVER_LIFT_M, top_out = 0.0002},
+	]
+
+
+## Every cup floor sits above this; anything that reaches here fell through a gap in the rail/bed
+## coverage instead of a real pocket and should stop, not free-fall forever accelerating under gravity.
 static func _build_safety_floor(parent: Node3D, spec: TableSpec, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "SafetyFloor"
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	var chute_depth := spec.ball_radius_m * TableGeometry.DROP_CHUTE_RATIO  # drop zone bottom, see _build_drop_zone
+	var chute_depth := spec.ball_radius_m * TableGeometry.DROP_CHUTE_RATIO
 	# thick, not a thin slab: even CCD can miss a one-step-thin static shape at very high speed,
 	# and a ball that reaches this point has already been falling uncaught for a while
 	var thickness := spec.ball_radius_m * TableGeometry.DROP_CHUTE_RATIO

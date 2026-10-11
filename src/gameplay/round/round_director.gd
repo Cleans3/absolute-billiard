@@ -441,7 +441,10 @@ func _on_contacted(ball: Ball, other: Node, kind: StringName) -> void:
 
 
 func _on_ball_dropped(ball: Ball, pocket_id: StringName) -> void:
-	if not shot_in_progress or not _balls.has(ball):
+	if not _balls.has(ball):
+		return
+	if not shot_in_progress:
+		_return_stray.call_deferred(ball)  # a hole moved or grew under a resting ball between shots (06 P30)
 		return
 	_log.add_pocket(ball, pocket_id)
 	if not ball.is_cue_ball:
@@ -449,9 +452,13 @@ func _on_ball_dropped(ball: Ball, pocket_id: StringName) -> void:
 		ball_potted.emit(ball, _shot_id, pocket_id)
 
 
+## A ball over a pocket hole is dropping or potted, never "off the table" (E1): only one that leaves the cloth
+## somewhere other than a hole is. The cup circle reaches past the nose rectangle, so this check comes first.
 func _is_off_table(ball: Ball) -> bool:
 	var s := table.spec
 	var p := table.to_local(ball.global_position)
+	if table.in_hole(Vector2(p.x, p.z), ball.radius):
+		return false
 	var margin := OFF_TABLE_RADII * s.ball_radius_m
 	return absf(p.x) > s.length_m * 0.5 + margin \
 		or absf(p.z) > s.width_m * 0.5 + margin \
@@ -465,6 +472,20 @@ func _retire_off_table() -> void:
 			_off_table.append(b)
 			_log.add_off_table(b)
 			b.retire()
+
+
+## Between shots a ball can only drop because a hole opened under it (Moving Pockets, a bigger mouth): nobody shot,
+## so nothing scores and nothing is a foul — the ball goes back on the cloth, the cue ball into the kitchen.
+func _return_stray(ball: Ball) -> void:
+	if not _balls.has(ball) or not ball.is_pocketed:
+		return
+	if ball.is_cue_ball:
+		_respawn_cue(&"wedged")
+		return
+	var near := _local(ball)
+	var region := RackDropper.interior(table.spec)
+	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), hash([_seed, _shot_index, ball.spawn_index, &"stray"]))
+	ball.restore(_world(spot, ball))
 
 
 func _on_all_resting() -> void:

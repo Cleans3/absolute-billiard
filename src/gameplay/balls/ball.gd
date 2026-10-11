@@ -19,6 +19,7 @@ const JUMP_MIN_ELEVATION_DEG := 30.0
 const MASSE_MIN_ELEVATION_DEG := 45.0
 const MASSE_MIN_SPIN := 0.60
 const FALL_FLOOR_Y := -100.0  # BallMotion floor for a pocketed ball: free fall until retired
+const POCKET_SETTLE_SEC := 0.4  # a potted ball is retired this long after it reaches the cup
 
 static var _g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))  # hoisted: per-tick lookup
 static var _materials: Dictionary = {}  # BallType -> StandardMaterial3D, shared across balls
@@ -121,13 +122,20 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	struck.emit(self, intent)
 
 
+## Called once the ball is in a pocket cup (Table's pot sensor: centre `pot_depth_m` below the cloth, 06 P30).
 func pocket(pocket_id: StringName) -> void:
 	is_pocketed = true
 	pocketed_in = pocket_id
 	if motion != null:
 		motion.floor_y = FALL_FLOOR_Y  # the model lets it fall through the cloth plane, like Jolt does
 	net_flag.emit(self, BallEventCodec.Flag.POCKETED)
-	get_tree().create_timer(0.4).timeout.connect(retire)  # let it fall into the chute first
+	get_tree().create_timer(POCKET_SETTLE_SEC).timeout.connect(_retire_if_pocketed)  # let it settle in the cup first
+
+
+## A ball restored in the meantime (a hole opened under it between shots) must not be hidden by the old timer.
+func _retire_if_pocketed() -> void:
+	if is_pocketed and not retired:
+		retire()
 
 
 ## Takes the ball out of play: frozen, hidden, non-colliding, and counted as resting so

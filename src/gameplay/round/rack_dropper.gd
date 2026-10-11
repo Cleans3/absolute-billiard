@@ -6,7 +6,7 @@ extends RefCounted
 
 const TYPE_DIR := "res://src/resources/ball_types/"
 const SPACING_RADII := 2.4       # Bridson minimum spacing r, in ball radii
-const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket mouth + ball radius, in ball radii
+const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket hole + ball radius, in ball radii
 const CANDIDATES := 30           # Bridson k
 const SHRINK := 0.95             # spacing multiplier when a sample comes up short
 const MAX_PRIZES := 2            # 01 §2: "one or two per Round"
@@ -168,12 +168,13 @@ static func kitchen(spec: TableSpec) -> Rect2:
 	return r
 
 
-## Pocket mouths as Vector3(x, z, radius) — a ball centre must stay outside every one.
+## Pocket holes as Vector3(x, z, radius) — a ball centre must stay outside every one (a ball on a hole falls in).
 static func keepouts(spec: TableSpec, layout: TableLayout) -> Array[Vector3]:
 	var out: Array[Vector3] = []
 	var reach := spec.ball_radius_m * (1.0 + POCKET_KEEPOUT_RADII)
 	for p in layout.pockets:
-		out.append(Vector3(p.position.x, p.position.z, p.mouth_width_m * 0.5 + reach))
+		var hole: TableLayout.Hole = layout.holes[p.id]
+		out.append(Vector3(p.position.x, p.position.z, hole.cup_radius + (hole.cup_radius - hole.radius) + reach))
 	return out
 
 

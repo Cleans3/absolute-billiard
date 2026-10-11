@@ -11,12 +11,14 @@ signal rebuilt
 
 ## Pocket oscillation period, seconds [tune].
 const OSC_PERIOD_SEC := 6.0
+## Footprint slack when thawing resting balls around a hole that moved or grew, in ball radii.
+const THAW_REACH_RADII := 2.0
 
 @export var spec: TableSpec = TableSpec.new()
 
 var pockets: Dictionary = {}  # StringName -> PocketSpec, world-space (doc 01 §5)
 var pocket_radius_mult := 1.0  # 03 `pocket_radius_mult`; geometry is rebuilt when it changes
-var pocket_osc_m := 0.0  # 03 `pocket_oscillation_m`: amplitude the drop chutes slide along their rail
+var pocket_osc_m := 0.0  # 03 `pocket_oscillation_m`: amplitude the openings slide along their rail (covers over a wider cut)
 var pocket_seed := 0  # Round seed: with the tick clock it fixes every pocket's phase, so no packets
 var _pocket_t := 0.0
 var _pocket_t_manual := false  # set_pocket_time() pins the clock (probes, tools)
@@ -49,14 +51,17 @@ func set_felt_color(c: Color) -> void:
 
 ## Frees every generated child (bodies + visuals; not `sim`), recomputes `layout` from `spec`,
 ## and rebuilds. Balls are NOT re-spawned here — DemoRack (or a future RoundDirector) owns that.
+## A hole that grows or moves takes the support from under any resting ball near it, so those are thawed first (E2).
 func rebuild() -> void:
+	var next := TableGeometry.layout(spec, pocket_radius_mult, pocket_osc_m)
+	_thaw_near_holes(layout, next)
 	for c in get_children():
 		if c == sim:
 			continue
 		remove_child(c)
 		c.free()
 
-	layout = TableGeometry.layout(spec, pocket_radius_mult)
+	layout = next
 	var y := spec.bed_height_m
 	pockets.clear()
 	for ps in layout.pockets:
@@ -67,8 +72,8 @@ func rebuild() -> void:
 		world_ps.mouth_width_m = ps.mouth_width_m
 		pockets[world_ps.id] = world_ps
 
-	TableBuilder.build(self, spec, layout, y)
-	TableVisuals.build(self, spec, layout, y)
+	TableBuilder.build(self, spec, layout, y, pocket_osc_m)
+	TableVisuals.build(self, spec, layout, y, pocket_osc_m)
 	TableVisuals.set_cloth_color(self, felt_color)
 
 	for area in get_children():
@@ -78,6 +83,32 @@ func rebuild() -> void:
 
 	_apply_pocket_offsets()
 	rebuilt.emit()
+
+
+## Resting (frozen) balls within reach of any old or new hole wake up, so the changed support drops them instead of
+## leaving them hovering over a hole that just opened under them.
+func _thaw_near_holes(old: TableLayout, next: TableLayout) -> void:
+	if old == null:
+		return
+	for b in sim.get_balls():
+		if b.retired or not b.freeze:
+			continue
+		var p := to_local(b.global_position)
+		for lay in [old, next]:
+			for hole: TableLayout.Hole in lay.holes.values():
+				if Vector2(p.x, p.z).distance_to(hole.center) < hole.cup_radius + (hole.cup_radius - hole.radius) + b.radius * THAW_REACH_RADII:
+					b.freeze = false
+					b.wake()
+					break
+
+
+## True when table-local xz `p` lies inside any pocket's cup circle widened by `margin` (a ball in there is dropping
+## or potted, never "off the table").
+func in_hole(p: Vector2, margin := 0.0) -> bool:
+	for hole: TableLayout.Hole in layout.holes.values():
+		if p.distance_to(hole.center) < hole.cup_radius + margin:
+			return true
+	return false
 
 
 ## 07 §1.4: a monitoring Area3D is a Jolt sensor stepped every tick — 6 of them cost ~0.45 ms at rest. Only the
@@ -98,12 +129,12 @@ func _on_drop_zone_entered(body: Node3D, pocket_id: StringName) -> void:
 ## Round setup (host and clients alike: the stats come from the same synced Effects, the seed from the
 ## Round). Rebuilds only when the radius actually changed; oscillation needs no rebuild.
 func apply_pocket_stats(radius_mult: float, osc_m: float, seed: int) -> void:
-	pocket_osc_m = osc_m
 	pocket_seed = seed
-	set_physics_process(osc_m > 0.0)  # host: the tick the drop-chute Areas capture on
-	set_process(osc_m > 0.0)  # every peer: the frame the liner is drawn on
-	if not is_equal_approx(radius_mult, pocket_radius_mult):
+	set_physics_process(osc_m > 0.0)  # host: the tick the covers move on
+	set_process(osc_m > 0.0)  # every peer: the frame the covers are drawn on
+	if not is_equal_approx(radius_mult, pocket_radius_mult) or not is_equal_approx(osc_m, pocket_osc_m):
 		pocket_radius_mult = radius_mult
+		pocket_osc_m = osc_m
 		rebuild()
 	else:
 		_apply_pocket_offsets()
@@ -121,10 +152,12 @@ func set_pocket_time(t: float) -> void:
 	_apply_pocket_offsets()
 
 
-## One clock for capture and picture: PhysicsSim.pocket_time() is the host's clock on the host and the same
-## clock, playback-delayed, on clients — so the chute you see is where the host's Jolt would catch a ball.
+## One clock for collider and picture: PhysicsSim.pocket_time() is the host's clock on the host and the same
+## clock, playback-delayed, on clients — so the opening you see is where the host's Jolt lets a ball fall.
 func _physics_process(_delta: float) -> void:
 	_tick_pocket_clock()
+	if multiplayer.is_server():
+		_release_balls_over_openings()
 
 
 func _process(_delta: float) -> void:
@@ -137,22 +170,37 @@ func _tick_pocket_clock() -> void:
 	_apply_pocket_offsets()
 
 
-## Slides each pocket's drop-zone Area3D and its liner along the rail (tangent of the mouth normal).
+## A frozen ball whose centre the sliding opening has just reached is released: the cover left it no support.
+func _release_balls_over_openings() -> void:
+	for b in sim.get_balls():
+		if b.retired or not b.freeze:
+			continue
+		var p := to_local(b.global_position)
+		for hole: TableLayout.Hole in layout.holes.values():
+			var ps: PocketSpec = pockets.get(hole.pocket_id)
+			var at := hole.center + _tangent(ps) * pocket_offset(pocket_seed, hole.pocket_id, _pocket_t, pocket_osc_m)
+			if Vector2(p.x, p.z).distance_to(at) < hole.radius:
+				b.freeze = false
+				b.wake()
+				break
+
+
+static func _tangent(ps: PocketSpec) -> Vector2:
+	return Vector2(-ps.mouth_normal.y, ps.mouth_normal.x).normalized()
+
+
+## Slides each pocket's cover ring along the rail (tangent of the mouth normal): the opening moves, the cut stays.
 func _apply_pocket_offsets() -> void:
 	for node in get_children():
-		var id: StringName
-		if node is Area3D and node.has_meta(&"pocket_id"):
-			id = node.get_meta(&"pocket_id")
-		elif node is MeshInstance3D and String(node.name).begins_with("Liner_"):
-			id = StringName(String(node.name).trim_prefix("Liner_"))
-		else:
+		if not (node is AnimatableBody3D and String(node.name).begins_with("Cover_")):
 			continue
 		if not node.has_meta(&"base_position"):
 			node.set_meta(&"base_position", node.position)
+		var id := StringName(String(node.name).trim_prefix("Cover_"))
 		var ps: PocketSpec = pockets.get(id)
 		var base: Vector3 = node.get_meta(&"base_position")
 		if ps == null or pocket_osc_m <= 0.0:
 			node.position = base
 			continue
-		var tangent := Vector3(-ps.mouth_normal.y, 0.0, ps.mouth_normal.x).normalized()
-		node.position = base + tangent * pocket_offset(pocket_seed, id, _pocket_t, pocket_osc_m)
+		var t := _tangent(ps)
+		node.position = base + Vector3(t.x, 0.0, t.y) * pocket_offset(pocket_seed, id, _pocket_t, pocket_osc_m)

@@ -188,14 +188,16 @@ func _jaw_hit() -> void:
 	_kill(b)
 
 
-## Loop 1 (gamma A/B/D, plan.md T4.1): a ball resting or rolling on the bed, still on the
-## playfield side of a pocket's nose line, must never read as pocketed — only a centre that has
-## actually reached the throat does (01 §2). The old drop-zone footprint reached back into the
-## bed far enough to catch all three of these.
+## Loop 1 (gamma A/B/D, plan.md T4.1), rewritten for real holes (06 P30): a ball whose centre is still on the bed — a
+## resting one, or one rolling past a pocket on a line outside the hole's rim — never reads as pocketed; one whose
+## centre is over the hole does. The hole is a circle through the cushion tips, so its rim reaches (radius - R) inside
+## the nose line at a side pocket's axis.
 func _drop_zone_negatives() -> void:
 	var hl := table.spec.length_m * 0.5
 	var hw := table.spec.width_m * 0.5
 	var r := table.spec.ball_radius_m
+	var side: TableLayout.Hole = table.layout.holes[&"side_n"]
+	var rim_z := -hw - r + side.cup_radius  # north side pocket: the rim at its axis, table-local z
 
 	# A: resting ball near the NW corner mouth, centre well inside the cushion-end line.
 	var inner := -r + table.spec.corner_mouth_m * 0.5 + table.spec.corner_shelf_m
@@ -208,30 +210,37 @@ func _drop_zone_negatives() -> void:
 	assert(not a.is_pocketed, "a ball resting well inside the cushion line must not pot")
 	_kill(a)
 
-	# B: resting ball at the north side pocket, centre 1.2 R inside the nose line.
-	var b := _ball(RED_T, Vector3(0, y, -hw + r * 1.2))
+	# B: resting ball at the north side pocket, centre 0.5 R outside the rim (on the bed), then 0.5 R inside it (over the hole).
+	var b := _ball(RED_T, Vector3(0, y, rim_z + r * 0.5))
 	await physics_frame
 	for i in 90:
 		await physics_frame
-	print("probe: drop-zone B (side-rest) pocketed=%s" % b.is_pocketed)
-	assert(not b.is_pocketed, "a ball resting inside the side pocket's nose line must not pot")
+	print("probe: drop-zone B (side-rest, bed side of the rim) pocketed=%s" % b.is_pocketed)
+	assert(not b.is_pocketed, "a ball resting on the bed beside a side pocket's rim must not pot")
 	_kill(b)
+	var b2 := _ball(RED_T, Vector3(0, y, rim_z - r * 0.5))
+	await physics_frame
+	var timer2 := create_timer(3.0)
+	while not b2.is_pocketed and timer2.time_left > 0.0:
+		await physics_frame
+	print("probe: drop-zone B2 (side-rest, over the hole) pocketed=%s" % b2.is_pocketed)
+	assert(b2.is_pocketed, "a ball whose centre is over the hole must fall in and pot")
+	_kill(b2)
 	await _rest()
 
-	# D: ball rolling along the long rail past the north side pocket, hugging it at 1.05 R off the
-	# nose line the whole way — never actually crosses the nose line, so it must roll through.
-	var db := _ball(RED_T, Vector3(-hl * 0.5, y, -hw + r * 1.05))
+	# D: ball rolling along the long rail past the north side pocket on a line 0.5 R outside the rim: rolls through.
+	var db := _ball(RED_T, Vector3(-hl * 0.5, y, rim_z + r * 0.5))
 	await physics_frame
 	db.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
 	db.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
-	db.linear_velocity = Vector3(1.0, 0, 0)
-	db.angular_velocity = Vector3(0, 0, -1.0 / db.radius)
+	db.linear_velocity = Vector3(2.0, 0, 0)
+	db.angular_velocity = Vector3(0, 0, -2.0 / db.radius)
 	table.sim._on_struck(db, ShotIntent.new())
 	var timer := create_timer(4.0)
-	while not db.is_pocketed and timer.time_left > 0.0:
+	while not db.is_pocketed and db.global_position.x < hl * 0.5 and timer.time_left > 0.0:
 		await physics_frame
-	print("probe: drop-zone D (rail-roll past side pocket) pocketed=%s pos=%s" % [db.is_pocketed, db.global_position])
-	assert(not db.is_pocketed, "a ball hugging the rail past a side pocket without crossing the nose line must not pot")
+	print("probe: drop-zone D (rail-roll past side pocket, outside the rim) pocketed=%s pos=%s" % [db.is_pocketed, db.global_position])
+	assert(not db.is_pocketed, "a ball rolling past a side pocket outside the hole's rim must not pot")
 	_kill(db)
 	await _rest()
 
@@ -351,7 +360,7 @@ func _side_jaw_scale1() -> void:
 		await physics_frame
 	var hp := h.global_position - table.global_position
 	var outside := absf(hp.x) > hl + s.rail_width_m or absf(hp.z) > hw + s.rail_width_m
-	var below := hp.y < s.bed_height_m
+	var below := not h.is_pocketed and hp.y < s.bed_height_m
 	print("probe: side jaw 9 m/s pocketed=%s pos=%s outside=%s below=%s" % [h.is_pocketed, hp, outside, below])
 	assert(not outside, "a 9 m/s side-jaw hit must never leave the table")
 	assert(not below, "a 9 m/s side-jaw hit must never fall through the table uncaught")
