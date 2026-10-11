@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StoryNight" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/story/story_night.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night = 2
+intro_cards = Array[String](["Moe kept his word. The stream is up, and the chat already knows your names.", "Nine hundred tonight. 'Interest', Moe calls it. Gus calls it Tuesday."])
+call = Array[String](["People are watching. Good. Watching is the whole point.", "Nine hundred. And tell Gus I noticed the new cushions."])
+gus_lines = Array[String](["New cushions? I didn't buy new cushions.", "The Rope came by this afternoon. Ordered water. Tipped in threats.", "Every time you scratch, somewhere a loan shark smiles.", "That wanted poster? I didn't scratch the face out. I found it like that."])
+paid_line = "Nine hundred. You're starting to look like an investment."
+short_line = "Interest is a funny thing. It keeps going after you stop."
+chat_line = "nice cushions"
+ending_cards = Array[String]([])

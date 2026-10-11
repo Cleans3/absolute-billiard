@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StoryNight" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/story/story_night.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night = 5
+intro_cards = Array[String](["The Buyout. Four and a half thousand, and you're free. Moe promised. On air.", "Gus isn't joking tonight. That's how you know it's real.", "Whatever happens: this is the best stream this bar has ever had."])
+call = Array[String](["Last call. Pay it all, on camera, and you walk. My word is on the record.", "Gus. You know what tonight means for you too."])
+gus_lines = Array[String](["I've watched forty years of crews at that table. You're the first one I'd bet on.", "If this goes wrong, the back door sticks. Kick it twice.", "Pour's on the house tonight. Don't tell Moe. Actually, tell him.", "Whatever he says on that phone, you don't owe him your nerve."])
+paid_line = ""
+short_line = "Gus. Close the bar. The show's over."
+chat_line = "last call"
+ending_cards = Array[String](["The Buyout clears live, in front of more viewers than this bar has ever had.", "The phone rings one last time. Moe: 'Paid in full. The city saw. You're free.' A pause. 'Gus, my office. Tomorrow.'", "The chat scrolls one last line. velvet: 'good show. same table tomorrow?' Gus reads the name twice. 'He was in the chat. Every Night. He never missed a shot.'"])

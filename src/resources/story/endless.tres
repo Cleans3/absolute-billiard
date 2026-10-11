@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="StoryNight" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://src/resources/story/story_night.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+night = 0
+intro_cards = Array[String](["Somebody bought Gus's debt. The rate went up. The stream goes on."])
+call = Array[String]([])
+gus_lines = Array[String]([])
+paid_line = ""
+short_line = ""
+chat_line = "same table. new rate"
+ending_cards = Array[String]([])
