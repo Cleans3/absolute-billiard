@@ -31,6 +31,9 @@ const INTERACTION := {
 	sold_out = "Sold out",
 	not_stocked = "Not on tonight's shelf",
 	unknown_item = "Not on the menu",
+	slot_closed = "The slot is dark between Nights",
+	shooter_busy = "Your shot is still in play: watch it first",
+	busy = "The reels are still turning",
 }
 
 

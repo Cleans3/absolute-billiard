@@ -212,6 +212,41 @@ fine = max($25, nearest $5 of 10% of the Night's Quota)      Night 1: $60 · 2: 
 ```
 Quota here is `NightConfig.quota`, not the Night 5 Buyout. A **whiff** or a **shot-clock** foul still costs only the Shot and the viewers; a `wedged` cue ball is freed for nothing. The host applies the fine in `EconomyManager` (`add_cash(-fine, &"scratch")`), only during a live Round, and raises `fined(reason, amount)`; clients raise the same signal when `update_cash` arrives with reason `scratch` (04 §5), so every peer can show the banner. **Cash may go negative** — the fine is not capped by the purse. Nothing positive is affordable in debt (`can_buy` → `cant_afford`, `try_spend_cash` refuses), and a negative purse fails the Night's Quota like any shortfall (§3.4). The HUD shows negative Cash in red.
 
+### 3.9 The slot machine (adhoc-1012a)
+A slot machine stands against the west wall (footprint centre `Bar.SLOT_AT = (-6.3, 0, 1.5)`, front toward +X, 0.9 × 0.8 m, 1.9 m high) and the crew gambles the **shared Cash pool** on it. Cash is the crew's one purse (§3.2), so a bet is the same kind of spend as a world-interaction cost (03 §3.4): it goes through `EconomyManager.try_spend_cash` and is refused (`cant_afford`) when the stake exceeds `max(Cash, 0)`; in debt nothing is affordable. Winnings come back through `add_cash`. Both use the Cash reason `slot`, which is not a Round result (`Blackboard.ROUND_CASH` ignores it, like a purchase).
+
+**Use.** Walk up (the prompt reads *Play the slots*, reach 2.0 m like every prop), press Interact: `SlotScreen` (a `ui_modal`, priority 5, so the Bartender yields to it and the hazard vote and Pause sit over it) opens as a strip at the bottom of the screen and turns the camera to the reels. Pick a stake, pull the lever. The strip closes on Leave, Esc/Back, a phase change or a knock (the machine's own ZAP, a thrown drink); the hazard vote opening over it hides it and it returns when the vote closes.
+
+**Stakes** scale with the Night (`SlotMath.bets(quota)`, `NightConfig.quota`, not the Buyout): `2% / 5% / 10%` of the Quota, snapped to $5, never under $10. Night 1 `$10 / $30 / $60`, Night 3 `$25 / $70 / $135`, Night 5 `$60 / $150 / $300`.
+
+**Reels.** Three independent drums, one shared 24-stop strip (5 cherry, 5 lemon, 4 bell, 3 bar, 2 seven, 2 eight-ball, 3 skull), stops uniform, rolled **on the host only** (`SlotHouse.rng`). The win is a pure function of the three stops (`SlotMath.evaluate`); exact odds over all 13,824 triples:
+
+| win | stops | pays (× stake) | 1 in | chaos that fires with it |
+|---|---|---:|---:|---|
+| `jackpot` 8-BALL JACKPOT | 8 8 8 | 120 | 1,728 | a free drink for **everyone** (one random Common–Epic, `serve_drink` per crew peer), hype +0.3 and viewers +150, and (live Round only) a random **hazard Event** now |
+| `sevens` TRIPLE SEVEN | 7 7 7 | 40 | 1,728 | hype +0.3, viewers +150 |
+| `cursed` CURSED PAYOUT | 3 skulls | 15 | 512 | **ZAP** (the spinner is knocked down, away from the machine) and a free **Mystery** drink (buff + debuff on its card) |
+| `open_bar` OPEN BAR | 3 bars | 14 | 512 | a free drink for the spinner |
+| `bells` | 3 bells | 7 | 216 | — |
+| `cherries` / `lemons` | 3 cherries / 3 lemons | 4 | 111 each | — |
+| `wild` WILD 8-BALLS | exactly 2 eight-balls | 3 | 52 | a free drink for the spinner |
+| `cherry2` | exactly 2 cherries | 2 | 9.7 | — |
+| `cherry1` CHERRY BACK | exactly 1 cherry | 1 | 2.6 | — (the stake back) |
+| `zap` SHORT CIRCUIT | exactly 2 skulls | 0 | 24 | **ZAP** |
+| `miss` | anything else | 0 | 2.3 | — |
+
+Order of precedence for a mixed hand: three of a kind, then two eight-balls, then two skulls, then cherries (so two skulls and a cherry is a ZAP, not a refund). **House edge:** the cash return is `RTP = 0.8950` (`SlotMath.rtp()`, the probe pins 0.85–0.95), 52.8% of spins pay something but most of that is the stake coming back; 14% pay more than the stake. Free drinks and hazards are worth a little more than their cash price in play, which is the point: the expected loss per spin stays under 10% of the stake while a jackpot is worth `120 × stake` (up to 12 Quotas at the top stake on Night 1 — a deliberate rarity, 1 spin in 1,728).
+
+**Chaos is always a real Effect.** A drink is `EffectManager.serve_drink` (its `Effect`s, the 3-per-player cap and the Blackboard line apply); a hazard is `EventScheduler.trigger_now` (the Event's `Effect`s and `reward_mult`; one hazard at a time, never between Rounds where it would outlast its Round); hype and viewers go through `StreamManager`; the ZAP is `PlayerSpawner.knock_away`. The host picks what each chaos entry will be **when it rolls the spin** (a drink the spinner cannot take, a Legendary, an Intermission-only drink in a live Round and a hazard already running are never picked, so the payload never promises something that will not happen) and fires it at the reveal.
+
+**Timeline of one spin** (`SlotMath` timings, identical on every peer): lever at 0 s; drums stop left to right at `1.1 / 1.7 / 2.3 s`; a near-miss (first two drums match, third differs) keeps the last drum going `0.9 s` longer; the host pays and fires the chaos when the last drum lands (`reveal_sec`), the machine settles `0.5 s` later (`spin_sec`, at most `3.7 s`, `MAX_SPIN_SEC`). The stake leaves at the lever, the win arrives with the drum, so the HUD never spoils the reels. A phase change **flushes** a pending reveal at once, so a win is never lost to the Round ending or paid into the next Night.
+
+**Rules** (all host-side, `WorldInteractions` → `SlotHouse`): the prop and reach (`too_far`), a valid tier (`bad_payload`), phase Intermission or Round live (`slot_closed`), the **shooter is refused while a Shot is in flight** (`shooter_busy`: between shots they may gamble, with the shot clock running; a solo player can use it any time but mid-shot), **one spin at a time** for the whole crew (`busy`: the machine is a single resource; nobody else's play is blocked, they wait ~3 s), and the stake last (`cant_afford`), so a refusal never costs anything. Each refusal has its sentence in `WaitText`. Net: no client RNG, the client's payload is discarded and rebuilt by the host.
+
+**Network.** `slot_spin` is a bare kind (target 0, payload `{tier}`) like `go_live` / `answer_phone`: no `WorldInteraction` resource, **no new RPC**. The host rebuilds the payload into `{tier, bet, stops, win, payout, chaos}` and `world_interaction_applied` carries it to every peer (04 §5); each peer's `SlotMachine` plays the same drums from `stops`, each `SlotScreen` words the result from `win` and `chaos`. Effects and Cash reach clients through their own mirrors (`apply_effect`, `update_cash`).
+
+**Look.** Procedural, one mesh per part, **one material** (`slot_machine.gdshader`: vertex colour tint, `COLOR.a` = chasing bulb, `UV2` = bulb phase / steady glow, an 8-cell symbol atlas `assets/slot/symbols.svg` drawn by `src/tools/slot_art.py`; untextured faces sample its white cell): cobalt cabinet (the room is red), brass deck, three 24-face drums lit from inside, 61 chasing bulbs round the window and the marquee, a lever that is pulled, a LED readout and a `8-BALL SLOTS` marquee (`Label3D`). While spinning the drums smear (`instance uniform blur`); a win flashes the bulbs, a big win strobes them and pops a billboard (`+$120`, `JACKPOT!`, `TRIPLE 7!`, `ZAP!`), a jackpot or a ZAP shakes the cabinet. Dynamic prop, never in the lightmap, no shadow, no light. Budget (`src/tools/screenshot_slot.gd` run, dev PC, the machine filling a third of the view): draw calls +7 idle / +10 with a pop showing, primitives +1.7k idle, one 0.34 MB atlas (07 §2).
+
 ---
 
 ## 4. Godot implementation sketch (D7 naming)
@@ -229,15 +264,21 @@ src/
 │   │   ├── camera_rig.gd       # grabbable tripod Node3D
 │   │   ├── camera_scorer.gd    # pocket-view auto-score (§3.2)
 │   │   └── cameras.gd          # MainLevel/Cameras: rigs, Camera_Mult, movement, 4 Hz poses
-│   └── economy/
-│       ├── night_config.gd     # Resource (+ endless())
-│       ├── shop_item.gd        # Resource
-│       ├── item_delta.gd       # ShopItem payload
-│       ├── ball_type_override.gd
-│       ├── drink_tier.gd       # DrinkTier: tiers, weights, units, colours (§2)
-│       ├── drink_stock.gd      # DrinkStock.roll(key): the seeded 5-offer shelf (§3.6)
-│       └── shop_catalog.gd     # 16 .tres rows + 03 drinks
-└── ui/BartenderMenu.tscn       # the Bartender's two-tab menu (a ui_modal; opened by Player.interact on the counter)
+│   ├── economy/
+│   │   ├── night_config.gd     # Resource (+ endless())
+│   │   ├── shop_item.gd        # Resource
+│   │   ├── item_delta.gd       # ShopItem payload
+│   │   ├── ball_type_override.gd
+│   │   ├── drink_tier.gd       # DrinkTier: tiers, weights, units, colours (§2)
+│   │   ├── drink_stock.gd      # DrinkStock.roll(key): the seeded 5-offer shelf (§3.6)
+│   │   └── shop_catalog.gd     # 16 .tres rows + 03 drinks
+│   └── slot/                   # the bar slot machine (§3.9)
+│       ├── slot_math.gd        # SlotMath: strip, paytable, stakes, timings, exact RTP (pure, static)
+│       ├── slot_house.gd       # SlotHouse: host rules, charge, roll, reveal, chaos (WorldInteractions owns one)
+│       ├── slot_machine.gd     # SlotMachine: the prop, drums, lever, lights, readout (every peer)
+│       ├── slot_cabinet.gd     # SlotCabinet: its geometry; slot_prop.gd: the Interactable that opens the screen
+├── ui/BartenderMenu.tscn       # the Bartender's two-tab menu (a ui_modal; opened by Player.interact on the counter)
+└── ui/slot_screen.gd           # SlotScreen: the stake / lever strip (a ui_modal, priority 5; MainLevel/UILayer/SlotScreen)
 ```
 `GameLoop`, `EconomyManager`, `StreamManager` are **children of `MainLevel`**, not autoloads — "new campaign" is a scene reload, which is also the cheapest possible state reset. There is no global signal bus; nodes connect directly. `PhysicsSim` lives in the `Table` scene (01).
 

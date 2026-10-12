@@ -147,12 +147,7 @@ func begin_round(round_index: int) -> float:
 	_resolve()
 	var bonus := effects.round_time_add() if effects != null else 0.0
 	if _chosen != null:
-		var pocket := &""
-		if _chosen.opportunity == Event.Opportunity.RANDOM_POCKET:
-			var pockets := _pockets()
-			pocket = pockets[rng.randi() % pockets.size()]
-		if _touches(_chosen, &"table_tilt_deg"):
-			effects.set_tilt_direction(Vector2.from_angle(rng.randf() * TAU))
+		var pocket := _roll_for(_chosen)
 		bonus += _chosen.round_time_add_sec
 		_used[_chosen.id] = true
 		_seen[_chosen.id] = true
@@ -163,6 +158,29 @@ func begin_round(round_index: int) -> float:
 			set_process(true)
 		_chosen = null
 	return bonus
+
+
+## Host: an Event right now, outside the vote (the slot's chaos payout, 02 §3.8). One hazard at a time: false when one
+## already runs or the id is unknown.
+func trigger_now(event_id: StringName, round_index: int) -> bool:
+	var e := FxCatalog.event(event_id)
+	if e == null or _active != null:
+		return false
+	apply_event.rpc(e.id, round_index, _roll_for(e))
+	if _touches(e, &"ball_type_shuffle_count"):
+		ball_shuffle_requested.emit(_shuffle_count())
+	return true
+
+
+## The host's rolls an Event needs before it applies: its pocket (RANDOM_POCKET) and the tilt direction.
+func _roll_for(e: Event) -> StringName:
+	var pocket := &""
+	if e.opportunity == Event.Opportunity.RANDOM_POCKET:
+		var pockets := _pockets()
+		pocket = pockets[rng.randi() % pockets.size()]
+	if _touches(e, &"table_tilt_deg"):
+		effects.set_tilt_direction(Vector2.from_angle(rng.randf() * TAU))
+	return pocket
 
 
 @rpc("authority", "call_local", "reliable", 3)

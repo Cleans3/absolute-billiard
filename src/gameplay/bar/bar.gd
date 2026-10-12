@@ -8,6 +8,7 @@ const PEDESTAL := preload("res://src/gameplay/bar/GoLivePedestal.tscn")
 const GO_LIVE_AT := Vector3(-3.7, 0.0, -1.0)  ## beside the table's south-west corner (table centre (0, 0, -3.5))
 const PHONE_PROP_AT := Vector3(6.1, 0.0, 3.5)  ## the aisle behind the counter, in front of the phone (09 §2.2)
 const PHONE_AT := Vector3(6.8, 1.28, 3.5)  ## the phone on the back-bar panel (x 6.8 face), between the cabinet and the low shelf
+const SLOT_AT := Vector3(-6.3, 0.0, 1.5)  ## the slot machine's footprint centre, against the west wall; its front faces +X (docs/plan/02 §3.9)
 # [interaction id or bar kind, position, target_id, prompt]
 const PROPS: Array = [
 	[&"bump_table", Vector3(0.0, 0.0, -1.2), 0, "Bump the table"],
@@ -24,6 +25,7 @@ const PROPS: Array = [
 	[&"chalk_the_cue", Vector3(2.4, 0.0, -1.2), 0, "Chalk the cue"],
 	[&"go_live", GO_LIVE_AT, 0, "GO LIVE"],  # no WorldInteraction resource: GameLoop.toggle_ready (02 §3.1)
 	[&"answer_phone", PHONE_PROP_AT, 0, "Answer the phone"],  # no WorldInteraction resource: StoryDirector (09 §3.2)
+	[&"slot_spin", SLOT_AT, 0, "Play the slots"],  # no WorldInteraction resource: SlotHouse (02 §3.9); SlotProp opens the SlotScreen
 	# the counter props: customer side of the counter (x 4.7-5.5), the bartender stands behind it at (6.0, 0, 2.5)
 	[&"throw_drink", Vector3(4.2, 0.0, 2.5), 0, "Throw a drink"],
 	[&"bar_buy", Vector3(4.2, 0.0, 2.5), 0, "Buy a drink"],
@@ -33,7 +35,7 @@ const PROPS: Array = [
 
 func _ready() -> void:
 	for spec: Array in PROPS:
-		var prop := Interactable.new()
+		var prop: Interactable = SlotProp.new() if spec[0] == SlotHouse.PROP_KIND else Interactable.new()
 		prop.interaction = FxCatalog.interaction(spec[0])
 		if prop.interaction == null:
 			prop.kind = spec[0]
@@ -50,6 +52,8 @@ func _ready() -> void:
 			_add_pedestal(prop)
 		elif spec[0] == &"answer_phone":
 			_add_phone(prop)
+		elif spec[0] == SlotHouse.PROP_KIND:
+			_add_slot()
 
 
 ## The visible button + ready list at the go_live prop's spot (its labels billboard, so it needs no facing).
@@ -59,6 +63,14 @@ func _add_pedestal(prop: Interactable) -> void:
 	pedestal.game_loop = get_node_or_null(^"../GameLoop") as GameLoop
 	pedestal.prop = prop
 	add_child(pedestal)
+
+
+## The slot machine on the prop's spot: a dynamic prop, not in the lightmap. Yaw 90: its +Z front faces +X, into the room.
+func _add_slot() -> void:
+	var machine := SlotMachine.new()
+	machine.position = SLOT_AT
+	machine.rotation.y = PI / 2.0
+	add_child(machine)
 
 
 ## The wall phone itself; the prop on the floor is its use target while it rings. Faces -X, into the room.

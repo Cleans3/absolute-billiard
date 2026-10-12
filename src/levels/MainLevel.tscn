@@ -33,6 +33,7 @@
 [ext_resource type="PackedScene" path="res://src/gameplay/bar/Mirror.tscn" id="mirror_scene"]
 [ext_resource type="Script" path="res://src/gameplay/story/story_director.gd" id="story_director"]
 [ext_resource type="Script" path="res://src/ui/story_cards.gd" id="story_cards"]
+[ext_resource type="Script" path="res://src/ui/slot_screen.gd" id="slot_screen"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -183,6 +184,17 @@ game_loop = NodePath("../../GameLoop")
 effects = NodePath("../../EffectManager")
 
 [node name="BartenderMenu" parent="UILayer" node_paths=PackedStringArray("economy", "game_loop") instance=ExtResource("econ_bartender")]
+economy = NodePath("../../EconomyManager")
+game_loop = NodePath("../../GameLoop")
+
+[node name="SlotScreen" type="Control" parent="UILayer" node_paths=PackedStringArray("economy", "game_loop")]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("slot_screen")
 economy = NodePath("../../EconomyManager")
 game_loop = NodePath("../../GameLoop")
 

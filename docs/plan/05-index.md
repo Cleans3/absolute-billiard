@@ -29,6 +29,7 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | SaveManager (04) | `SaveProfile` broadcast each Round end | every peer (any friend can re-host) |
 | GameLoop (02) | `night_started(n, quota)`, `intermission_started`, `phase_changed(phase)` | StoryDirector (09): opens StoryCards, rings the phone, hands Gus his story pool, velvet's chat toast |
 | WorldInteractions (03) | `answer_phone` → `world_interaction_applied` (every peer) | StoryDirector (09) plays Moe's call at the phone; `BartenderChat` holds Gus |
+| WorldInteractions (03) | `slot_spin` → `world_interaction_applied` with the host-rolled result (every peer) | SlotMachine plays the drums, SlotScreen words the win (02 §3.9); Cash (`slot`) and chaos Effects reach clients through their own mirrors |
 | StoryDirector (09) | `BartenderChat` story pool / `phone_ignored` line | Bartender (P24) |
 | `NightConfig.story` / `Event.story_line` (09) | read by | PhaseScreen (paid/short lines, ending cards), Blackboard (Moe's ledger, hazard flavor), EventVote |
 

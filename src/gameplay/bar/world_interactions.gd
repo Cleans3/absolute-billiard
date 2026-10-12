@@ -35,10 +35,13 @@ var _cooldown_until := {}  # "peer:kind" -> msec
 var _hostile_this_turn := 0
 var _round_used := {}  # once_per_round kinds
 var _pending: Array[PoolDelta] = []  # payoffs waiting on the Shot's outcome
+var slot_house := SlotHouse.new()  # slot_spin's host rules (docs/plan/02 §3.9)
 
 
 func _ready() -> void:
 	add_to_group(&"world_interactions")
+	slot_house.world = self
+	add_child(slot_house)
 	if round_director != null:
 		round_director.connect(&"shot_ended", _on_shot_ended)
 	if game_loop != null:
@@ -118,6 +121,12 @@ func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: i
 				return near
 			var story := get_tree().get_first_node_in_group(&"story_director")
 			return story.call(&"answer_block") if story != null else &"not_ringing"
+		if kind == SlotHouse.PROP_KIND:  # reach, then the machine's own rules, then the stake: a refusal never costs
+			var close := _reach(peer_id, kind, target_id)
+			if close != &"":
+				return close
+			var why := slot_house.validate(peer_id, payload)
+			return why if why != &"" else slot_house.charge(payload)
 		if kind != &"bar_buy" and kind != &"bar_serve":
 			return &"unknown_kind"
 		var drink := FxCatalog.drink(payload.get(&"drink_id", &""))
@@ -242,6 +251,9 @@ func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:
 		return
 	if kind == &"answer_phone":
 		return  # nothing to apply on the host: every peer's StoryDirector reacts to the broadcast
+	if kind == SlotHouse.PROP_KIND:
+		slot_house.spin(peer_id, payload)  # fills `payload` with the result: the broadcast carries it to every peer
+		return
 	var target := int(payload.get(&"target_peer", peer_id)) if kind == &"bar_serve" else peer_id
 	bar_purchase_requested.emit(kind, peer_id, payload[&"drink_id"], target)
 
