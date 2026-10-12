@@ -164,7 +164,7 @@ func _roll_and_rails() -> void:
 	var t0 := Time.get_ticks_msec()
 	await _rest()
 	var dist := b.global_position.x + 1.2
-	print("roll 1.0 m/s: %.2f m (the same roll with the old 0.035 + Godot's 0.1/s damping: 1.3 m)" % dist)
+	print("roll 1.0 m/s: %.2f m (the same roll with the old 0.035 + Godot's 0.1/s damping: 1.2 m)" % dist)
 	_check(dist > 1.8 and dist < 3.2, "a 1 m/s roll goes 2-3 m, got %.2f" % dist)
 	_kill([b])
 	await physics_frame

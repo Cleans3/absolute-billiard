@@ -30,8 +30,10 @@ func _init() -> void:
 	var exports := [
 		"scale", "bed_height_m", "cushion_restitution", "cushion_restitution_min",
 		"cushion_soft_speed_mps", "cushion_hard_speed_mps", "cushion_friction", "cloth_friction",
-		"ball_friction", "ball_restitution", "rolling_resistance", "spin_decay", "rest_speed_mps",
-		"rest_time_sec", "ccd_speed_mps", "clearance_margin_m", "jaw_restitution",
+		"ball_friction", "ball_restitution", "ball_cascade_enabled", "rolling_resistance", "spin_decay",
+		"ball_linear_damp", "ball_angular_damp", "rest_speed_mps", "rest_ang_rad_s", "rest_time_sec",
+		"cup_friction", "cup_bounce", "clearance_margin_m", "jaw_restitution", "ccd_step_radii",
+		"ccd_speed_mps", "max_ball_speed_mps",
 	]
 	for k in exports:
 		print("| `%s` | %s |" % [k, spec.get(k)])

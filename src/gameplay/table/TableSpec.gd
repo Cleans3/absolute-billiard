@@ -48,8 +48,8 @@ const BASE_BOUNCE := 1.0
 @export_range(0.5, 1.0, 0.005) var ball_restitution := 0.96          # ball–ball e, real balls 0.93-0.96 (BallCollisions; Jolt itself always gives 1)
 ## false = Jolt's own ball–ball response: touching balls are solved as one lump (a rack acts rigid) and e is always 1.
 @export var ball_cascade_enabled := true
-@export_range(0.0, 0.1, 0.0005) var rolling_resistance := 0.02       # real cloth 0.005-0.015; 0.01 settles a break in 20 s, 0.02 in 11
-@export_range(0.0, 2.0, 0.01) var spin_decay := 0.96               # english about the table normal bleeds at rolling_resistance × this
+@export_range(0.0, 0.1, 0.0005) var rolling_resistance := 0.025      # real cloth 0.005-0.015; the break settles in 5 s at 0.035, 8 s at 0.025, 9 s at 0.02, 20 s at 0.01 (hard ceiling 12 s)
+@export_range(0.0, 2.0, 0.01) var spin_decay := 0.77               # english about the table normal bleeds at rolling_resistance × this: kept at the old 0.0193
 ## Godot's project default is 0.1/s on both, which is drag no real ball has: ours are explicit, per ball, replace-mode.
 @export_range(0.0, 0.5, 0.005) var ball_linear_damp := 0.0
 @export_range(0.0, 0.5, 0.005) var ball_angular_damp := 0.0
