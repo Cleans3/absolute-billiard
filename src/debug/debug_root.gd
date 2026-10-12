@@ -92,6 +92,7 @@ func _build_mode() -> void:
 	strip = DebugStrip.new()
 	strip.session = session
 	strip.panel = panel
+	strip.visible = false  # `_on_settings_changed` shows it, and applies a saved tuning when the mode is already on at start
 	add_child(strip)
 	add_to_group(Settings.GROUP)
 	_on_settings_changed()

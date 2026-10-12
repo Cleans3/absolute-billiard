@@ -31,7 +31,7 @@ const PRESET_TYPES := {
 ## One shot and the table it started from.
 class ShotRecord extends RefCounted:
 	var serial := 0
-	var shot_id := ""
+	var shot_id := ""  # "n<night>-r<round>-s<n>" (RoundDirector's), or "free" for a shot outside a live Round
 	var intent: ShotIntent
 	var shooter_id := 0
 	var balls: Array[Dictionary] = []  # {net_id, type: BallType, pos: Vector3, active: bool}
@@ -46,6 +46,11 @@ class ShotRecord extends RefCounted:
 	var done := false
 	var replays := 0
 	var error_m := -1.0  # worst ball distance between the last replay's end and the original's, -1 = never replayed
+
+	## "n1-r2" of "n1-r2-s3"; empty for a sandbox shot.
+	func round_id() -> String:
+		var at := shot_id.rfind("-s")
+		return shot_id.substr(0, at) if at > 0 else ""
 
 	func label() -> String:
 		var s := "#%d %s  p%.2f  aim %.0f°" % [serial, shot_id, intent.power, rad_to_deg(intent.aim_dir.angle())]
@@ -306,6 +311,10 @@ func _distance(a: Dictionary, b: Dictionary) -> float:
 func rewind(rec: ShotRecord) -> bool:
 	if not _can_edit_table():
 		return false
+	var now := current_round_id()
+	if now != "" and rec.round_id() != "" and rec.round_id() != now:
+		_say("#%d is from Round %s; this is %s: re-rack or advance to it first" % [rec.serial, rec.round_id(), now])
+		return false
 	var by_id := {}
 	for e in rec.balls:
 		by_id[e.net_id] = e
@@ -351,14 +360,33 @@ func replay(rec: ShotRecord) -> bool:
 	return ok
 
 
-## `rec` and every shot recorded after it, one after the other, each from the state the original left.
+## "n1-r2": the Round RoundDirector is dealing, from the loop; empty without a GameLoop.
+func current_round_id() -> String:
+	if game_loop == null or game_loop.phase != GameLoop.Phase.ROUND_LIVE:
+		return ""
+	return "n%d-r%d" % [game_loop.current_night().night_number, game_loop.round_index]
+
+
+## `rec` and every later shot of its Round, one after the other, each from the state the original left.
 func replay_from(rec: ShotRecord) -> void:
 	var from := shots.find(rec)
 	if from < 0:
 		return
 	for r in shots.slice(from):
+		if r.round_id() != rec.round_id():
+			break
 		if not await replay(r):
 			break
+
+
+## The live Round again from its first recorded shot (the rack dealt for it is the one that shot started from).
+func replay_round() -> void:
+	var id := current_round_id()
+	for r in shots:
+		if r.round_id() == id:
+			await replay_from(r)
+			return
+	_say("no shot recorded in this Round yet")
 
 
 func clear_shots() -> void:

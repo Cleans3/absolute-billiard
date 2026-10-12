@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## Ball→ball transfer in the real engine, Jolt's own response vs BallCollisions (01 §4 "Ball–ball contact"):
-##   godot --path . --headless --fixed-fps 120 -s tests/physics/transfer_probe.gd     prints TRANSFER OK
+##   godot --path . --headless -s tests/physics/transfer_probe.gd     prints TRANSFER OK
 ## Same shots with `ball_cascade_enabled` off (Jolt: touching balls solved as one lump) and on. Measured the tick after the
 ## impact, frictionless cloth and no drag, so the numbers are the impact alone. Also: roll-out and cushion rebound.
 

@@ -20,7 +20,7 @@ Target is mobile first: every number here has to survive a 2022 mid-range Androi
 | `Ball.contact_monitor` / `max_contacts_reported` | on only during a live `Shot` (`PhysicsSim`) / `8` cue, `6` object | the contact log is the only input to trick detection |
 | `Ball.mass` | `0.17 kg × (R / 0.0286)³` | regulation density; at `scale = 2.0` the ball is `≈1.36 kg` |
 | friction | ball material `0.06 [tune]`; cloth `0.20 [tune]`, cushion `0.18`, jaw `0.6` all `rough = true` | combine rule is **MIN unless one side is `rough`**, so ball–ball gets the ball's value and ball–table gets the table's |
-| restitution | ball material `TableSpec.BASE_BOUNCE = 1.0`; table bodies `absorbent = true` with `bounce = 1.0 − e_wanted` | Jolt **sums** the two bounces (clamped to 1) and an `absorbent` side subtracts, so cloth is 0, a cushion is `e0`, a cup `cup_bounce`. Ball–ball under that rule is always 1 (measured: bounce 0.3 + 0.3 → e 0.6, 0.5 + 0.5 → 1) — `ball_restitution` (0.96) is applied by `BallCollisions`, not by Jolt (§3 "Ball–ball impacts"). Ball–ball at 0.05 was the v0.0.1 stun bug: cue ball kept 47% of its speed |
+| restitution | ball material `TableSpec.BASE_BOUNCE = 1.0`; table bodies `absorbent = true` with `bounce = 1.0 − e_wanted` | Jolt **sums** the two bounces (clamped to 1) and an `absorbent` side subtracts, so cloth is 0, a cushion is `e0`, a cup `cup_bounce`. Ball–ball under that rule is always 1 (measured: bounce 0.3 + 0.3 → e 0.6, 0.5 + 0.5 → 1) — `ball_restitution` (0.97) is applied by `BallCollisions`, not by Jolt (§3 "Ball–ball impacts"). Ball–ball at 0.05 was the v0.0.1 stun bug: cue ball kept 47% of its speed |
 | `physics/jolt_physics_3d/simulation/bounce_velocity_threshold` | `0.2` | Jolt default `1.0` kills restitution on slow rail hits — a soft ball slid along the cushion |
 | `physics/jolt_physics_3d/limits/max_angular_velocity` | `600` | default `47 rad/s` is below pure rolling at 2 m/s on this ball |
 | `physics/jolt_physics_3d/simulation/sleep_*` | velocity `0.05`, time `0.3` | 07 §1.3; Jolt's own sleep can take far longer than that for a body still in resting contact (or never trip), so `Ball.is_resting` — not `sleeping` — is what `PhysicsSim` counts (see "Rolling resistance, rest..." in §4) |
@@ -74,7 +74,7 @@ The table below is `src/tools/spec_dump.gd`'s own output, pasted verbatim — th
 | `cushion_friction` | 0.18 |
 | `cloth_friction` | 0.2 |
 | `ball_friction` | 0.06 |
-| `ball_restitution` | 0.96 |
+| `ball_restitution` | 0.97 |
 | `ball_cascade_enabled` | true |
 | `rolling_resistance` | 0.025 |
 | `spin_decay` | 0.77 |
@@ -233,9 +233,9 @@ Mechanically: the rail material is `absorbent` with `bounce = ball_restitution �
 
 | shot | Jolt: cue / fastest ball / KE | `BallCollisions`: cue / fastest ball / KE |
 |---|---|---|
-| stun hit, 2 balls, 3 m/s | 0 % / 100 % / 100 % | +2 % / 98 % / 96 % (e = 0.96) |
-| 3 touching in line, 3 m/s | −41 % / 59 % / 86 % | +2 % / 94 % (the far end) / 89 % |
-| 10-ball rack, 6 m/s | −55 % / 55 % / **132 %** | −16 % / 63 % / 87 % |
+| stun hit, 2 balls, 3 m/s | 0 % / 100 % / 100 % | +1 % / 98 % / 97 % (e = 0.97) |
+| 3 touching in line, 3 m/s | −41 % / 59 % / 86 % | +1 % / 96 % (the far end) / 91 % |
+| 10-ball rack, 6 m/s | −55 % / 55 % / **132 %** | −17 % / 64 % / 91 % |
 
 **What runs.** `PhysicsSim._resolve_impacts` (host, every live tick, before the stream): from the state every ball had *before* the step (`_snapshot`) it finds the balls that could have touched this tick, replays the tick for that cluster in `BallCollisions.simulate` — impacts in time order, impacts within one contact duration (`1e-4 s`, a real ball's 0.1–0.3 ms) solved together by projected Gauss-Seidel so a symmetric hit stays symmetric, normal restitution `ball_restitution`, Coulomb friction `ball_friction` with solid-sphere spin — and sets `linear_velocity` / `angular_velocity` of the balls that took part. Positions stay Jolt's, so nothing overlaps; the clients are untouched (the event stream carries the corrected velocity, `_dirty` marks every ball that took part). A cluster touching a cushion or jaw this step, a potted ball, or an impact Jolt did not make (no ball's velocity moved by `PHANTOM_DV`) is left to Jolt. `ball_cascade_enabled = false` is Jolt's own response everywhere.
 

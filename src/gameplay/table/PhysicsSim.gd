@@ -63,7 +63,9 @@ var _hb := PackedByteArray()
 var _snap_p := PackedVector3Array()  # host: every ball's state at the start of the step Jolt is about to run (BallCollisions)
 var _snap_v := PackedVector3Array()
 var _snap_w := PackedVector3Array()
-var _snap_on := PackedByteArray()  # 1 = on the table and moving freely at that snapshot
+var _snap_on := PackedByteArray()  # 1 = on the table and free to move at that snapshot
+var _snap_r := PackedFloat32Array()
+var _snap_moving := PackedInt32Array()  # ids of the balls that were moving: only they can start an impact
 var _scratch := BallMotion.State.new()
 var _hb_state := BallMotion.State.new()
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
@@ -126,7 +128,7 @@ func _sync_motion_params() -> void:
 		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
 
 
-## 4 stats, then TableSpec.live_values() (04 §5): a client models from the host's feel numbers, debug edits included.
+## 4 stats, then TableSpec.live_values() (04 §5): a client models from the host's feel numbers, live edits included.
 func _motion_stats() -> PackedFloat32Array:
 	var out := PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
 	out.append_array(_spec().live_values())
@@ -434,6 +436,8 @@ func _snapshot() -> void:
 		_snap_v.resize(n)
 		_snap_w.resize(n)
 		_snap_on.resize(n)
+		_snap_r.resize(n)
+	_snap_moving.clear()
 	for i in n:
 		var b := _by_id[i]
 		var on := b != null and not b.retired and not b.is_pocketed and not b.freeze and b.is_inside_tree()
@@ -442,6 +446,9 @@ func _snapshot() -> void:
 			_snap_p[i] = b.global_position
 			_snap_v[i] = b.linear_velocity
 			_snap_w[i] = b.angular_velocity
+			_snap_r[i] = b.radius
+			if _snap_v[i].length_squared() >= MOVING_SQ:
+				_snap_moving.append(i)
 
 
 ## Host, once per tick before the stream: ball–ball impacts of the step Jolt just ran are redone one pair at a time in
@@ -453,17 +460,12 @@ func _resolve_impacts(dt: float) -> void:
 		return
 	var n := mini(_snap_on.size(), _by_id.size())
 	var cand := {}
-	for i in n:
-		if _snap_on[i] == 0:
-			continue
+	for i in _snap_moving:
 		var va := _snap_v[i]
-		for j in range(i + 1, n):
-			if _snap_on[j] == 0:
-				continue
-			var vb := _snap_v[j]
-			if va.length_squared() < MOVING_SQ and vb.length_squared() < MOVING_SQ:
-				continue
-			var reach := _by_id[i].radius + _by_id[j].radius + (va - vb).length() * dt + BallCollisions.TOUCH_EPS
+		for j in n:
+			if j == i or _snap_on[j] == 0 or (j < i and _snap_v[j].length_squared() >= MOVING_SQ):
+				continue  # a pair of movers is looked at once, from the lower id
+			var reach := _snap_r[i] + _snap_r[j] + (va - _snap_v[j]).length() * dt + BallCollisions.TOUCH_EPS
 			if _snap_p[i].distance_squared_to(_snap_p[j]) <= reach * reach:
 				cand[i] = true
 				cand[j] = true
@@ -480,7 +482,7 @@ func _resolve_impacts(dt: float) -> void:
 			if _snap_on[k] == 0 or cand.has(k):
 				continue
 			for i in cand:
-				var reach: float = _by_id[k].radius + _by_id[i].radius + chain
+				var reach: float = _snap_r[k] + _snap_r[i] + chain
 				if _snap_p[k].distance_squared_to(_snap_p[i]) <= reach * reach:
 					cand[k] = true
 					grew = true

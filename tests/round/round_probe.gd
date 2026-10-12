@@ -14,7 +14,7 @@ const SHOT_TIMEOUT_FRAMES := 4000
 const BANK_OBJ := Vector2(-1.2, -0.5)  # into the south side pocket's east jaw, then in — window 55.5°..58° (wide mouths, 06 P30)
 const BANK_AIM := 56.5
 const RUNNER_OBJ := Vector2(-0.6, 0.6)  # south, foot, north cushion, then the north side pocket
-const RUNNER_AIM := 51.5                # ~0.1° window: three bounces amplify everything, see _trick_line
+const RUNNER_AIM := 53.3                # ~0.1° window (53.25-53.30 after the adhoc-1012a ball retune): three bounces amplify everything, see _trick_line
 const RUNNER_SPAN := 0.5                # ± search around it if float noise shifts the window
 const BEHIND := 0.4  # cue ball this far behind the object ball, on the aim line
 

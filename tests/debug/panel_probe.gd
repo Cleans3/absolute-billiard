@@ -104,6 +104,18 @@ func _run() -> void:
 	_check(loop.shots_left == loop.current_night().shots_per_round and loop.round_points == 0, "Re-rack resets the Round's shots and points")
 	_check(_distance(first_rack, _snapshot(director)) < 0.004, "and deals the same rack (same seed)")
 
+	_check(session.current_round_id() == "n1-r1" and session.shots[0].round_id() == "n1-r1", "shots know their Round (%s)" % session.shots[0].shot_id)
+	var again := session.shots.size()
+	session.fire(session.aim_at_nearest(), 0.4)
+	await director.shot_ended
+	await _frames(10)
+	var live_shots := loop.shots_left
+	session.replay_round()
+	await director.shot_ended
+	await director.shot_ended
+	await _frames(10)
+	_check(session.shots[0].replays >= 1 and session.shots[again].replays == 1 and loop.shots_left == live_shots, "Replay the Round runs its recorded shots in order (%d left)" % loop.shots_left)
+
 	Settings.set_value(&"debug_mode", false)
 	await _frames(2)
 	_check(not strip.visible and not panel.visible, "switching it off hides the strip")

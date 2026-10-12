@@ -187,6 +187,7 @@ func _build_shots(page: VBoxContainer) -> void:
 	DebugWidgets.button(top, "Rewind last", func() -> void: _on_last(false))
 	DebugWidgets.button(top, "Replay last", func() -> void: _on_last(true))
 	DebugWidgets.button(top, "Clear", session.clear_shots)
+	DebugWidgets.button(page, "Replay this Round from its first shot", session.replay_round)
 	var test := DebugWidgets.section(page, "Test shot", false)
 	_test_aim = DebugWidgets.slider(test, "aim (deg, 0 = down the table)", -180.0, 180.0, 1.0, 0.0, func(_v: float) -> void: pass)
 	_test_power = DebugWidgets.slider(test, "power", 0.0, 1.0, 0.01, 0.5, func(_v: float) -> void: pass)
