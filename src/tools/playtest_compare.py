@@ -21,6 +21,7 @@ ROWS = [
     ("trick_shots", "trick shots (paid or not)"),
     ("paid_trick_shots", "trick shots that paid (full show)"),
     ("rounds_with_combo_or_trick", "Rounds with a combo or trick"),
+    ("rounds_with_full_show", "Rounds with a full trick/combo show (paid)"),
     ("rounds_with_chaos", "Rounds with a chaos event"),
     ("chaos_per_round", "chaos events per Round"),
     ("slot_result_max_s", "slot lever -> result, max s"),
@@ -28,6 +29,8 @@ ROWS = [
     ("slot_chaos", "slot chaos fired"),
     ("aim_fx_opaque_pct", "FX opaque 0.35 s into the aim, % of shots"),
     ("shot_duration_median_s", "shot duration median, s"),
+    ("above_08_median_s", "per shot: seconds a ball moves > 0.8 m/s, median"),
+    ("above_03_median_s", "per shot: seconds a ball moves > 0.3 m/s, median"),
     ("gpu_ms_p95_worst", "render GPU p95 worst shot, ms"),
     ("draw_calls_max", "draw calls max in shots"),
     ("anomalies", "anomalies"),
@@ -42,6 +45,10 @@ def load(d, prefix):
         shots = j["shots"]
         r["fx_per_shot"] = sum(s["fx_count"] for s in shots) / max(len(shots), 1)
         r["paid_trick_shots"] = sum(1 for s in shots if s["trick_ids"] and s["pots"])
+        r["rounds_with_full_show"] = sum(1 for rd in j["rounds"] if rd["beats"].get("trick", 0) + rd["beats"].get("combo", 0) > 0)
+        if all("above" in s for s in shots):
+            for i, k in enumerate(("03", "08", "15")):
+                r[f"above_{k}_median_s"] = statistics.median(s["above"][i] for s in shots)
         out.append(r)
     return out
 

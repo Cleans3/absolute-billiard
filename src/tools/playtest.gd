@@ -920,10 +920,10 @@ func _report() -> Dictionary:
 		slot_vis.append(float(s.spin_visible_s))
 		slot_net += int(s.payout) - int(s.bet)
 		slot_chaos += (s.chaos as Array).size()
-	var above: Array = [PackedFloat32Array(), PackedFloat32Array(), PackedFloat32Array()]
+	var above: Array = [[], [], []]  # plain Arrays: a PackedFloat32Array behind `as` is a copy and the append is lost
 	for s in shots:
 		for i in 3:
-			(above[i] as PackedFloat32Array).append(float((s.above as Array)[i]))
+			(above[i] as Array).append(float((s.above as Array)[i]))
 	var all_frames := PackedFloat32Array()
 	var gpu := PackedFloat32Array()
 	var cpu := PackedFloat32Array()
@@ -947,7 +947,7 @@ func _report() -> Dictionary:
 		chaos_per_round = snappedf(float(chaos_total) / float(nr), 0.01), per_round = per_round,
 		slot_pulls = slots.size(), slot_result_median_s = _median(slot_times), slot_result_max_s = _max(slot_times), slot_spin_visible_median_s = _median(slot_vis),
 		slot_net = slot_net, slot_chaos = slot_chaos,
-		above_median_s = [_median(above[0]), _median(above[1]), _median(above[2])], frame_ms_p95_worst = _max(all_frames), gpu_ms_p95_worst = _max(gpu), cpu_ms_p95_worst = _max(cpu), draw_calls_max = dc_max, draw_calls_aim_max = dc_aim, dead_at_speed = dead_steps, story_cards_closed = _story_cards, anomalies = anomalies.size(),
+		above_median_s = [_median(PackedFloat32Array(above[0])), _median(PackedFloat32Array(above[1])), _median(PackedFloat32Array(above[2]))], frame_ms_p95_worst = _max(all_frames), gpu_ms_p95_worst = _max(gpu), cpu_ms_p95_worst = _max(cpu), draw_calls_max = dc_max, draw_calls_aim_max = dc_aim, dead_at_speed = dead_steps, story_cards_closed = _story_cards, anomalies = anomalies.size(),
 		cash_end = eco.cash, nights = night_results,
 	}
 
