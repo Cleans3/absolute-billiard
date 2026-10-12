@@ -20,13 +20,14 @@ Target is mobile first: every number here has to survive a 2022 mid-range Androi
 | `Ball.contact_monitor` / `max_contacts_reported` | on only during a live `Shot` (`PhysicsSim`) / `8` cue, `6` object | the contact log is the only input to trick detection |
 | `Ball.mass` | `0.17 kg × (R / 0.0286)³` | regulation density; at `scale = 2.0` the ball is `≈1.36 kg` |
 | friction | ball material `0.06 [tune]`; cloth `0.20 [tune]`, cushion `0.18`, jaw `0.6` all `rough = true` | combine rule is **MIN unless one side is `rough`**, so ball–ball gets the ball's value and ball–table gets the table's |
-| restitution | ball material `0.95 [tune]`; table materials `absorbent = true` with `bounce = 0.95 − e_wanted` | combine rule is **MAX unless one side is `absorbent`** (then subtract), so ball–ball is 0.95, cloth 0, cushion `e0`, jaw `0.55`. Ball–ball at 0.05 was the v0.0.1 stun bug: cue ball kept 47% of its speed |
+| restitution | ball material `TableSpec.BASE_BOUNCE = 1.0`; table bodies `absorbent = true` with `bounce = 1.0 − e_wanted` | Jolt **sums** the two bounces (clamped to 1) and an `absorbent` side subtracts, so cloth is 0, a cushion is `e0`, a cup `cup_bounce`. Ball–ball under that rule is always 1 (measured: bounce 0.3 + 0.3 → e 0.6, 0.5 + 0.5 → 1) — `ball_restitution` (0.97) is applied by `BallCollisions`, not by Jolt (§3 "Ball–ball impacts"). Ball–ball at 0.05 was the v0.0.1 stun bug: cue ball kept 47% of its speed |
 | `physics/jolt_physics_3d/simulation/bounce_velocity_threshold` | `0.2` | Jolt default `1.0` kills restitution on slow rail hits — a soft ball slid along the cushion |
 | `physics/jolt_physics_3d/limits/max_angular_velocity` | `600` | default `47 rad/s` is below pure rolling at 2 m/s on this ball |
 | `physics/jolt_physics_3d/simulation/sleep_*` | velocity `0.05`, time `0.3` | 07 §1.3; Jolt's own sleep can take far longer than that for a body still in resting contact (or never trip), so `Ball.is_resting` — not `sleeping` — is what `PhysicsSim` counts (see "Rolling resistance, rest..." in §4) |
 | `physics/common/physics_interpolation` | `true` | 07 §1.5–1.6; `max_physics_steps_per_frame` was removed (T1.1 WIP) so a slow frame reruns its full backlog instead of dropping ticks |
 | cue speed cap | `power × mass × CueSpec.power_cap_speed_mps` | derived in §3; a speed cap is scale-invariant, an impulse cap is not |
-| rolling resistance | custom force + torque in `_integrate_forces`, `0.035 [tune]` | Jolt has no rolling-resistance term |
+| rolling resistance | custom force + torque in `_integrate_forces`, `0.025 [tune]` | Jolt has no rolling-resistance term |
+| damping | `linear_damp` / `angular_damp` per ball, replace mode, `TableSpec.ball_linear_damp` / `ball_angular_damp = 0` | Godot's project default is **0.1 /s on both**, hidden in no file: a speed-proportional drag no real ball has, 0.5 m/s² at 5 m/s on top of the 0.25 of the rolling term (adhoc-1012a) |
 | pockets | angled jaw stubs (part of the rail ends) + a **hole cut in the bed** at every pocket with a cup under it (06 P30) | a ball falls in under gravity; rattle and reject-at-speed emerge; `pocket_capture_speed_mps` is deleted |
 | rail shapes | per-shape metadata `rail_id: StringName` | so the contact log can tell a rail from a ball from a jaw |
 
@@ -73,14 +74,22 @@ The table below is `src/tools/spec_dump.gd`'s own output, pasted verbatim — th
 | `cushion_friction` | 0.18 |
 | `cloth_friction` | 0.2 |
 | `ball_friction` | 0.06 |
-| `ball_restitution` | 0.95 |
-| `rolling_resistance` | 0.035 |
-| `spin_decay` | 0.55 |
+| `ball_restitution` | 0.97 |
+| `ball_cascade_enabled` | true |
+| `rolling_resistance` | 0.025 |
+| `spin_decay` | 0.77 |
+| `ball_linear_damp` | 0.0 |
+| `ball_angular_damp` | 0.0 |
 | `rest_speed_mps` | 0.02 |
+| `rest_ang_rad_s` | 0.15 |
 | `rest_time_sec` | 0.3 |
-| `ccd_speed_mps` | 3.0 |
+| `cup_friction` | 0.02 |
+| `cup_bounce` | 0.1 |
 | `clearance_margin_m` | 0.003 |
 | `jaw_restitution` | 0.55 |
+| `ccd_step_radii` | 0.8 |
+| `ccd_speed_mps` | 5.4864 |
+| `max_ball_speed_mps` | 10.0 |
 
 Derived getters at the default `scale = 2.0` (`REG_* × scale`, `bed_height_m` excepted):
 
@@ -199,7 +208,9 @@ F = −v̂ · m · g · μ_r                              central, opposing trav
 τ_z = −ω_normal · m · R · μ_r · spin_decay        english about the table normal bleeds off faster than roll
 ```
 
-At `μ_r = 0.035` that is `0.34 m/s²`: a ball rolling at 1.5 m/s stops in `≈2.6 m` and `3.7 s` (probe), a 2 m/s ball in one and a half table lengths. **Gotcha (v0.0.1 "ice"):** applying the resistance *force at the contact point* (`τ = r_contact × F`) spins the ball **up**, not down — Jolt's contact friction then pushes it forward and the ball never stops. The torque must oppose `UP × v̂`.
+At `μ_r = 0.025` that is `0.245 m/s²`: a ball rolling at 1 m/s stops in `≈2.0 m` (`transfer_probe.gd`), and a full-power break settles in 5–9 s (`perf_break`, 12 balls; 0.01 — real cloth — takes 20 s, past `RoundDirector.SHOT_CEILING_SEC = 12`). Before adhoc-1012a it was `0.035` **plus** Godot's hidden 0.1 /s linear and angular damping on every body: the same 1 m/s roll stopped in 1.2 m, and a 4 m/s ball lost 0.74 m/s² against the 0.25 now. The damping is explicit now (`TableSpec.ball_linear_damp` / `ball_angular_damp`, default 0, replace mode), `spin_decay` was raised 0.55 → 0.77 so english about the table normal bleeds as before.
+
+**Gotcha (v0.0.1 "ice"):** applying the resistance *force at the contact point* (`τ = r_contact × F`) spins the ball **up**, not down — Jolt's contact friction then pushes it forward and the ball never stops. The torque must oppose `UP × v̂`.
 
 Cushions shed tangential velocity by `cushion_friction` (Jolt), and reflect normal velocity by a restitution that **falls with impact speed** — a design ruling, not a measurement: soft hits mirror, hard hits deform the rubber and come off flat.
 
@@ -216,6 +227,17 @@ tan(θ_out) = e(v_n) · tan(θ_in)        θ measured from the cushion face, tan
 | max (10 m/s) | 7.1 | 0.27 | ≈ 15° (probe at 9 m/s: 30°) |
 
 Mechanically: the rail material is `absorbent` with `bounce = ball_restitution − e0`, so Jolt bounces at `e0`; `Ball` catches `body_entered` from a body carrying `rail_normal` meta, stores the inward normal, and on the **next** `_integrate_forces` rescales the leaving normal component by `e(v_n)/e0` with `v_n = v_out/e0`. Next tick, because `body_entered` fires pre-solve for discrete contacts and post-solve for CCD ones. Both `e0` and `cushion_friction` are `PhysicsSim`-modifiable so 03's `glass_cushions` is a value change, not a code path. Every rail shape carries `rail_id` (countable `RAIL` contact) and `rail_normal`.
+
+### Ball–ball impacts (`BallCollisions`, adhoc-1012a)
+**Root cause of "rigid, lossy transfer".** Jolt solves every contact of a step together. Two balls hitting is fine (e ≈ 1, see the restitution row in §2), but balls already touching each other — a rack, a frozen combo — are solved as one lump: the contact that approaches gets its restitution, the contacts behind it have no approach speed and are plastic. The cue ball rebounds off a rack as off a wall, the balls behind it share what is left, and the restitution bias of the lump even adds energy. Measured at the tick after the impact (`tests/physics/transfer_probe.gd`, frictionless cloth, no drag, `ball_cascade_enabled` off vs on):
+
+| shot | Jolt: cue / fastest ball / KE | `BallCollisions`: cue / fastest ball / KE |
+|---|---|---|
+| stun hit, 2 balls, 3 m/s | 0 % / 100 % / 100 % | +1 % / 98 % / 97 % (e = 0.97) |
+| 3 touching in line, 3 m/s | −41 % / 59 % / 86 % | +1 % / 96 % (the far end) / 91 % |
+| 10-ball rack, 6 m/s | −55 % / 55 % / **132 %** | −17 % / 64 % / 91 % |
+
+**What runs.** `PhysicsSim._resolve_impacts` (host, every live tick, before the stream): from the state every ball had *before* the step (`_snapshot`) it finds the balls that could have touched this tick, replays the tick for that cluster in `BallCollisions.simulate` — impacts in time order, impacts within one contact duration (`1e-4 s`, a real ball's 0.1–0.3 ms) solved together by projected Gauss-Seidel so a symmetric hit stays symmetric, normal restitution `ball_restitution`, Coulomb friction `ball_friction` with solid-sphere spin — and sets `linear_velocity` / `angular_velocity` of the balls that took part. Positions stay Jolt's, so nothing overlaps; the clients are untouched (the event stream carries the corrected velocity, `_dirty` marks every ball that took part). A cluster touching a cushion or jaw this step, a potted ball, or an impact Jolt did not make (no ball's velocity moved by `PHANTOM_DV`) is left to Jolt. `ball_cascade_enabled = false` is Jolt's own response everywhere.
 
 ### Foul
 **A legal `Shot` must produce at least one `BALL` contact between the cue ball and any non-cue ball.** Without this rule the dominant strategy is tapping the nearest ball forever; with it, a whiff costs a shot. A foul is: no object-ball contact, *or* the cue ball entering a drop plane (the old scratch), *or* any ball leaving the table. Consequences: the `Shot` scores nothing, one shot is deducted from the `Round` budget, 02 applies its viewer drop, a **scratch or off-table cue ball also costs the crew the 02 §3.8 fine** (10% of the Night's Quota, min $25, Cash may go negative — 06 P16; a whiff, a shot-clock foul and a wedged cue ball cost no Cash), and the cue ball respawns in the kitchen — the quarter of the table behind `kitchen_line_x`, at the first Poisson-disk candidate that clears every other ball. No ball-in-hand, no spotting, no other standard pool rules.
@@ -257,12 +279,15 @@ Non-shooters can shove the table (P2). `PhysicsSim.nudge(direction: Vector2, str
 - `src/gameplay/round/RoundDirector.gd` — child of `MainLevel`; owns the rack, the shot state machine, the contact log, scoring and the signals below.
 
 ### Physics modifiers
-`PhysicsSim` is a **stat sink, not a timer stack**. 03's `EffectManager` resolves every stat (base → ADDs → MULs) and owns all timers (Shot / Round expiry); it pushes the *resolved* value with host-only `PhysicsSim.set_stat(stat, value)`: `cue_ball_mass_mult`, `cloth_friction_mult` (scales rolling resistance, slide friction and the bed's contact friction), `cushion_restitution_mult`, `table_tilt_deg` (+ `set_tilt_direction(Vector2)`), and per-rail `set_rail_restitution_mult(rail_id, mult)`. Per-Shot stats (`cue_power_mult`, `cue_spin_radius_mult`) are pulled at strike through `stat_source(stat, peer_id, base) -> float`. The resolved cushion `e` is clamped to ≤ 1.0 (a glass cushion never adds energy). Tilt is a constant force along `tilt_direction` on **moving** balls only; a ball at rest stays put. Nothing writes `TableSpec`. Pocket stats are RULES' (wave 2). Plus `PhysicsSim.nudge(...)` as above, which also emits `nudged` so `RoundDirector` logs the `NUDGE` entry.
+`PhysicsSim` is a **stat sink, not a timer stack**. 03's `EffectManager` resolves every stat (base → ADDs → MULs) and owns all timers (Shot / Round expiry); it pushes the *resolved* value with host-only `PhysicsSim.set_stat(stat, value)`: `cue_ball_mass_mult`, `cloth_friction_mult` (scales rolling resistance, slide friction and the bed's contact friction), `cushion_restitution_mult`, `table_tilt_deg` (+ `set_tilt_direction(Vector2)`), and per-rail `set_rail_restitution_mult(rail_id, mult)`. Per-Shot stats (`cue_power_mult`, `cue_spin_radius_mult`) are pulled at strike through `stat_source(stat, peer_id, base) -> float`. The resolved cushion `e` is clamped to ≤ 1.0 (a glass cushion never adds energy). Tilt is a constant force along `tilt_direction` on **moving** balls only; a ball at rest stays put. Effects never write `TableSpec`; the debug panel does (`Table.apply_physics()` below). Pocket stats are RULES' (wave 2). Plus `PhysicsSim.nudge(...)` as above, which also emits `nudged` so `RoundDirector` logs the `NUDGE` entry.
 
 ### Rolling resistance, rest, CCD gate, cushion rescale — one function
 `Ball._integrate_forces` (implemented, `src/gameplay/balls/ball.gd`) does exactly four things in order: apply a pending `rail_normal` rescale, snap to rest below `rest_speed_mps` / `0.15 rad/s` (then `is_resting = true` and `rested` emitted, deferred), gate `continuous_cd` on `ccd_speed_mps` for object balls, then the three rolling-resistance terms above. `up` becomes `sim.surface_normal` when `table_tilt` lands. Keep it ~30 lines (07 §5.2).
 
 `Ball.is_resting` (not Jolt's own `sleeping`) is the source of truth for "at rest": a ball with an *active contact* (resting in the pocket-throat sense, or just sitting on the cloth) can go a long time — far longer than `rest_time_sec` — without Jolt's own sleep threshold ever tripping, and `sleeping` genuinely never flips for some resting configurations. `is_resting` is ours, set the instant `rest_speed_mps` is met and cleared on `strike()`; `PhysicsSim` counts `awake` from it, never from `sleeping`.
+
+### Live tuning (`TableSpec.LIVE_FIELDS`, `Table.apply_physics()`)
+Every feel number is an `@export` on `TableSpec` (with an `@export_range` the debug panel builds its slider from); `LIVE_FIELDS` is the subset that applies without a rebuild: cushion curve and friction, cloth and ball friction, ball restitution, `ball_cascade_enabled`, rolling resistance, spin decay, damping, rest thresholds, cup friction and bounce, the CCD step. `Table.apply_physics()` re-applies them to the live bodies (`TableBuilder.apply_materials`), the balls (`Ball.apply_spec`: material, damping, CCD gate) and every `BallMotion.Params` — no re-rack, no rebuild. Geometry (`scale`, `bed_height_m`, `max_ball_speed_mps`) still goes through `Table.rebuild()`. A change must reach the clients before the next strike or `SimDiff` diverges: the `shot_started` stats array carries `live_values()` after its four stats (04 §5), and a change made mid-Shot rides `_motion_stats_rpc` like the cloth stat does. `BallMotion` reads the same fields, so host prediction and client reconstruction model from identical numbers (values pass through float32 on both sides, `TableSpec.set_live`).
 
 ### PhysicsSim
 Child of `Table`; `register(ball)` wires `struck` / `resting_changed` / contacts, and gives the ball its wire `net_id` and `BallMotion.Params`. On strike: `contact_monitor` on for every ball, tick `120 Hz` (`LIVE_TICK`, the one tick constant), `shot_started`, and the host starts the event stream (04 §2.4). When the awake count (from `Ball.is_resting`) hits zero: final rest events flushed, `contact_monitor` off, tick `60 Hz`, `all_resting` — the shot boundary of 07 §1.3 and the idle downclock of 07 §7.2. Exposes `Game/AwakeBalls` (removed in `_exit_tree`: a monitor callable left behind corrupts the heap at quit), `get_balls()`, `request_shot(intent)` (any peer; host validates through `shot_validator(peer_id, intent) -> StringName`, then strikes with `active_cue` (a CueSpec; RULES sets it at Round setup, never taken from a client)), the stat sink above, and the presentation gate `playback_tick()` / `at_playback(tick, fn)`. Clients register balls as kinematic puppets (`Ball.set_client_mode`) and never run Jolt on them.
@@ -280,6 +305,7 @@ Child of `Table`; `register(ball)` wires `struck` / `resting_changed` / contacts
 
 ### Physics test fixtures (`tests/physics/`, headless)
 The cheapest insurance in the plan — each is a scripted `ShotIntent` against a fixed rack, asserted on outcome. `tests/physics/probe.gd` (`godot --path . --headless -s tests/physics/probe.gd`) is the first cut: roll-out distance and rest time, cushion angle soft vs hard, draw returns / follow passes, straight-in pot, jaw hit (never tunnels/leaves the table), resting/rolling balls on the bed side of a hole's rim never pot and over it do, full-power rail return, cue reach limit. `tests/physics/pocket_probe.gd` is the real-pocket fixture (06 P30): mouths ≥ 2.5 / 2.7 D at scales 1 and 2, the drop visibly below the cloth before the pot, 0.6 R off-line shots still dropping at corners and sides, a cushion shot beyond the mouth still rejected, a 3 m/s ball not skipping across, a creeping 0.6 m/s ball falling in, a grown mouth swallowing a resting ball, and Moving Pockets moving the opening (ball over the cover stays, drops when the opening arrives). `tests/physics/geometry_probe.gd` checks `TableGeometry.layout()` alone, headless and scene-free: pocket/rail/sight counts, spots, and every derived `TableSpec` value against `REG_* × scale`. Gotcha for every fixture: a GDScript lambda captures locals **by value** — signal handlers must set a member, not a local.
+0. **Transfer and collisions** — `tests/physics/collisions_probe.gd` (pure data, no engine: two-ball e, Newton's cradle, a 15-ball break keeps the cue ball and the energy, symmetric splits stay symmetric, gaps, friction throw) and `tests/physics/transfer_probe.gd` (the table above in the engine, Jolt vs `BallCollisions`, plus the 1 m/s roll-out and the cushion rebound at 2/4/6/9 m/s).
 1. **Straight-in pot** — ball 0.5 m off a corner pocket, centre-ball strike: 100/100 runs pot.
 2. **Stun stop** — centre-ball at 2 m/s into a full ball: cue ball residual speed `< 0.05 m/s`.
 3. **30° cut** — object ball crosses the target line within `±15 mm [tune]` at 1.0 m.

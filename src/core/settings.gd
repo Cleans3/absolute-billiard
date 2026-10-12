@@ -18,6 +18,7 @@ const DEFAULTS := {
 	&"invert_y": false,
 	&"touch_mirror": false,
 	&"show_fps": false,
+	&"debug_mode": false,      ## debug builds only: the debug strip + panel (src/debug), phone included
 }
 const RANGES := {  ## [min, max, step] for the sliders; `set_value` clamps to it
 	&"master_volume": [0.0, 1.0, 0.05],

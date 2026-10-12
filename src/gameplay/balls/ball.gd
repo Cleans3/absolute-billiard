@@ -40,7 +40,7 @@ var retired := false
 var pre_solve_velocity := Vector3.ZERO  # linear velocity at the start of the current step: the pre-impact one when a contact signal fires
 var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
 var _base_mass := 0.0
-var _ccd_speed := 0.0  # spec.ccd_speed_mps is derived; read once, not per tick
+var _ccd_speed := 0.0  # spec.ccd_speed_mps is derived; read once (apply_spec), not per tick
 var _pending_rail_id: StringName
 var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
 
@@ -53,11 +53,9 @@ func _ready() -> void:
 	mass = _base_mass
 	is_cue_ball = ball_type.behaviour_tags.has(&"cue")
 	continuous_cd = is_cue_ball
-	_ccd_speed = spec.ccd_speed_mps
 	contact_monitor = true
 	max_contacts_reported = 8 if is_cue_ball else 6
-	physics_material_override.friction = spec.ball_friction
-	physics_material_override.bounce = spec.ball_restitution
+	apply_spec()
 	var shape: SphereShape3D = $Shape.shape.duplicate()
 	shape.radius = radius
 	$Shape.shape = shape
@@ -71,6 +69,23 @@ func _ready() -> void:
 	mesh.material = _materials[ball_type]
 	$Mesh.mesh = mesh
 	body_entered.connect(_on_body_entered)
+
+
+## Everything of the spec a ball carries itself: contact material, explicit damping, CCD gate. `Table.apply_physics()`
+## calls it again on every live change; rolling resistance and spin decay are read per tick from `spec`.
+func apply_spec() -> void:
+	physics_material_override.friction = spec.ball_friction
+	physics_material_override.bounce = TableSpec.BASE_BOUNCE
+	linear_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	linear_damp = spec.ball_linear_damp
+	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
+	angular_damp = spec.ball_angular_damp
+	_ccd_speed = spec.ccd_speed_mps
+
+
+## A cushion or jaw was touched this step or is being touched (PhysicsSim leaves such a cluster to Jolt).
+func touched_wall() -> bool:
+	return _was_touching_wall or _pending_rail != Vector3.ZERO
 
 
 ## Puts a settled ball back in the awake set (a blast or a shove reached it).
@@ -234,7 +249,7 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 	var vn := state.linear_velocity.dot(n)  # post-solve, positive = leaving the rail
 	if vn <= 0.05:
 		return
-	var e0 := spec.cushion_restitution
+	var e0 := maxf(spec.cushion_restitution, 0.001)
 	var e := spec.cushion_restitution_at(vn / e0)
 	if sim != null:
 		e = minf(e * sim.rail_restitution_mult(_pending_rail_id), 1.0)  # a glass cushion never adds energy
@@ -270,7 +285,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	_was_touching_wall = touching_wall
 	var v := state.linear_velocity
 	var speed := v.length()
-	if speed < spec.rest_speed_mps and state.angular_velocity.length() < 0.15:
+	if speed < spec.rest_speed_mps and state.angular_velocity.length() < spec.rest_ang_rad_s:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
 		_set_resting(true)

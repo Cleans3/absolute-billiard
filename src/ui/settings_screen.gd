@@ -23,6 +23,8 @@ func _ready() -> void:
 	_quality(video)
 	_slider(video, "Field of view", &"fov", func(v: float) -> String: return "%d°" % roundi(v))
 	_check(video, "Show FPS", &"show_fps")
+	if OS.is_debug_build():
+		_check(video, "Debug mode (physics, replay, table)", &"debug_mode")
 	var input := _page("Input")
 	var times := func(v: float) -> String: return "%.2fx" % v
 	_slider(input, "Mouse sensitivity", &"mouse_sens", times)

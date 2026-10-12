@@ -10,7 +10,7 @@ extends RefCounted
 const SLIP_EPS := 0.005  # m/s of contact-point slip below which the ball counts as rolling
 const AIR_TOL := 0.003  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne; below = micro-hop noise
 const AIR_VY := 0.25
-const REST_ANG := 0.15  # rad/s, same as Ball._integrate_forces
+const DAMP_EPS := 1e-6  # below this the rolling closed form divides by ~0: use the damp-free one
 const MAX_PHASES := 600
 const SLIDE_STEP := 1.0 / 60.0  # slide drag is first-order per step; short steps keep long dt honest
 
@@ -37,6 +37,7 @@ class Params extends RefCounted:
 	var slide_mu := 0.2
 	var spin_decay := 0.55
 	var rest_speed := 0.02
+	var rest_ang := 0.15  # rad/s
 	var damp := 0.1  # 1/s: rolling ball's effective (lin + 0.4·ang) / 1.4 Jolt damping
 	var ang_damp := 0.1
 	var friction_mult := 1.0
@@ -49,13 +50,19 @@ static func make_params(spec: TableSpec, radius: float) -> Params:
 	p.floor_y = spec.bed_height_m + radius
 	p.cup_floor_y = cup_floor_y(spec, radius)
 	p.gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	apply_spec(p, spec)
+	return p
+
+
+## The feel numbers of `spec` into `p` (everything TableSpec.LIVE_FIELDS changes that the model reads).
+static func apply_spec(p: Params, spec: TableSpec) -> void:
 	p.roll_mu = spec.rolling_resistance
 	p.slide_mu = spec.cloth_friction
 	p.spin_decay = spec.spin_decay
 	p.rest_speed = spec.rest_speed_mps
-	p.ang_damp = float(ProjectSettings.get_setting("physics/3d/default_angular_damp"))
-	p.damp = (float(ProjectSettings.get_setting("physics/3d/default_linear_damp")) + 0.4 * p.ang_damp) / 1.4
-	return p
+	p.rest_ang = spec.rest_ang_rad_s
+	p.ang_damp = spec.ball_angular_damp
+	p.damp = (spec.ball_linear_damp + 0.4 * p.ang_damp) / 1.4
 
 
 ## Ball-centre height of a ball resting in a pocket cup (06 P30): the floor sits `cup_depth_m` under the cloth.
@@ -77,7 +84,7 @@ static func advance(s: State, dt: float, p: Params) -> void:
 		else:  # tilt is folded in per short step: first-order, like the slide drag
 			var step := minf(t, SLIDE_STEP)
 			t -= step - _ground(s, step, p)
-	if s.lin.length() < p.rest_speed and s.ang.length() < REST_ANG:
+	if s.lin.length() < p.rest_speed and s.ang.length() < p.rest_ang:
 		s.lin = Vector3.ZERO
 		s.ang = Vector3.ZERO
 
@@ -147,18 +154,26 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		s.ang.z += alz * t1
 		s.ang.y *= exp(-k * t1)
 		return t - t1
-	# rolling: v' = -a - c·v  =>  v(t) = (v0 + a/c)·e^-ct - a/c
+	# rolling: v' = -a - c·v  =>  v(t) = (v0 + a/c)·e^-ct - a/c   (c = 0: v(t) = v0 - a·t)
 	var c := p.damp
-	var t_stop := log(1.0 + c * speed / a_roll) / c if speed > 0.0 else 0.0
+	var t_stop := 0.0
+	if speed > 0.0:
+		t_stop = log(1.0 + c * speed / a_roll) / c if c > DAMP_EPS else speed / a_roll
 	var t2 := minf(t, t_stop)
 	if speed > 0.0:
 		var dx := vx / speed
 		var dz := vz / speed
-		var q := a_roll / c
-		var e := exp(-c * t2)
-		var dist := (speed + q) * (1.0 - e) / c - q * t2
+		var dist: float
+		var sp: float
+		if c > DAMP_EPS:
+			var q := a_roll / c
+			var e := exp(-c * t2)
+			dist = (speed + q) * (1.0 - e) / c - q * t2
+			sp = maxf((speed + q) * e - q, 0.0)
+		else:
+			dist = speed * t2 - 0.5 * a_roll * t2 * t2
+			sp = maxf(speed - a_roll * t2, 0.0)
 		s.pos += Vector3(dx * dist, 0.0, dz * dist)
-		var sp := maxf((speed + q) * e - q, 0.0)
 		s.lin.x = dx * sp
 		s.lin.z = dz * sp
 		s.ang.x = s.lin.z / r

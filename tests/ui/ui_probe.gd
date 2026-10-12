@@ -4,6 +4,7 @@ extends SceneTree
 ## 1600x720) in WALK, CARRY and CUE, both thumb layouts. `godot --path . --headless -s tests/ui/ui_probe.gd`
 
 var fails := 0
+var _strip: CanvasLayer  # the debug strip (src/debug), loaded at run time: its script reaches autoloads a `-s` compile cannot see
 
 
 func _init() -> void:
@@ -356,6 +357,8 @@ func _layout() -> void:
 		vp.add_child(hud)
 		var tc: TouchControls = load("res://src/ui/TouchControls.tscn").instantiate()
 		vp.add_child(tc)
+		_strip = load("res://src/debug/debug_strip.gd").new()
+		vp.add_child(_strip)
 		await process_frame
 		Settings.set_value(&"touch_mirror", true)
 		_check(tc.mirror, "the touch mirror setting reaches TouchControls")
@@ -395,6 +398,7 @@ func _layout() -> void:
 		await process_frame
 		_check(tc.look.get_global_rect().size.x >= size.x - 1.0, "%s look pad covers the screen in CUE" % size)
 		vp.free()
+	_strip = null
 	Settings.reset_values()
 
 
@@ -406,6 +410,7 @@ func _check_layout(vp: SubViewport, hud: Control, tc: TouchControls, router: UIR
 		"place": tc._btn_place, "drop": tc._btn_drop, "pause": tc._btn_pause,
 		"spin": tc.spin_pad, "elev": tc.elevation, "power": tc.power,
 	}
+	items["debug strip"] = _strip._row  # docs 08 §2.8 / adhoc-1012a: debug mode's four buttons, top bar between money and clock
 	for i in tc.pockets.size():
 		items["pocket%d" % (i + 1)] = tc.pockets[i]
 	var rects := {}

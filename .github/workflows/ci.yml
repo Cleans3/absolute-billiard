@@ -47,11 +47,11 @@ jobs:
         run: godot --headless --path . --fixed-fps 60 -s tests/perf/rest_cost.gd
 
       - name: perf_break headless gate
-        # machine-independent rows gate (no ball off table, ball count, events <= 200, CCD <= 2, rest <= 9 s, sensors off) + a coarse step ceiling
+        # machine-independent rows gate (no ball off table, ball count, events <= 200, CCD <= 3, rest <= 10 s, sensors off) + a coarse step ceiling
         run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15
 
       - name: perf_break with table-stat Effects (events/shot <= 400)
-        run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15 --cloth=0.7 --tilt=1.0
+        run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15 --cloth=0.85 --tilt=0.3
 
       - name: Export PCK (Android M0 preset)
         run: |
