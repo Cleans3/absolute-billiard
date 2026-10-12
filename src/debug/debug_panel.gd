@@ -244,9 +244,9 @@ func _rebuild_shots() -> void:
 func _build_table(page: VBoxContainer) -> void:
 	var a := DebugWidgets.row(page)
 	DebugWidgets.button(a, "Stop balls", session.stop_balls)
-	DebugWidgets.button(a, "Cue ball to head spot", session.reset_cue_ball)
+	DebugWidgets.button(a, "Cue home", session.reset_cue_ball)
 	DebugWidgets.button(a, "Clear table", session.clear_table)
-	DebugWidgets.label(page, "Rack presets (the Round's own balls, dealt onto the foot spot):")
+	DebugWidgets.label(page, "Rack presets (the Round's own balls, dealt onto the foot spot):", true)
 	var p := GridContainer.new()
 	p.columns = 2
 	p.add_theme_constant_override(&"h_separation", 8)
@@ -254,7 +254,7 @@ func _build_table(page: VBoxContainer) -> void:
 	page.add_child(p)
 	for name: String in DebugSession.PRESETS:
 		DebugWidgets.button(p, name.replace("_", " "), session.apply_preset.bind(name))
-	DebugWidgets.label(page, "Re-rack the live Round (shots, points and clock reset):")
+	DebugWidgets.label(page, "Re-rack the live Round (shots, points and clock reset):", true)
 	var b := DebugWidgets.row(page)
 	DebugWidgets.button(b, "Same seed", func() -> void: session.rerack(true))
 	DebugWidgets.button(b, "New seed", func() -> void: session.rerack(false))

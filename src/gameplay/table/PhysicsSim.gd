@@ -20,6 +20,8 @@ signal frame_flushed(frame: PackedByteArray)
 signal heartbeat_flushed(frame: PackedByteArray)
 ## Client: the app returned from the background; the stream was ignored meanwhile, so ask the host for full state.
 signal blind_ended
+## Client: a contact-event frame arrived from the host, before it is replayed (presentation listeners: ImpactFx).
+signal frame_received(frame: PackedByteArray)
 
 const LIVE_TICK := 120
 const REST_TICK := 60
@@ -730,6 +732,7 @@ func event_lead_ms() -> float:
 
 func apply_frame(frame: PackedByteArray) -> void:
 	_count_frame(frame)
+	frame_received.emit(frame)
 	if BallEventCodec.count(frame) > 0:
 		_last_event_tick = maxi(_last_event_tick, BallEventCodec.base_tick(frame) + BallEventCodec.tick_offset(frame, BallEventCodec.count(frame) - 1))
 	_replica.apply_frame(frame, origin(), playback_tick(), _on_replica_flag)
