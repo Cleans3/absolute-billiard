@@ -118,6 +118,7 @@ func _host() -> void:
 	await _until(func() -> bool: return table.sim.awake == 0, "placed table at rest")
 	_touch("placed")
 	await create_timer(1.0).timeout  # the client applies the lifecycle events
+	table.sim.stat_source = func(_stat: StringName, _peer: int, base: float) -> float: return base  # the house pour is a random Drink (cue power x1.06 misses this corner pot): shoot with the base numbers
 	rd._set_shooter_rpc.rpc(client_id)
 	await table.sim.shot_started_net
 	await rd.shot_ended
