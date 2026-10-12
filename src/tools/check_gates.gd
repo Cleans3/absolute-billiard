@@ -44,8 +44,14 @@ func _scan(dir: String) -> int:
 			count += 1
 			if img == null:
 				_fail("cannot read %s" % dir.path_join(f))
-			elif maxi(img.get_width(), img.get_height()) > MAX_TEX:
-				_fail("%s is %dx%d, max %d (07 §8)" % [dir.path_join(f), img.get_width(), img.get_height(), MAX_TEX])
+			else:
+				# A layered import (lightmap atlas) reaches the GPU as slices; the slice is the texture.
+				var imp := ConfigFile.new()
+				imp.load(dir.path_join(f) + ".import")
+				var w := img.get_width() / int(imp.get_value("params", "slices/horizontal", 1))
+				var h := img.get_height() / int(imp.get_value("params", "slices/vertical", 1))
+				if maxi(w, h) > MAX_TEX:
+					_fail("%s is %dx%d per slice, max %d (07 §8)" % [dir.path_join(f), w, h, MAX_TEX])
 	for d in DirAccess.get_directories_at(dir):
 		count += _scan(dir.path_join(d))
 	return count
