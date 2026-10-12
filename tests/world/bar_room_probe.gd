@@ -164,6 +164,15 @@ func _pbr(room: BarRoom) -> void:
 	_check(absf((hi.x - lo.x) - 7.0) < 0.6, "floor planks are mapped in world metres (14 m / 2 m tile = 7 repeats): %s" % (hi - lo))
 
 
+## adhoc-1012a seam: the slot machine's spot (-6.3, 0, 1.5) on the west wall, 1.2 m clear in front, holds no collider; the
+## keep-clear zone is on DecorPlan so the generator refuses decor there.
+func _slot_zone(room: BarRoom) -> void:
+	var space := (room as Node3D).get_world_3d().direct_space_state
+	for p in [Vector3(-6.3, 0.0, 1.5), Vector3(-5.6, 0.0, 1.5), Vector3(-5.2, 0.0, 1.1), Vector3(-6.3, 0.0, 2.0)]:
+		_check(_capsule_free(space, p), "slot machine zone is free at %s" % p)
+	_check(DecorPlan.floor_keep_clear().any(func(r: Rect2) -> bool: return r.encloses(Rect2(-6.7, 1.05, 0.8, 0.9))), "DecorPlan keeps the slot machine's footprint clear")
+
+
 func _ray(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:
 	var q := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
 	return space.intersect_ray(q)
