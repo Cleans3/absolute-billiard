@@ -20,6 +20,8 @@ const FINE_RATE := 0.10  # scratch fine = this share of the Night's Quota (06 P1
 const FINE_STEP := 5
 const FINE_MIN := 25
 const FINE_REASONS: Array[StringName] = [&"scratch", &"off_table"]  # RoundDirector.cue_respawned reasons that cost Cash
+const POUR_DRINKS: Array[StringName] = [&"beer", &"bar_nuts", &"soda_pop", &"pretzels", &"pickle_juice"]  # the house's free first drink (02 §3.10)
+const POUR_SALT := 0x9042
 
 @export var stream: StreamManager
 @export var game_loop: GameLoop  # optional: the economy probe runs without one
@@ -256,6 +258,24 @@ func try_throw(drink_id: StringName) -> StringName:
 func _on_intermission() -> void:
 	if multiplayer.is_server():
 		roll_stock(game_loop.stock_key())
+		_house_pour()
+
+
+## The first Intermission of a Night (before Round 1, no hazard by 06 D4): the Bartender pours the whole crew one on the house, so
+## the calm Round still has a Drink in play and a banner to start on. One seeded Common drink per Night; Cash is never touched.
+func _house_pour() -> void:
+	var effects := get_node_or_null(^"../EffectManager") as EffectManager
+	if effects == null or game_loop == null or game_loop.round_index != 0:
+		return
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([game_loop.campaign_seed, game_loop.current_night().night_number, POUR_SALT])
+	var id := POUR_DRINKS[rng.randi() % POUR_DRINKS.size()]
+	var net := get_node_or_null(^"/root/NetManager")
+	var crew: PackedInt32Array = net.call(&"seat_order") if net != null else PackedInt32Array()
+	if crew.is_empty():
+		crew.append(1)
+	for peer in crew:
+		effects.serve_drink(id, peer, 0)
 
 
 func _push_stock() -> void:

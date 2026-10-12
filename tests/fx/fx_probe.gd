@@ -378,6 +378,34 @@ func _fake_events() -> void:
 	_check(int(_kinds.get(&"kick", 0)) >= 1, "feed_frame pops a cue strike")
 	sim.shot_started_net.emit(5, 1, 0)  # leave the live state tidy for the next section
 	director.shot_ended.emit("probe-4", 1, 0, none, false)
+	# a trick on a Shot that potted nothing pays nothing: a minor word, no confetti, no shake
+	sim.shot_started_net.emit(6, 1, 0)
+	var shown := int(_kinds.get(&"trick", 0))
+	director.trick_detected.emit(TrickShot.make(&"Carom", "probe-dud"), "probe-dud")
+	_check(int(_kinds.get(&"trick_minor", 0)) >= 1 and int(_kinds.get(&"trick", 0)) == shown, "a trick with no pot is a minor word, not a celebration")
+	director.shot_ended.emit("probe-dud", 1, 0, none, false)
+	# pops grow with the camera distance so the far end of the table still reads
+	var near_pos: Vector3 = cam.global_position + Vector3(0.0, 0.0, -1.0)
+	var far_pos: Vector3 = cam.global_position + Vector3(0.0, 0.0, -6.0)
+	_check(is_equal_approx(fx._far_scale(near_pos), 1.0) and fx._far_scale(far_pos) > 2.0 and fx._far_scale(far_pos) <= ImpactFx.POP_FAR_MAX, "pop size grows with distance, capped (%.2f)" % fx._far_scale(far_pos))
+	# the game's own beats: a hazard starting, a Drink going down, GO, a cleared table, the Flaming Shot
+	_kinds.clear()
+	fx._on_event_applied(&"tilted_table", 1, 1.25)
+	var haz: Label = fx._stage._rows[FxStage.ROW_TRICK]
+	_check(int(_kinds.get(&"hazard", 0)) == 1 and haz.visible and haz.text == "TILTED TABLE!", "a hazard starting is announced (%s)" % haz.text)
+	fx._drink_banner(FxCatalog.drink(&"beer"))
+	var sip: Label = fx._stage._rows[FxStage.ROW_MINOR]
+	_check(int(_kinds.get(&"drink", 0)) == 1 and sip.text == "BEER!", "a drink going down is announced (%s)" % sip.text)
+	fx._on_round_started(2, 120.0, 1)
+	_check(int(_kinds.get(&"go", 0)) == 1 and (fx._stage._rows[FxStage.ROW_COMBO] as Label).text == "ROUND 2 - GO!", "a Round starting says GO")
+	fx._on_round_ended(&"cleared", 900)
+	_check(int(_kinds.get(&"cleared", 0)) == 1 and (fx._stage._rows[FxStage.ROW_TRICK] as Label).text == "TABLE CLEARED!", "a cleared table is celebrated")
+	fx._flames = true
+	sim.shot_started_net.emit(7, 1, 0)
+	fx._hit(FxHitTap.Kind.BALL, table.global_position + Vector3(0, y, 0), Vector3.RIGHT, 6.0)
+	_check(int(_kinds.get(&"flames", 0)) == 1 and int(_kinds.get(&"ball", 0)) == 1, "a hit under the Flaming Shot throws embers")
+	fx._flames = false
+	director.shot_ended.emit("probe-5", 1, 0, none, false)
 
 
 # ---- tiers -------------------------------------------------------------------------------------

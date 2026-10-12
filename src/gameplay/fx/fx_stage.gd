@@ -14,6 +14,8 @@ const HOLD_SEC := [1.5, 1.1, 0.9]
 const OUT_SEC := 0.45
 const RAIN_AMOUNT := 150
 const CANNON_AMOUNT := 70
+const AIM_FADE := 0.15  # banner / confetti opacity while the local player is aiming: the pack they aim at stays readable
+const AIM_FADE_PER_SEC := 6.0
 
 var _flash_rect: ColorRect
 var _flash_mat: ShaderMaterial
@@ -24,6 +26,7 @@ var _row_t := PackedFloat32Array([-1.0, -1.0, -1.0])
 var _row_scale := PackedFloat32Array([1.0, 1.0, 1.0])
 var _rain: GPUParticles2D
 var _cannons: Array[GPUParticles2D] = []
+var _aim_a := 1.0  # 1 = shown in full, AIM_FADE = ghosted behind the aim
 
 
 func _init() -> void:
@@ -84,7 +87,7 @@ func banner(row: int, text: String, color: Color, size_mult := 1.0) -> void:
 	set_process(true)
 
 
-## Confetti: rain across the top, and from tier 2 up a cannon out of each bottom corner.
+## Confetti: rain across the top, and from tier 3 up a cannon out of each bottom corner.
 func confetti(tier: int, amount_ratio := 1.0) -> void:
 	var h := get_viewport().get_visible_rect().size
 	var px := h.y / 720.0
@@ -121,12 +124,25 @@ func confetti(tier: int, amount_ratio := 1.0) -> void:
 	set_process(true)
 
 
+## The local player is lining up a shot (CUE mode): the show must not sit on the table they aim at.
+func _aiming() -> bool:
+	for n in get_tree().get_nodes_in_group(&"players"):
+		var p := n as Player
+		if p != null and p.is_local and p.mode == Player.Mode.CUE:
+			return true
+	return false
+
+
 func idle() -> bool:
 	return not is_processing()
 
 
 func _process(delta: float) -> void:
 	var busy := false
+	_aim_a = move_toward(_aim_a, AIM_FADE if _aiming() else 1.0, AIM_FADE_PER_SEC * delta)
+	_rain.modulate.a = _aim_a
+	for c in _cannons:
+		c.modulate.a = _aim_a
 	if _flash > 0.0:
 		_flash = maxf(_flash - _flash_decay * delta, 0.0)
 		_flash_mat.set_shader_parameter(&"amount", _flash)
@@ -151,7 +167,7 @@ func _process(delta: float) -> void:
 		var out := clampf((t - POP_SEC - hold) / OUT_SEC, 0.0, 1.0)
 		l.scale = Vector2.ONE * s * (1.0 + out * 0.15)
 		l.rotation = sin(t * 38.0) * 0.045 * (1.0 - pop) + sin(t * 11.0) * 0.012
-		l.modulate.a = 1.0 - out
+		l.modulate.a = (1.0 - out) * _aim_a
 		l.position.y = get_viewport().get_visible_rect().size.y * ROW_Y[row] - out * 60.0
 	busy = busy or _rain.emitting or _cannons[0].emitting or _cannons[1].emitting
 	if not busy:

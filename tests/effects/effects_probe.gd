@@ -422,8 +422,9 @@ func _vote() -> void:
 	sch.begin_round(2)
 	_check(sch._offer.is_empty(), "begin_round settles an open vote")
 	r.loop.round_ended.emit(&"timer", 0)
-	# tier 2 needs Night 2+: nothing eligible on Night 1
-	_check(sch.offer(3, 2, 1).is_empty(), "no tier-2 Events on Night 1")
+	# tier 2: Night 1's Round 3 offers the one Event that is open to it (Pocket Jackpot), every other waits for Night 2+
+	var tier2 := sch.offer(3, 2, 1)
+	_check(tier2.size() == 1 and tier2[0] == &"pocket_jackpot", "Night 1's tier-2 pool is the Pocket Jackpot")
 
 
 func _world() -> void:

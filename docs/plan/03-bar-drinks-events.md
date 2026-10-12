@@ -175,7 +175,7 @@ Payoff is the other half: a bumped shot that still drops is drama, and the strea
 | `moving_pockets` | 2 | 1.70 | 2 | yes | 0 | `pocket_radius_mult MUL 0.85`, `pocket_oscillation_m ADD 0.05` — aim at a moving hole |
 | `ball_swap_chaos` | 2 | 1.60 | 3 | no | 0 | `ball_type_shuffle_count ADD 2` at Round start and once at half-time — value memory is worthless |
 | `lights_out` | 2 | 1.80 | 3 | yes | `+20` | `player_view_light_level MUL 0.25`, `player_view_fog_density ADD 0.3` — **shooter's screen only** (crew-wide `VIEW` Effect, shown only on the current shooter's overlay), the stream sees fine |
-| `pocket_jackpot` | 2 | 1.00 | 2 | no | 0 | **opportunity** — one randomly chosen pocket pays ×3 all Round; every shot is now a routing problem |
+| `pocket_jackpot` | 2 | 1.00 | 1 | no | 0 | **opportunity** — one randomly chosen pocket pays ×3 all Round; every shot is now a routing problem |
 
 The two opportunity Events carry `reward_mult 1.0` on purpose: the crew trades a smaller global multiplier for a targeted payoff, which is a real decision rather than a strictly-worse option. `power_flicker` is gone (a hazard that *lowers* payout is a punishment with extra steps); fog merged into `lights_out`, sticky/sway merged into `glass_cushions`, gangster-stare merged into `bouncer`.
 
