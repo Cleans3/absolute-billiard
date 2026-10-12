@@ -160,8 +160,8 @@ func _on_contact(ball: Ball, other: Node, kind: StringName) -> void:
 
 
 func _params_for(id: int) -> BallMotion.Params:
-	var b: Ball = _by_id.get(id)
-	return b.motion if is_instance_valid(b) else null
+	var b: Variant = _by_id.get(id)  # untyped: a split/bomb ball can be freed while still keyed here
+	return (b as Ball).motion if is_instance_valid(b) else null
 
 
 ## A lifecycle flag, host (Ball.net_flag) or client at its playback tick (PhysicsSim.ball_flag_applied).
