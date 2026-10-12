@@ -77,6 +77,7 @@ func _stand_at_machine() -> void:
 
 func _run() -> void:
 	SaveManager.root = "user://probe_slot/"  # ending a Round writes a checkpoint: not into the real profile
+	DirAccess.make_dir_recursive_absolute(SaveManager.checkpoint_dir())
 	var lobby: Node = load("res://src/levels/Lobby.tscn").instantiate()
 	root.add_child(lobby)
 	await process_frame

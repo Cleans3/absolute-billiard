@@ -14,15 +14,14 @@ const DRUM_X: Array[float] = [-0.18, 0.0, 0.18]
 const DRUM_Y := 1.15
 const WINDOW := Rect2(-0.30, 0.99, 0.60, 0.32)  ## the reel opening: x, y of its low corner, width, height
 const FRONT_Z := 0.36
-const LEVER_AT := Vector3(0.47, 0.95, 0.0)
-const LED_AT := Vector3(0.0, 0.80, FRONT_Z + 0.004)
+const LEVER_AT := Vector3(0.462, 0.95, 0.0)
+const LED_AT := Vector3(0.0, 0.83, FRONT_Z + 0.0105)
 const TITLE_AT := Vector3(0.0, 1.71, FRONT_Z + 0.008)
 const POP_AT := Vector3(0.0, 2.25, 0.25)
 const CELLS := 8     ## atlas cells: 7 symbols + the white one
 const WHITE_UV := Vector2(0.9375, 0.5)
 
-const RED := Color("8E1428")
-const RED_DARK := Color("5C0B19")
+const BODY := Color("2B3FAE")  # cobalt: the room is red, the machine must not melt into the wall
 const BRASS := Color("C9A24B")
 const BLACK := Color("14100E")
 const STEEL := Color("B9C0C8")
@@ -93,7 +92,7 @@ static func body_mesh() -> ArrayMesh:
 	var b := Builder.new()
 	var hw := WINDOW.size.x * 0.5
 	b.box(Vector3(0.0, 0.06, 0.0), Vector3(WIDTH, 0.12, DEPTH), BLACK)  # plinth
-	b.box(Vector3(0.0, 0.37, -0.01), Vector3(0.86, 0.50, 0.74), RED)  # lower body
+	b.box(Vector3(0.0, 0.37, -0.01), Vector3(0.86, 0.50, 0.74), BODY)  # lower body
 	b.box(Vector3(0.0, 0.645, 0.0), Vector3(0.88, 0.05, 0.78), BRASS)  # control deck
 	b.box(Vector3(0.0, 0.30, 0.38), Vector3(0.50, 0.10, 0.04), BLACK)  # coin tray
 	b.box(Vector3(0.0, 0.30, 0.396), Vector3(0.40, 0.012, 0.012), BRASS, 0.6)
@@ -102,18 +101,20 @@ static func body_mesh() -> ArrayMesh:
 	for k in 3:  # the three deck buttons
 		b.box(Vector3(-0.2 + 0.2 * k, 0.685, 0.27), Vector3(0.08, 0.03, 0.055), [PINK, CYAN, GOLD][k], 0.9)
 	# reel housing: back block, two cheeks, the pieces above and below the window
-	b.box(Vector3(0.0, 1.135, -0.20), Vector3(0.86, 0.93, 0.36), RED)
-	b.box(Vector3(-0.365, 1.135, 0.17), Vector3(0.13, 0.93, 0.38), RED)
-	b.box(Vector3(0.365, 1.135, 0.17), Vector3(0.13, 0.93, 0.38), RED)
-	b.box(Vector3(0.0, WINDOW.end.y + 0.145, 0.17), Vector3(WINDOW.size.x, 0.29, 0.38), RED)
-	b.box(Vector3(0.0, WINDOW.position.y - 0.16, 0.17), Vector3(WINDOW.size.x, 0.32, 0.38), RED)
+	b.box(Vector3(0.0, 1.135, -0.20), Vector3(0.86, 0.93, 0.36), BODY)
+	b.box(Vector3(-0.365, 1.135, 0.17), Vector3(0.13, 0.93, 0.38), BODY)
+	b.box(Vector3(0.365, 1.135, 0.17), Vector3(0.13, 0.93, 0.38), BODY)
+	b.box(Vector3(0.0, WINDOW.end.y + 0.145, 0.17), Vector3(WINDOW.size.x, 0.29, 0.38), BODY)
+	b.box(Vector3(0.0, WINDOW.position.y - 0.16, 0.17), Vector3(WINDOW.size.x, 0.32, 0.38), BODY)
 	b.box(Vector3(0.0, DRUM_Y, -0.02), Vector3(WINDOW.size.x, WINDOW.size.y, 0.04), BLACK)  # dark behind the drums
 	b.box(Vector3(0.0, DRUM_Y, FRONT_Z - 0.004), Vector3(WINDOW.size.x, 0.008, 0.004), Color("FF2A3C"), 1.0)  # payline
 	for side in [-1.0, 1.0]:
 		b.box(Vector3(side * (hw + 0.025), DRUM_Y, FRONT_Z), Vector3(0.03, 0.04, 0.02), Color("FF2A3C"), 1.0)
 	b.box(Vector3(0.0, 0.83, FRONT_Z + 0.002), Vector3(0.56, 0.16, 0.012), BLACK)  # LED panel
+	b.box(Vector3(0.44, LEVER_AT.y, 0.0), Vector3(0.02, 0.16, 0.16), BRASS)  # lever mount on the right cheek
+	b.box(Vector3(0.45, LEVER_AT.y, 0.0), Vector3(0.008, 0.03, 0.03), STEEL)
 	# header: marquee face and a crown
-	b.box(Vector3(0.0, 1.71, 0.0), Vector3(0.86, 0.22, 0.72), RED)
+	b.box(Vector3(0.0, 1.71, 0.0), Vector3(0.86, 0.22, 0.72), BODY)
 	b.box(Vector3(0.0, 1.71, FRONT_Z + 0.001), Vector3(0.74, 0.14, 0.006), BLACK, 0.12)
 	b.box(Vector3(0.0, 1.84, 0.0), Vector3(0.74, 0.04, 0.62), BRASS)
 	# the bulb loops, phase running round each loop so the shader chases them

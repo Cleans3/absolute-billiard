@@ -6,6 +6,7 @@ extends UIModal
 
 const PANEL_SIZE := Vector2(640.0, 250.0)
 const FACE_SEC := 0.35  ## how long the camera takes to turn to the machine
+const TOAST_CHARS := 46  ## longest win + chaos line that still fits the toast slot
 
 @export var economy: EconomyManager
 @export var game_loop: GameLoop
@@ -254,8 +255,9 @@ func _on_landed(peer_id: int, payload: Dictionary) -> void:
 	var text := String(w.title) + ("  +$%d" % payout if payout > 0 else "")
 	var chaos := chaos_text(payload[&"chaos"])
 	if not is_open():
-		if mine and UIRouter.instance != null:  # the player stepped away mid-spin: say how it went
-			UIRouter.instance.toast(text + ("" if chaos == "" else " · " + chaos), &"good" if payout > int(payload[&"bet"]) else &"info")
+		if mine and UIRouter.instance != null:  # the player stepped away mid-spin: say how it went (the toast is one 600 px line)
+			var line := text if chaos == "" or text.length() + chaos.length() > TOAST_CHARS else text + " · " + chaos
+			UIRouter.instance.toast(line, &"good" if payout > int(payload[&"bet"]) else &"info")
 		return
 	_status.text = text if mine else "%s: %s" % [_name_of(peer_id), text]
 	_chaos.text = chaos

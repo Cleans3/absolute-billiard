@@ -94,5 +94,6 @@ func _init() -> void:
 				longest = maxf(longest, SlotMath.spin_sec(PackedInt32Array([x, y, z])))
 	_check(is_equal_approx(longest, SlotMath.MAX_SPIN_SEC), "MAX_SPIN_SEC %.2f is the longest spin (%.2f)" % [SlotMath.MAX_SPIN_SEC, longest])
 
-	print("SLOT MATH %s (RTP %.4f, hit rate %.3f, jackpot 1/%d)" % ["OK" if _fails == 0 else "FAILED", rtp, hit_rate, n * n * n / int(seen[&"jackpot"])])
+	print("RTP %.4f, hit rate %.3f, jackpot 1 in %d" % [rtp, hit_rate, n * n * n / int(seen[&"jackpot"])])
+	print("SLOT MATH OK" if _fails == 0 else "SLOT MATH FAILED")
 	quit(0 if _fails == 0 else 1)
