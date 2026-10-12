@@ -5,7 +5,7 @@ extends SceneTree
 ## Intermission buys drinks at the bar, votes the Event, pulls the slot and walks to GO LIVE through WorldInteractions.
 ## Needs a window (it screenshots). Measures what the player sees: FX per shot, strike->feedback latency, dead stretches while the
 ## balls roll, combos/tricks/chaos per Round, slot timings, cash, frame cost, plus thumbnail strips of three shots.
-##   godot --path . -s src/tools/playtest.gd -- [--tag=before] [--out=DIR] [--nights=1] [--rounds=N] [--seed=7] [--skill=0.6]
+##   godot --path . -s src/tools/playtest.gd -- [--tag=before] [--out=DIR] [--nights=1] [--rounds=N] [--seed=7] [--skill=0.6] [--vote=<event id>]
 ##                                               [--spend=0.5] [--power=1.0] [--wild=0.2] [--slots=3] [--shots=N]
 ## Writes playtest_<tag>.json, summary_<tag>.md and sheet_<tag>_{typical,best,dull}.png to --out and prints the summary.
 
@@ -75,6 +75,8 @@ var _slot_press := -1.0
 var _slot_spin_seen := -1.0
 var _slot_landed_evt := false
 var _vote_seen: Array[String] = []
+var vote_pref: StringName = &""  # --vote=<event id>: that card whenever the offer holds it, else the random pick
+var _offered: Array[StringName] = []
 var _story_cards := 0
 var _aim_thumbs: Array[Image] = []
 var gpu_ms: PackedFloat32Array = []
@@ -99,6 +101,7 @@ func _initialize() -> void:
 			"power": power_k = float(v)
 			"wild": wild_share = float(v)
 			"slots": slot_pulls = int(v)
+			"vote": vote_pref = StringName(v)
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	DisplayServer.window_set_size(WINDOW)
 	root.size = WINDOW
@@ -161,6 +164,7 @@ func _bind() -> void:
 	sim.shot_started.connect(_on_strike)
 	eco.cash_changed.connect(func(b: int, d: int, r: StringName) -> void: cash_curve.append([snappedf(now(), 0.1), b, d, String(r)]))
 	effects.effect_applied.connect(func(id: StringName, _t: int, _o: int, dur: float) -> void: _chaos(&"effect", String(id), dur))
+	sched.event_offer_ready.connect(func(_r: int, _t: int, ids: Array[StringName]) -> void: _offered = ids)
 	sched.event_applied.connect(func(_id: StringName, _tier: int, _mult: float) -> void: _snapshot_live.call_deferred())
 	effects.live_changed.connect(_snapshot_live)
 	world.interaction_applied.connect(func(_p: int, kind: StringName, _tid: int, _pl: Dictionary) -> void: _chaos(&"world", String(kind)))
@@ -182,6 +186,8 @@ func _sample() -> void:
 		for b in rd.get_balls():
 			v = maxf(v, b.linear_velocity.length())
 		var dt := float(usec - _last_usec) / 1e6
+		if v > SPEED_STEPS[0]:
+			shot.last_fast = now()
 		if v > ROLL_MPS:
 			shot.moving_s = float(shot.moving_s) + dt
 		for i in SPEED_STEPS.size():  # seconds a ball moved faster than the step since the last visible feedback
@@ -377,9 +383,15 @@ func _vote() -> void:
 	if cards.is_empty():
 		ev.call(&"close")
 		return
-	var pick: Button = cards[rng.randi() % cards.size()]
-	_vote_seen.append(pick.text if pick.text != "" else pick.name)
-	round_rec_note("vote", pick.text if pick.text != "" else pick.name)
+	var at := rng.randi() % cards.size()  # drawn even when --vote overrides it: the rest of the run stays on the same dice
+	var known := _offered.size() == cards.size()  # cards are in offer order
+	if known and _offered.has(vote_pref):
+		at = _offered.find(vote_pref)
+	var pick: Button = cards[at]
+	var label: String = String(_offered[at]) if known else String(pick.name)
+	_vote_seen.append(label)
+	round_rec_note("vote", label)
+	round_rec_note("offer", _offered.map(func(i: StringName) -> String: return String(i)))
 	await create_timer(0.4).timeout  # reading time
 	_save_full("vote_r%d" % (loop.round_index + 1))
 	pick.pressed.emit()
@@ -607,7 +619,7 @@ func _take_shot() -> void:
 		elev = snappedf(plan.elev, 0.1), target = plan.target, pocket = String(plan.pocket), aim_err_deg = snappedf(plan.err_deg, 0.01),
 		fx = {}, fx_log = [], marks = [], pots = [], tricks = [], trick_ids = [], combo_n = 0, scratch = false, ended = false,
 		t_release = now(), t_strike = -1.0, t_end = -1.0, cash_before = eco.cash, awake_before = sim.awake,
-		last_mark = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], above = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, payout_at_aim = stale_payout, ball_count = rd.get_balls().size(),
+		last_mark = now(), last_fast = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], above = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, payout_at_aim = stale_payout, ball_count = rd.get_balls().size(),
 	}
 	(shot.marks as Array).append([now(), "release"])
 	frame_ms.clear()
@@ -649,6 +661,7 @@ func _finish_shot() -> void:
 	shot.dead_total = snappedf(dead_total, 0.01)
 	shot.tail_s = snappedf(float(shot.t_end) - float(shot.last_mark), 0.01)  # last FX -> shot resolved
 	shot.rolling_s = snappedf(float(shot.moving_s), 0.01)
+	shot.settle_s = snappedf(maxf(0.0, float(shot.t_end) - float(shot.last_fast)), 0.01)  # last frame a ball moved faster than 0.3 m/s -> shot resolved: the creep tail
 	var first_fx := -1.0
 	var first_hit := -1.0
 	for e: Array in shot.fx_log:
@@ -867,6 +880,7 @@ func _report() -> Dictionary:
 	var aim_opaque := 0
 	var aim_stale := 0
 	var tails := PackedFloat32Array()
+	var settles := PackedFloat32Array()
 	var rolls := PackedFloat32Array()
 	var tricks_shots := 0
 	var combo_shots := 0
@@ -885,6 +899,7 @@ func _report() -> Dictionary:
 		dead_total += float(s.dead_total)
 		durations.append(float(s.duration))
 		tails.append(float(s.tail_s))
+		settles.append(float(s.settle_s))
 		rolls.append(float(s.rolling_s))
 		aim_busy += 1 if s.fx_busy_at_aim else 0
 		aim_opaque += 1 if s.fx_opaque_at_aim else 0
@@ -946,7 +961,7 @@ func _report() -> Dictionary:
 		tag = tag, shots = n, rounds = rounds.size(), pots = pots, scratches = scratches, kinds = kinds,
 		shots_any_fx_pct = _pct(any_fx, n), shots_hit_fx_pct = _pct(hit_fx, n), late_feedback_shots = late,
 		first_fx_median_s = _median(first_fx), shot_duration_median_s = _median(durations), shot_duration_max_s = _max(durations),
-		aim_fx_busy_pct = _pct(aim_busy, n), aim_fx_opaque_pct = _pct(aim_opaque, n), aim_payout_stale = aim_stale, tail_median_s = _median(tails), rolling_median_s = _median(rolls), dead_max_s = dead_worst, shots_with_dead_over_3s = dead_over, dead_total_s = snappedf(dead_total, 0.1),
+		aim_fx_busy_pct = _pct(aim_busy, n), aim_fx_opaque_pct = _pct(aim_opaque, n), aim_payout_stale = aim_stale, tail_median_s = _median(tails), settle_median_s = _median(settles), settle_max_s = _max(settles), rolling_median_s = _median(rolls), dead_max_s = dead_worst, shots_with_dead_over_3s = dead_over, dead_total_s = snappedf(dead_total, 0.1),
 		combo_shots = combo_shots, trick_shots = tricks_shots, rounds_with_combo_or_trick = combo_trick_rounds, rounds_with_chaos = chaos_rounds,
 		chaos_per_round = snappedf(float(chaos_total) / float(nr), 0.01), per_round = per_round,
 		slot_pulls = slots.size(), slot_result_median_s = _median(slot_times), slot_result_max_s = _max(slot_times), slot_spin_visible_median_s = _median(slot_vis),
@@ -1001,7 +1016,7 @@ func _summary_md(r: Dictionary) -> String:
 	lines.append("| FX never hide the aim | FX still alive when aiming starts: %.1f %% of shots, still opaque 0.35 s into the aim: %.1f %%, last shot's HUD payout still showing: %d shots; look at aims_%s.png | %s |" % [r.aim_fx_busy_pct, r.aim_fx_opaque_pct, r.aim_payout_stale, r.tag, _ok(r.aim_fx_opaque_pct == 0.0 and r.aim_payout_stale == 0)])
 	lines.append("")
 	lines.append("FX fired: %s" % JSON.stringify(r.kinds))
-	lines.append("Shot duration median %.1f s (max %.1f s), of which a ball moves faster than 0.3 / 0.8 / 1.5 m/s for a median %.1f / %.1f / %.1f s (the rest is creep to rest); slot net %+d, slot chaos %d." % [r.shot_duration_median_s, r.shot_duration_max_s, r.above_median_s[0], r.above_median_s[1], r.above_median_s[2], r.slot_net, r.slot_chaos])
+	lines.append("Shot duration median %.1f s (max %.1f s; creep tail below 0.3 m/s: median %.1f s, max %.1f s), of which a ball moves faster than 0.3 / 0.8 / 1.5 m/s for a median %.1f / %.1f / %.1f s (the rest is creep to rest); slot net %+d, slot chaos %d." % [r.shot_duration_median_s, r.shot_duration_max_s, r.settle_median_s, r.settle_max_s, r.above_median_s[0], r.above_median_s[1], r.above_median_s[2], r.slot_net, r.slot_chaos])
 	lines.append("")
 	lines.append("| Round | hazard tier | shots | points | combos+tricks | chaos | ended | FX beats |")
 	lines.append("|---|---|---|---|---|---|---|---|")

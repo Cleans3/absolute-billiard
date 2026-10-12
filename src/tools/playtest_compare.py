@@ -30,6 +30,9 @@ ROWS = [
     ("aim_fx_opaque_pct", "FX opaque 0.35 s into the aim, % of shots"),
     ("aim_payout_stale", "shots whose aim still shows the last payout line"),
     ("shot_duration_median_s", "shot duration median, s"),
+    ("shot_duration_max_s", "shot duration max, s"),
+    ("settle_median_s", "creep tail (last ball > 0.3 m/s -> rest), median s"),
+    ("settle_max_s", "creep tail max, s"),
     ("above_08_median_s", "per shot: seconds a ball moves > 0.8 m/s, median"),
     ("above_03_median_s", "per shot: seconds a ball moves > 0.3 m/s, median"),
     ("gpu_ms_p95_worst", "render GPU p95 worst shot, ms"),
@@ -51,6 +54,8 @@ def load(d, prefix):
             for i, k in enumerate(("03", "08", "15")):
                 r[f"above_{k}_median_s"] = statistics.median(s["above"][i] for s in shots)
         out.append(r)
+        tilted = {n for rd in j["rounds"] if any(x[0] == "vote" and x[1] == "tilted_table" for x in rd.get("notes", [])) for n in rd["shots"]}
+        r["_tilted"] = [x for x in shots if x["n"] in tilted]
     return out
 
 
@@ -64,6 +69,17 @@ def cell(runs, key):
     return f"{m:.2f} ({min(v):.2f}..{max(v):.2f})"
 
 
+def tilted_rows(runs):
+    """Shots of Rounds whose voted Event was tilted_table, per run set: duration and creep-tail median / max."""
+    shots = [x for r in runs for x in r.get("_tilted", [])]
+    if not shots:
+        return "-"
+    d = [x["duration"] for x in shots]
+    t = [x["settle_s"] for x in shots if "settle_s" in x]
+    tail = f", creep tail median {statistics.median(t):.1f} max {max(t):.1f}" if t else ""
+    return f"{len(shots)} shots: duration median {statistics.median(d):.1f} max {max(d):.1f}{tail}"
+
+
 def main():
     d = sys.argv[1]
     prefixes = sys.argv[2:]
@@ -72,6 +88,7 @@ def main():
     print("|---|" + "---|" * len(prefixes))
     for key, label in ROWS:
         print(f"| {label} | " + " | ".join(cell(sets[p], key) for p in prefixes) + " |")
+    print("| Tilted Table Rounds (voted) | " + " | ".join(tilted_rows(sets[p]) for p in prefixes) + " |")
 
 
 if __name__ == "__main__":
