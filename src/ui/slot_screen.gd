@@ -13,6 +13,7 @@ const TOAST_CHARS := 46  ## longest win + chaos line that still fits the toast s
 
 var _tier := 1
 var _spinning := false
+var _shown_busy := false
 var _machine: SlotMachine
 var _world: WorldInteractions
 var _bets := PackedInt32Array([0, 0, 0])
@@ -35,6 +36,7 @@ func _init() -> void:
 
 func _ready() -> void:
 	super()
+	set_process(false)  # only while open
 	_build()
 	if economy != null:
 		economy.cash_changed.connect(func(_b: int, _d: int, _r: StringName) -> void: _refresh())
@@ -71,6 +73,8 @@ func _process(_delta: float) -> void:
 	var p := _local_player()
 	if p != null and p.mode == Player.Mode.RAGDOLL:
 		close()
+	if _is_busy() != _shown_busy:  # the machine freed itself (its last drum settled): the button comes back
+		_refresh()
 
 
 func _build() -> void:
@@ -202,9 +206,14 @@ func _refresh() -> void:
 		_tier_buttons[i].text = "$%d" % _bets[i]
 		_tier_buttons[i].button_pressed = i == _tier
 	var bet := _bets[_tier]
-	var busy := _spinning or (_machine != null and _machine.is_playing())
+	var busy := _is_busy()
+	_shown_busy = busy
 	_spin.disabled = busy or bet > maxi(cash, 0)
 	_spin.text = "Spinning…" if busy else ("PULL THE LEVER  $%d" % bet if bet <= maxi(cash, 0) else "Need $%d" % bet)
+
+
+func _is_busy() -> bool:
+	return _spinning or (_machine != null and _machine.is_spinning())
 
 
 func _pick_tier(tier: int) -> void:

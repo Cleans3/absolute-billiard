@@ -25,6 +25,7 @@ var _tween_lever: Tween
 var _tween_pop: Tween
 var _t := 0.0
 var _total := 0.0          ## seconds until the spin and its celebration are over
+var _spin_end := 0.0       ## seconds until the reels are done and the host takes the next spin (SlotMath.spin_sec)
 var _landed := true
 var _peer := 0
 var _result := {}
@@ -146,6 +147,11 @@ func is_playing() -> bool:
 	return is_processing()
 
 
+## The reels are still turning or settling: the host would refuse another spin (`busy`). The celebration after it does not count.
+func is_spinning() -> bool:
+	return not _plans.is_empty() and _t < _spin_end
+
+
 ## Start a spin from a result payload (tier, bet, stops, win, payout, chaos). A spin still running is finished at once.
 func play(peer_id: int, payload: Dictionary) -> void:
 	if is_processing():
@@ -155,7 +161,8 @@ func play(peer_id: int, payload: Dictionary) -> void:
 	_result = payload
 	_t = 0.0
 	_landed = false
-	_total = SlotMath.spin_sec(stops) + 2.6
+	_spin_end = SlotMath.spin_sec(stops)
+	_total = _spin_end + 2.6
 	_plans.clear()
 	for i in SlotMath.REELS:
 		_plans.append(_plan_reel(i, stops))

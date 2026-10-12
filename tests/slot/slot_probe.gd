@@ -397,11 +397,13 @@ func _screen() -> void:
 	await _until(func() -> bool: return not landed.is_empty(), "the reels to land", 10.0)
 	await process_frame
 	_check(screen._status.text == "TWO CHERRIES  +$%d" % (2 * bets[0]), "the strip names the win: %s" % screen._status.text)
-	_check(not screen._spin.disabled or machine.is_playing(), "the button comes back")
+	await _until(func() -> bool: return not machine.is_spinning(), "the machine to settle", 3.0)
+	await process_frame
+	await process_frame
+	_check(not screen._spin.disabled and screen._spin.text.begins_with("PULL"), "the button comes back by itself once the drums settle (the celebration is still on: %s)" % machine.is_playing())
+	_check(machine.is_playing(), "the celebration outlasts the spin")
 	house.flush()
 	machine._finish()
-	screen._refresh()
-	_check(not screen._spin.disabled, "free again once the machine idles")
 	# a refusal reads on the strip
 	refused.clear()
 	screen._on_rejected(&"slot_spin", &"busy")
