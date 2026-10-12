@@ -113,6 +113,13 @@ func set_stat(stat_name: StringName, value: float) -> void:
 		_: push_error("PhysicsSim.set_stat: unknown stat %s" % stat_name)
 
 
+## Downhill pull on a moving ball, m/s²: g·sin(tilt), capped at `tilt_max_vs_roll` × the rolling drag so friction always wins.
+func tilt_accel(sp: TableSpec) -> float:
+	var g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	var pull := g * sin(deg_to_rad(table_tilt_deg))
+	return signf(pull) * minf(absf(pull), sp.tilt_max_vs_roll * g * sp.rolling_resistance * cloth_friction_mult)
+
+
 func set_tilt_direction(dir: Vector2) -> void:
 	tilt_direction = dir.normalized()
 	_sync_motion_params()
@@ -121,11 +128,10 @@ func set_tilt_direction(dir: Vector2) -> void:
 ## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and — while a
 ## Shot is live — to clients at this tick, so both sides predict from the same model (04 §2.4).
 func _sync_motion_params() -> void:
-	var tilt := tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
 	for b in _balls:
 		BallMotion.apply_spec(b.motion, b.spec)
 		b.motion.friction_mult = cloth_friction_mult
-		b.motion.tilt = tilt
+		b.motion.tilt = tilt_direction * tilt_accel(b.spec)
 	if _shot_live and _is_host() and not multiplayer.get_peers().is_empty():
 		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
 
@@ -221,7 +227,7 @@ func register(ball: Ball) -> void:
 	assert(ball.net_id < BallEventCodec.MAX_BALLS, "Ball.net_id must be < 64")
 	ball.motion = BallMotion.make_params(ball.spec, ball.radius)
 	ball.motion.friction_mult = cloth_friction_mult
-	ball.motion.tilt = tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
+	ball.motion.tilt = tilt_direction * tilt_accel(ball.spec)
 	while _by_id.size() <= ball.net_id:
 		_by_id.append(null)
 		_pred.append(BallMotion.State.new())

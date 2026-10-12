@@ -31,6 +31,7 @@ func _init() -> void:
 		"scale", "bed_height_m", "cushion_restitution", "cushion_restitution_min",
 		"cushion_soft_speed_mps", "cushion_hard_speed_mps", "cushion_friction", "cloth_friction",
 		"ball_friction", "ball_restitution", "ball_cascade_enabled", "rolling_resistance", "spin_decay",
+		"settle_speed_mps", "settle_boost", "spin_stop_rad_s2", "tilt_max_vs_roll",
 		"ball_linear_damp", "ball_angular_damp", "rest_speed_mps", "rest_ang_rad_s", "rest_time_sec",
 		"cup_friction", "cup_bounce", "clearance_margin_m", "jaw_restitution", "ccd_step_radii",
 		"ccd_speed_mps", "max_ball_speed_mps",

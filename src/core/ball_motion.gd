@@ -12,6 +12,7 @@ const AIR_TOL := 0.003  # m above floor_y (and vy above AIR_VY) before a ball co
 const AIR_VY := 0.25
 const DAMP_EPS := 1e-6  # below this the rolling closed form divides by ~0: use the damp-free one
 const MAX_PHASES := 600
+const SETTLE_SLIP := 0.05  # m/s of contact-point slip at which the settle drag is gone (a sliding ball is driven by cloth friction, not the nap)
 const SLIDE_STEP := 1.0 / 60.0  # slide drag is first-order per step; short steps keep long dt honest
 
 
@@ -40,6 +41,9 @@ class Params extends RefCounted:
 	var rest_ang := 0.15  # rad/s
 	var damp := 0.1  # 1/s: rolling ball's effective (lin + 0.4·ang) / 1.4 Jolt damping
 	var ang_damp := 0.1
+	var settle_speed := 0.3  # m/s: below it a rolling ball's drag ramps up (see settle_factor)
+	var settle_boost := 0.0
+	var spin_stop := 0.0  # rad/s²: constant loss of spin about the table normal, on top of the exponential
 	var friction_mult := 1.0
 	var tilt := Vector2.ZERO  # m/s² along the table plane (x, z) on moving balls; = g·sin(table_tilt_deg)·dir
 
@@ -62,6 +66,9 @@ static func apply_spec(p: Params, spec: TableSpec) -> void:
 	p.rest_speed = spec.rest_speed_mps
 	p.rest_ang = spec.rest_ang_rad_s
 	p.ang_damp = spec.ball_angular_damp
+	p.settle_speed = spec.settle_speed_mps
+	p.settle_boost = spec.settle_boost
+	p.spin_stop = spec.spin_stop_rad_s2
 	p.damp = (spec.ball_linear_damp + 0.4 * p.ang_damp) / 1.4
 
 
@@ -87,6 +94,14 @@ static func advance(s: State, dt: float, p: Params) -> void:
 	if s.lin.length() < p.rest_speed and s.ang.length() < p.rest_ang:
 		s.lin = Vector3.ZERO
 		s.ang = Vector3.ZERO
+
+
+## Drag multiplier on a rolling ball: 1 from `settle_speed` up, (1 + boost) at standstill, linear between (Ball applies the
+## same, scaling the boost by how little the ball slips).
+static func settle_factor(speed: float, settle_speed: float, boost: float) -> float:
+	if boost <= 0.0 or settle_speed <= 0.0:
+		return 1.0
+	return 1.0 + boost * clampf(1.0 - speed / settle_speed, 0.0, 1.0)
 
 
 static func is_at_rest(s: State) -> bool:
@@ -127,9 +142,8 @@ static func _ground(s: State, t: float, p: Params) -> float:
 	var g := p.gravity
 	var r := p.radius
 	var a_roll := g * p.roll_mu * p.friction_mult
-	# spin about the normal bleeds off exponentially (Ball: -spin·m·r·μ·decay / I)
+	# spin about the normal: exponential (Ball: -spin·m·r·μ·decay / I) plus the constant pivot loss
 	var k := p.roll_mu * p.friction_mult * p.spin_decay / (0.4 * r) + p.ang_damp
-	var decay := exp(-k * t)
 	var vx := s.lin.x
 	var vz := s.lin.z
 	var ux := vx + r * s.ang.z
@@ -152,38 +166,75 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		var alz := -2.5 * mu * uhx / r + dhx * a_roll / r
 		s.ang.x += alx * t1
 		s.ang.z += alz * t1
-		s.ang.y *= exp(-k * t1)
+		s.ang.y = _spin(s.ang.y, t1, k, p.spin_stop)
 		return t - t1
-	# rolling: v' = -a - c·v  =>  v(t) = (v0 + a/c)·e^-ct - a/c   (c = 0: v(t) = v0 - a·t)
-	var c := p.damp
-	var t_stop := 0.0
-	if speed > 0.0:
-		t_stop = log(1.0 + c * speed / a_roll) / c if c > DAMP_EPS else speed / a_roll
-	var t2 := minf(t, t_stop)
+	# rolling: constant drag a (+ viscous damp), ramping up below settle_speed; closed form per stretch
+	var t_used := 0.0
 	if speed > 0.0:
 		var dx := vx / speed
 		var dz := vz / speed
-		var dist: float
-		var sp: float
-		if c > DAMP_EPS:
-			var q := a_roll / c
-			var e := exp(-c * t2)
-			dist = (speed + q) * (1.0 - e) / c - q * t2
-			sp = maxf((speed + q) * e - q, 0.0)
-		else:
-			dist = speed * t2 - 0.5 * a_roll * t2 * t2
-			sp = maxf(speed - a_roll * t2, 0.0)
-		s.pos += Vector3(dx * dist, 0.0, dz * dist)
-		s.lin.x = dx * sp
-		s.lin.z = dz * sp
+		var run := _roll(speed, t, a_roll, p)
+		s.pos += Vector3(dx * run.x, 0.0, dz * run.x)
+		s.lin.x = dx * run.y
+		s.lin.z = dz * run.y
 		s.ang.x = s.lin.z / r
 		s.ang.z = -s.lin.x / r
+		t_used = t - run.z
 	if p.tilt != Vector2.ZERO and speed > 0.0:  # host applies tilt to moving balls only
-		var tt := t2
-		s.pos += Vector3(0.5 * p.tilt.x * tt * tt, 0.0, 0.5 * p.tilt.y * tt * tt)
-		s.lin.x += p.tilt.x * tt
-		s.lin.z += p.tilt.y * tt
+		s.pos += Vector3(0.5 * p.tilt.x * t_used * t_used, 0.0, 0.5 * p.tilt.y * t_used * t_used)
+		s.lin.x += p.tilt.x * t_used
+		s.lin.z += p.tilt.y * t_used
 		s.ang.x = s.lin.z / r
 		s.ang.z = -s.lin.x / r
-	s.ang.y *= decay
+	s.ang.y = _spin(s.ang.y, t, k, p.spin_stop)
 	return 0.0
+
+
+## Spin about the table normal: dw/dt = -k·w - stop·sign(w). Reaches zero and stays there.
+static func _spin(w: float, t: float, k: float, stop: float) -> float:
+	var a := absf(w)
+	if k > DAMP_EPS:
+		var q := stop / k
+		a = (a + q) * exp(-k * t) - q
+	else:
+		a -= stop * t
+	return signf(w) * maxf(a, 0.0)
+
+
+## Roll from speed v0 for up to t s. Returns (distance, speed after, time left): drag a, ramping to (1 + boost)·a below settle_speed.
+static func _roll(v0: float, t: float, a: float, p: Params) -> Vector3:
+	var vc := p.settle_speed if p.settle_boost > 0.0 else 0.0
+	var dist := 0.0
+	var v := v0
+	var left := t
+	if v > vc:  # v' = -a - c·v down to vc (or to a stop when the ramp is off)
+		var seg := _run(v, vc, left, a, -p.damp)
+		dist += seg.x
+		v = seg.y
+		left = seg.z
+	if left > 0.0 and v > 0.0:  # v' = -a·(1 + boost·(1 - v/vc)) - c·v, linear in v
+		var seg := _run(v, 0.0, left, a * (1.0 + p.settle_boost), a * p.settle_boost / vc - p.damp)
+		dist += seg.x
+		v = seg.y
+		left = seg.z
+	return Vector3(dist, v, left)
+
+
+## One linear stretch v' = -A + m·v from v0 down to v1 (or for t s, whichever ends first): (distance, speed, time left).
+static func _run(v0: float, v1: float, t: float, A: float, m: float) -> Vector3:
+	var flat := absf(m) <= DAMP_EPS
+	var K := 0.0 if flat else A / m
+	var t_to := (v0 - v1) / A if flat else log((v1 - K) / (v0 - K)) / m
+	var dt := minf(t, t_to)
+	var v: float
+	var d: float
+	if flat:
+		v = v0 - A * dt
+		d = v0 * dt - 0.5 * A * dt * dt
+	else:
+		var e := exp(m * dt)
+		v = K + (v0 - K) * e
+		d = K * dt + (v0 - K) * (e - 1.0) / m
+	if t >= t_to:
+		v = v1
+	return Vector3(d, maxf(v, 0.0), t - dt)

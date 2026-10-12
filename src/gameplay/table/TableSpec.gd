@@ -50,6 +50,14 @@ const BASE_BOUNCE := 1.0
 @export var ball_cascade_enabled := true
 @export_range(0.0, 0.1, 0.0005) var rolling_resistance := 0.025      # real cloth 0.005-0.015; the break settles in 5 s at 0.035, 8 s at 0.025, 9 s at 0.02, 20 s at 0.01 (hard ceiling 12 s)
 @export_range(0.0, 2.0, 0.01) var spin_decay := 0.77               # english about the table normal bleeds at rolling_resistance × this: kept at the old 0.0193
+## The creep tail (adhoc-1012a): constant drag alone takes 1.2 s to stop a 0.3 m/s ball, and english decays only exponentially.
+## Below `settle_speed_mps` the drag ramps up to (1 + settle_boost)× at standstill; spin about the vertical also loses a constant
+## `spin_stop_rad_s2` (pivot friction), so it reaches zero instead of halving forever.
+@export_range(0.0, 1.0, 0.01) var settle_speed_mps := 0.30
+@export_range(0.0, 20.0, 0.1) var settle_boost := 8.0
+@export_range(0.0, 30.0, 0.1) var spin_stop_rad_s2 := 4.0
+## A tilted table (Event) pulls moving balls downhill by at most this × the rolling drag, so friction always wins and a shot ends.
+@export_range(0.0, 1.0, 0.01) var tilt_max_vs_roll := 0.75
 ## Godot's project default is 0.1/s on both, which is drag no real ball has: ours are explicit, per ball, replace-mode.
 @export_range(0.0, 0.5, 0.005) var ball_linear_damp := 0.0
 @export_range(0.0, 0.5, 0.005) var ball_angular_damp := 0.0
@@ -78,6 +86,7 @@ const LIVE_FIELDS: Array[StringName] = [
 	&"cushion_friction", &"cloth_friction", &"ball_friction", &"ball_restitution", &"ball_cascade_enabled",
 	&"rolling_resistance", &"spin_decay", &"ball_linear_damp", &"ball_angular_damp", &"rest_speed_mps",
 	&"rest_ang_rad_s", &"cup_friction", &"cup_bounce", &"ccd_step_radii",
+	&"settle_speed_mps", &"settle_boost", &"spin_stop_rad_s2", &"tilt_max_vs_roll",
 ]
 
 ## derived — names kept so existing callers do not change

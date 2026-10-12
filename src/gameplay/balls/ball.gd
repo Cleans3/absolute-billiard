@@ -294,9 +294,12 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	_set_resting(false)
 	if not is_cue_ball:
 		continuous_cd = speed > _ccd_speed
+	var inertia := 0.4 * mass * radius * radius
+	var dt := state.step
 	if speed < 0.001:
 		# a ball spinning in place (english after a stop) must still bleed it, or it never rests (~7 s tail)
 		state.apply_torque(Vector3.DOWN * state.angular_velocity.y * mass * radius * spec.rolling_resistance * spec.spin_decay)
+		_stop_spin(state, inertia, dt)
 		_last_good_y = state.linear_velocity.y
 		return
 	var up := Vector3.UP
@@ -304,15 +307,27 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if sim != null:
 		mu *= sim.cloth_friction_mult
 		if sim.table_tilt_deg != 0.0:
-			var t := deg_to_rad(sim.table_tilt_deg)
-			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * _g * sin(t))
+			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * sim.tilt_accel(spec))
 	var g := _g
 	var dir := v / speed
-	# Coulomb-like: magnitude independent of speed, opposing travel
-	state.apply_central_force(-dir * mass * g * mu)
+	# Coulomb-like, opposing travel; a ball that has stopped slipping also settles (drag ramps up as it slows), and
+	# never reverses within one step
+	var w := state.angular_velocity
+	var slip := Vector2(v.x + radius * w.z, v.z - radius * w.x).length()
+	var settle := BallMotion.settle_factor(speed, spec.settle_speed_mps, spec.settle_boost * clampf(1.0 - slip / BallMotion.SETTLE_SLIP, 0.0, 1.0))
+	var drag := minf(g * mu * settle, speed / dt)
+	state.apply_central_force(-dir * mass * drag)
 	# slow the roll in step with the slide (I = 2/5 m R², α = a/R) so it stays pure rolling
-	state.apply_torque(-up.cross(dir) * 0.4 * mass * radius * g * mu)
+	state.apply_torque(-up.cross(dir) * 0.4 * mass * radius * drag)
 	# english about the table normal bleeds off faster than roll
 	var spin := up * state.angular_velocity.dot(up)
 	state.apply_torque(-spin * mass * radius * mu * spec.spin_decay)
+	_stop_spin(state, inertia, dt)
 	_last_good_y = state.linear_velocity.y
+
+
+## Constant (pivot) loss of spin about the table normal, never past zero within one step.
+func _stop_spin(state: PhysicsDirectBodyState3D, inertia: float, dt: float) -> void:
+	var w := state.angular_velocity.y
+	if w != 0.0:
+		state.apply_torque(Vector3.DOWN * signf(w) * inertia * minf(spec.spin_stop_rad_s2, absf(w) / dt))

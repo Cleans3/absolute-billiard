@@ -28,7 +28,7 @@ func _init() -> void:
 func _run() -> void:
 	await physics_frame
 	await _scenario("plain", 1.0, 0.0, EVENT_BUDGET)
-	await _scenario("modded", 0.7, 0.3, MODDED_EVENT_CEILING)
+	await _scenario("modded", 0.7, 1.0, MODDED_EVENT_CEILING)
 	print("SIMDIFF OK")
 	quit()
 

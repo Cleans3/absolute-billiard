@@ -51,7 +51,7 @@ jobs:
         run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15
 
       - name: perf_break with table-stat Effects (events/shot <= 400)
-        run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15 --cloth=0.85 --tilt=0.3
+        run: godot --headless --path . --fixed-fps 60 res://src/debug/perf_break.tscn -- --runs=5 --ci=1 --fixed=1 --step-limit-ms=15 --cloth=0.85 --tilt=1.0
 
       - name: Export PCK (Android M0 preset)
         run: |

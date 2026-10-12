@@ -12,6 +12,7 @@ const PAGES := ["Feel", "Shots", "Table", "Game", "View"]
 const GROUPS := {
 	"Ball to ball": [&"ball_cascade_enabled", &"ball_restitution", &"ball_friction"],
 	"Cloth and rolling": [&"cloth_friction", &"rolling_resistance", &"spin_decay", &"ball_linear_damp", &"ball_angular_damp"],
+	"Settling (creep tail)": [&"settle_speed_mps", &"settle_boost", &"spin_stop_rad_s2", &"tilt_max_vs_roll"],
 	"Cushion": [&"cushion_restitution", &"cushion_restitution_min", &"cushion_soft_speed_mps", &"cushion_hard_speed_mps", &"cushion_friction"],
 	"Rest, pockets, CCD": [&"rest_speed_mps", &"rest_ang_rad_s", &"cup_friction", &"cup_bounce", &"ccd_step_radii"],
 }

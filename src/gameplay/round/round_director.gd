@@ -382,8 +382,7 @@ func _on_sim_shot_started(_ball: Ball, intent: ShotIntent) -> void:
 	_off_table.clear()
 	_rest_pos.clear()
 	for b in _balls:
-		if not b.is_pocketed:
-			_rest_pos[b] = _local(b)
+		_rest_pos[b] = _local(b)  # a ball already in a cup too: it is put back near its pocket
 	set_physics_process(true)
 	shot_started.emit(_shot_id, _shooter_id)
 
@@ -489,8 +488,8 @@ func _return_stray(ball: Ball) -> void:
 
 
 func _on_all_resting() -> void:
-	if not shot_in_progress:
-		return
+	if not shot_in_progress or not multiplayer.is_server():
+		return  # the host resolves a Shot; a client's own settling must not retire or respawn anything (its `_rest_pos` is empty)
 	_retire_off_table()
 	var scratched := false
 	var whiffed := true
@@ -559,7 +558,9 @@ func _respawn_seed(ball: Ball) -> int:
 
 ## Back at its last resting spot, or the nearest clear one if another ball has settled there.
 func _respawn_object(ball: Ball) -> void:
-	var spot := RackDropper.place_near(table.spec, table.layout, _rest_pos[ball], RackDropper.interior(table.spec), _positions_except(ball), _respawn_seed(ball))
+	var region := RackDropper.interior(table.spec)
+	var near: Vector2 = _rest_pos.get(ball, _local(ball))  # a ball spawned mid-shot has no strike-time spot
+	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), _respawn_seed(ball))
 	_off_table.erase(ball)
 	ball.restore(_world(spot, ball))
 
