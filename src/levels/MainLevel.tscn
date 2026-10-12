@@ -34,6 +34,7 @@
 [ext_resource type="Script" path="res://src/gameplay/story/story_director.gd" id="story_director"]
 [ext_resource type="Script" path="res://src/ui/story_cards.gd" id="story_cards"]
 [ext_resource type="Script" path="res://src/ui/slot_screen.gd" id="slot_screen"]
+[ext_resource type="Script" path="res://src/gameplay/fx/impact_fx.gd" id="impact_fx"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -124,6 +125,11 @@ skins = NodePath("../BarSkins")
 [node name="QualityManager" type="Node" parent="." node_paths=PackedStringArray("sim")]
 script = ExtResource("17_quality")
 sim = NodePath("../Table/PhysicsSim")
+
+[node name="ImpactFx" type="Node3D" parent="." node_paths=PackedStringArray("round_director", "table")]
+script = ExtResource("impact_fx")
+round_director = NodePath("../RoundDirector")
+table = NodePath("../Table")
 
 [node name="Bar" type="Node3D" parent="."]
 script = ExtResource("14_bar")
