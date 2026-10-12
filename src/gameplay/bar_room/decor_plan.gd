@@ -70,8 +70,8 @@ const ITEMS: Array = [
 	[&"lamp_s", &"furniture", "lampSquareFloor", Vector3(-4.0, 0.0, 6.78), 0.0, &"floor"],
 	# west wall
 	[&"coatrack", &"furniture", "coatRackStanding", Vector3(-6.62, 0.0, -0.85), 0.0, &"floor", 1.0, &"wood"],
-	[&"sidetable", &"furniture", "sideTable", Vector3(-6.7, 0.0, 0.1), AGAINST_WEST, &"floor", 1.0, &"wood"],
-	[&"radio", &"furniture", "radio", Vector3(-6.7, 0.76, 0.1), AGAINST_WEST, &"top"],
+	[&"sidetable", &"furniture", "sideTable", Vector3(-6.7, 0.0, 3.65), AGAINST_WEST, &"floor", 1.0, &"wood"],
+	[&"radio", &"furniture", "radio", Vector3(-6.7, 0.76, 3.65), AGAINST_WEST, &"top"],
 	# east wall, north of the counter aisle
 	[&"barrel_a", &"survival", "barrel", Vector3(6.55, 0.0, -1.1), 0.0, &"floor", 1.0, &"wood"],
 	[&"barrel_b", &"survival", "barrel", Vector3(6.6, 0.0, -0.5), 0.0, &"floor", 1.0, &"wood"],
@@ -152,7 +152,7 @@ static func floor_keep_clear() -> Array[Rect2]:
 	for t: Vector2 in [Vector2(-5.2, 2.6), Vector2(-5.2, 4.4), Vector2(-2.8, 5.6)]:
 		r.append(_rect(t.x - 1.0, t.y - 1.0, t.x + 1.0, t.y + 1.0))  # table + its two stools
 	r.append(_circle_rect(Vector3(-3.7, 0.0, -1.0), 1.2))  # GO LIVE pedestal (flow)
-	r.append(_rect(-7.0, 0.8, -4.9, 2.2))          # slot machine (adhoc-1012a): 0.9 x 0.8 m at (-6.3, 1.5) on the west wall, facing +x, + 1.2 m clear in front
+	r.append(_rect(-7.5, 0.3, -5.1, 2.7))          # slot machine reach zone (alpha, supersedes the contract box): the slot at (-6.3, 1.5) on the west wall, facing +x
 	for p: Array in Bar.PROPS:
 		r.append(_circle_rect(p[1], Bar.REACH_ZONE_RADIUS))
 	return r
