@@ -1,14 +1,14 @@
 class_name Mirror
 extends Node3D
 ## The big wall mirror (C14, 06 P26, adhoc-1012a). Two layers, so nothing re-renders the room per frame:
-## the room (shell + table, ROOM_LAYER) is captured once into a 6-face cube from CAPTURE_AT and box-projected per pixel from the
-## live eye in the glass shader (re-captured on a table rebuild or a bar skin change); the avatars (LAYER + the local head) are a
-## per-frame window pass: a frustum camera mirrored through the glass whose near plane IS the glass, transparent background.
+## the room shell (ROOM_LAYER) is captured once into a 6-face cube from CAPTURE_AT and box-projected per pixel from the live eye
+## in the glass shader (re-captured on a bar skin change); the table and the avatars (LAYER + the local head) are a per-frame
+## window pass (the table is too near the capture point for a box projection): a frustum camera mirrored through the glass whose near plane IS the glass, transparent background.
 ## The window pass runs every frame from the *interpolated* eye (a throttled or tick-time eye is what made the old mirror swim).
 ## Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
 
-const LAYER := Humanoid.MIRROR_LAYER      ## avatars (Humanoid puts every body on it)
-const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (room shell, table)
+const LAYER := Humanoid.MIRROR_LAYER      ## the window pass: avatars (Humanoid puts every body on it) and the table
+const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (the room shell)
 const SIZE := Vector2(3.6, 2.4)
 const VIEW_PX := Vector2i(576, 384)       ## same 3:2 as the glass
 const FACE_PX := 512                      ## cube face size; halved from SLOW_TIER
@@ -29,7 +29,7 @@ const FACES: Array[Array] = [
 ]
 
 @export var shell: Node3D                 ## the BarRoom: its meshes join the room capture
-@export var table: Node3D                 ## the Table: its own meshes do (not the balls)
+@export var table: Node3D                 ## the Table: its own meshes join the window pass (not the balls)
 @export var skins: Node                   ## BarSkinDirector: a new bar skin re-captures the room
 
 var renders := 0                          ## window-pass frames so far (probes, perf notes)
@@ -66,26 +66,24 @@ func _ready() -> void:
 	_glass.material_override = _mat
 	_glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_build_frame()
-	tag(shell)
-	tag(table)
+	tag(shell, ROOM_LAYER)
+	tag(table, LAYER)
 	if table != null and table.has_signal(&"rebuilt"):
-		table.connect(&"rebuilt", func() -> void:
-			tag(table)
-			capture())
+		table.connect(&"rebuilt", tag.bind(table, LAYER))
 	if skins != null and skins.has_signal(&"skin_applied"):
 		skins.connect(&"skin_applied", func(_s: Variant, _o: int) -> void: capture())
 	capture.call_deferred()
 
 
-## Puts every mesh under `root` (but a ball's, or one in group `no_mirror`) on ROOM_LAYER as well as layer 1; lights, the
-## lightmap and probes go on both mirror layers (a camera whose mask misses them draws unlit: room capture and avatars alike).
-func tag(root: Node) -> void:
+## Puts every mesh under `root` (but a ball's, or one in group `no_mirror`) on `layer` as well as layer 1; lights, the lightmap
+## and probes go on both mirror layers (a camera whose mask misses them draws unlit: room capture and window pass alike).
+func tag(root: Node, layer: int) -> void:
 	if root == null:
 		return
 	for vi: VisualInstance3D in root.find_children("*", "VisualInstance3D", true, false):
 		if vi.get_parent() is RigidBody3D or vi.is_in_group(&"no_mirror"):
 			continue
-		vi.layers |= ROOM_LAYER if vi is GeometryInstance3D else ROOM_LAYER | LAYER
+		vi.layers |= layer if vi is GeometryInstance3D else ROOM_LAYER | LAYER
 
 
 func _process(_delta: float) -> void:
