@@ -1,18 +1,20 @@
 class_name Mirror
 extends Node3D
-## The big wall mirror (C14, 06 P26). A planar reflection on a phone budget: a SubViewport camera sits where the viewer's
-## eye would be behind the glass and looks through the glass rectangle (a frustum camera whose near plane IS the glass, so
-## nothing behind the wall plane is drawn and no oblique-clip maths is needed). It draws only render layer 10 (room shell,
-## table, avatars; balls and props are left out) plus the local head's layer, at 576x384, at most 20 Hz (10 on quality
-## tier 2), and only while the glass is on screen and the viewer is within RANGE_M of it.
+## The big wall mirror (C14, 06 P26, adhoc-1012a). Two layers, so nothing re-renders the room per frame:
+## the room (shell + table, ROOM_LAYER) is captured once into a 6-face cube from CAPTURE_AT and box-projected per pixel from the
+## live eye in the glass shader (re-captured on a table rebuild or a bar skin change); the avatars (LAYER + the local head) are a
+## per-frame window pass: a frustum camera mirrored through the glass whose near plane IS the glass, transparent background.
+## The window pass runs every frame from the *interpolated* eye (a throttled or tick-time eye is what made the old mirror swim).
 ## Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
 
-const LAYER := Humanoid.MIRROR_LAYER
+const LAYER := Humanoid.MIRROR_LAYER      ## avatars (Humanoid puts every body on it)
+const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (room shell, table)
 const SIZE := Vector2(3.6, 2.4)
 const VIEW_PX := Vector2i(576, 384)       ## same 3:2 as the glass
+const FACE_PX := 512                      ## cube face size; halved from SLOW_TIER
+const CAPTURE_AT := Vector3(0.0, 0.2, 2.5) ## local: in front of the glass at about eye height
 const RANGE_M := 8.0
-const RATE_HZ := 20.0
-const SLOW_TIER := 2                      ## QualityManager tier from which the rate halves
+const SLOW_TIER := 2                      ## QualityManager tier from which the window pass and the faces halve
 const FAR_M := 40.0
 const NEAR_MIN_M := 0.05
 const FRAME_M := 0.14                     ## width of the wood frame
@@ -20,14 +22,22 @@ const FRAME_BACK := -0.07                 ## the frame reaches back to the wall,
 const FRAME_FRONT := 0.03
 const WOOD := Color(0.24, 0.11, 0.05)
 const BRASS := Color(0.80, 0.60, 0.22)
+## Cube faces as [forward, up], world axes; mirror.gdshader's F/U arrays must match.
+const FACES: Array[Array] = [
+	[Vector3.RIGHT, Vector3.UP], [Vector3.LEFT, Vector3.UP], [Vector3.UP, Vector3.BACK],
+	[Vector3.DOWN, Vector3.FORWARD], [Vector3.BACK, Vector3.UP], [Vector3.FORWARD, Vector3.UP],
+]
 
-@export var shell: Node3D                 ## the BarRoom: its meshes join the mirror layer
+@export var shell: Node3D                 ## the BarRoom: its meshes join the room capture
 @export var table: Node3D                 ## the Table: its own meshes do (not the balls)
+@export var skins: Node                   ## BarSkinDirector: a new bar skin re-captures the room
 
-var renders := 0                          ## render requests so far (probes, perf notes)
+var renders := 0                          ## window-pass frames so far (probes, perf notes)
+var captures := 0                         ## room captures so far
 
-var _acc := 0.0
-var _fresh := false                       ## the viewport holds an image of the current view
+var _mat: ShaderMaterial
+var _capturing := false
+var _recapture := false
 
 @onready var _view: SubViewport = $View
 @onready var _cam: Camera3D = $View/Cam
@@ -39,50 +49,59 @@ var _fresh := false                       ## the viewport holds an image of the 
 func _ready() -> void:
 	_view.size = VIEW_PX
 	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_view.transparent_bg = true
+	_view.use_hdr_2d = false              # 8-bit sRGB like the faces: the shader reads both as source_color
 	_view.msaa_3d = Viewport.MSAA_DISABLED
 	_view.positional_shadow_atlas_size = 0  # the glass shows lit avatars, not their shadows: no atlas to fill
 	_view.gui_disable_input = true
 	_cam.projection = Camera3D.PROJECTION_FRUSTUM
 	_cam.keep_aspect = Camera3D.KEEP_HEIGHT  # a frustum camera's `size` is then the window's height at the near plane
 	_cam.cull_mask = LAYER | Humanoid.HEAD_LAYER
-	var mat := ShaderMaterial.new()
-	mat.shader = preload("res://src/shaders/mirror.gdshader")
-	mat.set_shader_parameter(&"view", _view.get_texture())
-	_glass.material_override = mat
+	_cam.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF  # placed per frame from the interpolated eye
+	_mat = ShaderMaterial.new()
+	_mat.shader = preload("res://src/shaders/mirror.gdshader")
+	_mat.set_shader_parameter(&"avatars", _view.get_texture())
+	_mat.set_shader_parameter(&"box_min", Vector3(-DecorPlan.HALF, 0.0, -DecorPlan.HALF))
+	_mat.set_shader_parameter(&"box_max", Vector3(DecorPlan.HALF, DecorPlan.CEIL, DecorPlan.HALF))
+	_glass.material_override = _mat
 	_glass.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	_build_frame()
 	tag(shell)
 	tag(table)
 	if table != null and table.has_signal(&"rebuilt"):
-		table.connect(&"rebuilt", tag.bind(table))
+		table.connect(&"rebuilt", func() -> void:
+			tag(table)
+			capture())
+	if skins != null and skins.has_signal(&"skin_applied"):
+		skins.connect(&"skin_applied", func(_s: Variant, _o: int) -> void: capture())
+	capture.call_deferred()
 
 
-## Puts every visual under `root` (but a ball's, or one in group `no_mirror`) on the mirror layer as well as layer 1. Lights,
-## the lightmap and the reflection probes count: a camera whose mask misses their layer draws the room unlit.
+## Puts every mesh under `root` (but a ball's, or one in group `no_mirror`) on ROOM_LAYER as well as layer 1; lights, the
+## lightmap and probes go on both mirror layers (a camera whose mask misses them draws unlit: room capture and avatars alike).
 func tag(root: Node) -> void:
 	if root == null:
 		return
 	for vi: VisualInstance3D in root.find_children("*", "VisualInstance3D", true, false):
-		if not vi.get_parent() is RigidBody3D and not vi.is_in_group(&"no_mirror"):
-			vi.layers |= LAYER
+		if vi.get_parent() is RigidBody3D or vi.is_in_group(&"no_mirror"):
+			continue
+		vi.layers |= ROOM_LAYER if vi is GeometryInstance3D else ROOM_LAYER | LAYER
 
 
-func _process(delta: float) -> void:
+func _process(_delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
-	if cam != null and _notifier.is_on_screen():
-		tick(delta, cam.global_position)
+	tick(cam.get_global_transform_interpolated().origin if cam != null and _notifier.is_on_screen() else Vector3.INF)
 
 
-## One frame of the schedule for a viewer at `eye`: draws when the viewer is in range of the glass and the last image is
-## older than the period (20 Hz, 10 Hz on quality tier 2). Returns whether it drew.
-func tick(delta: float, eye: Vector3) -> bool:
-	if not in_range(eye):
+## One frame for a viewer at `eye` (Vector3.INF = glass off screen): the window pass draws this frame only while the
+## viewer is in front of the glass and in range. Returns whether it drew.
+func tick(eye: Vector3) -> bool:
+	if not eye.is_finite() or not in_range(eye):
+		_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		return false
-	_acc += delta
-	var period := 1.0 / (RATE_HZ * (0.5 if QualityManager.current_tier >= SLOW_TIER else 1.0))
-	if _fresh and _acc < period:
-		return false
-	_acc = 0.0
+	var px := VIEW_PX / 2 if QualityManager.current_tier >= SLOW_TIER else VIEW_PX
+	if _view.size != px:
+		_view.size = px
 	render_for(eye)
 	return true
 
@@ -92,7 +111,7 @@ func in_range(eye: Vector3) -> bool:
 	return (eye - global_position).dot(global_basis.z) >= NEAR_MIN_M and Vector2(eye.x - global_position.x, eye.z - global_position.z).length() <= RANGE_M
 
 
-## Aim the camera for a viewer at `eye` and draw once.
+## Aim the window camera for a viewer at `eye` and draw this frame.
 func render_for(eye: Vector3) -> void:
 	var n := global_basis.z.normalized()
 	var up := global_basis.y.normalized()
@@ -105,8 +124,55 @@ func render_for(eye: Vector3) -> void:
 	_cam.near = d
 	_cam.far = d + FAR_M
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
-	_fresh = true
 	renders += 1
+
+
+## Renders the room's six cube faces from CAPTURE_AT into the glass's texture array. Needs a renderer (headless: no-op).
+## A request while one runs is queued, not dropped (a skin can land mid-capture).
+func capture() -> void:
+	if _capturing:
+		_recapture = true
+		return
+	if DisplayServer.get_name() == "headless":
+		return
+	_capturing = true
+	var px := FACE_PX / 2 if QualityManager.current_tier >= SLOW_TIER else FACE_PX
+	var vp := SubViewport.new()
+	vp.size = Vector2i(px, px)
+	vp.use_hdr_2d = false
+	vp.msaa_3d = Viewport.MSAA_DISABLED
+	vp.positional_shadow_atlas_size = 0
+	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	var cam := Camera3D.new()
+	cam.fov = 90.0
+	cam.near = 0.05
+	cam.far = FAR_M
+	cam.cull_mask = ROOM_LAYER
+	cam.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
+	vp.add_child(cam)
+	add_child(vp)
+	var at := to_global(CAPTURE_AT)
+	var images: Array[Image] = []
+	for face: Array in FACES:
+		var f: Vector3 = face[0]
+		var u: Vector3 = face[1]
+		cam.global_transform = Transform3D(Basis(u.cross(-f), u, -f), at)
+		vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+		await RenderingServer.frame_post_draw
+		var img := vp.get_texture().get_image()
+		img.convert(Image.FORMAT_RGBA8)
+		images.append(img)
+	vp.queue_free()
+	var faces := Texture2DArray.new()
+	faces.create_from_images(images)
+	_mat.set_shader_parameter(&"room", faces)
+	_mat.set_shader_parameter(&"cap_pos", at)
+	_mat.set_shader_parameter(&"has_room", true)
+	captures += 1
+	_capturing = false
+	if _recapture:
+		_recapture = false
+		capture()
 
 
 # --- frame ---------------------------------------------------------------------------------------------
