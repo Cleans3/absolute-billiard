@@ -90,6 +90,7 @@ func _run() -> void:
 	house = world.slot_house
 	econ = level.get_node("EconomyManager")
 	fx = level.get_node("EffectManager")
+	fx._on_round_ended(&"timer", 0)  # the Night's house pour (02 §3.10) takes a Drink slot; these checks want all three free
 	stream = level.get_node("StreamManager")
 	player = level.get_node("PlayerSpawner").get_local_player()
 	machine = get_first_node_in_group(&"slot_machine")

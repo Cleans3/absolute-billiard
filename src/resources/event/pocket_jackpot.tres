@@ -9,6 +9,6 @@ id = &"pocket_jackpot"
 display_name = "Pocket Jackpot"
 story_line = "Moe likes a show. One pocket pays like a slot machine tonight."
 tier = 2
-min_night = 2
+min_night = 1
 opportunity = 2
 opportunity_mult = 3.0

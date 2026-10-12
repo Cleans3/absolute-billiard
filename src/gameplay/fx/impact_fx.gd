@@ -19,6 +19,11 @@ const TIER_SCALE := [1.0, 0.6, 0.35]
 const TIER_HITS_PER_FRAME := [6, 4, 2]
 const WORDS := ["CLACK!", "CRACK!", "WHAM!", "SMACK!"]
 const LABEL_GAP_MSEC := 160
+const EVENT_COLORS: Array[Color] = [Color(1.0, 0.62, 0.2), Color(1.0, 0.25, 0.65)]  # hazard tier 1, tier 2+
+const GO_COLOR := Color(0.55, 1.0, 0.6)
+const FLAME_COLOR := Color(1.0, 0.38, 0.08)
+const POP_REF_M := 2.0  # a pop this far from the camera is drawn at its table size; farther ones grow so the far end of the table still reads
+const POP_FAR_MAX := 2.6
 const LABEL_PX := 0.0022  # Label3D metres per pixel at size 1 (fixed_size: constant on screen)
 const SHAKE_M := 0.12  # camera frustum offset at full trauma
 const COMBO_COLORS: Array[Color] = [
@@ -60,6 +65,14 @@ var _next := {&"spark": 0, &"fountain": 0, &"fizzle": 0, &"pop": 0, &"label": 0}
 var _light: OmniLight3D
 var _light_energy := 0.0
 var _stage: FxStage
+var _effects: EffectManager
+var _sched: EventScheduler
+var _beacon: MeshInstance3D  # the Pocket Jackpot's pocket: a pulsing ring and "x3" for the whole Round
+var _beacon_label: Label3D
+var _beacon_tween: Tween
+var _beacon_at := Vector3.INF
+var _flames := false  # the `flames` visual hook (Flaming Shot, 03 §3.8) is live: every hit throws embers
+var _drinks_seen := {}  # "peer:drink:gift" -> true, so a refreshed Drink does not announce twice
 var _trauma := 0.0
 var _cam: Camera3D
 var _frame_id := -1
@@ -93,7 +106,126 @@ func setup(p_table: Table, p_director: RoundDirector) -> void:
 		_sim.connect(&"frame_received", feed_frame)
 	round_director.trick_detected.connect(_on_trick)
 	round_director.shot_ended.connect(_on_shot_ended)
+	_connect_beats()
 	set_process(false)
+
+
+## The beats the game itself has: a hazard starting, a Drink going down, GO, a cleared table. Siblings found by path (a probe
+## harness has none of them); every peer gets the same signals (EventScheduler.apply_event is call_local, the Effects are mirrored).
+func _connect_beats() -> void:
+	_sched = get_node_or_null(^"../EventScheduler") as EventScheduler
+	if _sched != null:
+		_sched.event_applied.connect(_on_event_applied)
+	_effects = get_node_or_null(^"../EffectManager") as EffectManager
+	if _effects != null:
+		_effects.live_changed.connect(_on_live_changed)
+		_effects.visual_hook_started.connect(func(tag: StringName) -> void: _flames = _flames or tag == &"flames")
+		_effects.visual_hook_stopped.connect(func(tag: StringName) -> void: _flames = _flames and tag != &"flames")
+	var loop := get_node_or_null(^"../GameLoop") as GameLoop
+	if loop != null:
+		loop.round_started.connect(_on_round_started)
+		loop.round_ended.connect(_on_round_ended)
+
+
+func _on_event_applied(event_id: StringName, tier: int, mult: float) -> void:
+	var e := FxCatalog.event(event_id)
+	if e == null:
+		return
+	var color := EVENT_COLORS[clampi(tier, 1, EVENT_COLORS.size()) - 1]
+	var line := "NEW RULES"
+	match e.opportunity:
+		Event.Opportunity.NEXT_POT:
+			line = "NEXT POT PAYS x%d" % roundi(e.opportunity_mult)
+		Event.Opportunity.RANDOM_POCKET:
+			line = "ONE POCKET PAYS x%d" % roundi(e.opportunity_mult)
+		_:
+			if absf(mult - 1.0) > 0.001:
+				line = "PAYS x%.2f" % mult
+	_stage.banner(FxStage.ROW_TRICK, e.display_name.to_upper() + "!", color, 0.9)
+	_stage.banner(FxStage.ROW_MINOR, "HAZARD  -  " + line, color.lerp(Color.WHITE, 0.5), 1.0)
+	if _tier() < 2:
+		_stage.flash(color, 0.3, 0.8)
+	_shake(0.45)
+	if e.opportunity == Event.Opportunity.RANDOM_POCKET and _sched != null:
+		_show_beacon(_sched.active_pocket, e.opportunity_mult)
+	_fire(&"hazard", mult)
+
+
+## The paying pocket of a Pocket Jackpot, marked on the table until the Round ends (it was announced nowhere: the crew could not see it).
+func _show_beacon(pocket_id: StringName, mult: float) -> void:
+	if not table.pockets.has(pocket_id):
+		return
+	var p: Vector3 = table.pockets[pocket_id].position
+	_beacon_at = Vector3(p.x, table.to_global(Vector3(0.0, table.cloth_y(), 0.0)).y + _r * 1.5, p.z)
+	_beacon.global_position = _beacon_at
+	_beacon.scale = Vector3.ONE * _r * 16.0
+	_beacon.set_instance_shader_parameter(&"tint", Color(1.0, 0.82, 0.2))
+	_beacon.set_instance_shader_parameter(&"rays", 8.0)
+	_beacon.visible = true
+	_beacon_label.text = "x%d" % roundi(mult)
+	_beacon_label.modulate = Color(1.0, 0.85, 0.25)
+	_beacon_label.pixel_size = LABEL_PX * 1.7
+	_beacon_label.global_position = _beacon_at + Vector3(0.0, _r * 4.0, 0.0)
+	_beacon_label.visible = true
+	if _beacon_tween != null:
+		_beacon_tween.kill()
+	_beacon_tween = create_tween().set_loops()
+	_beacon_tween.tween_method(func(v: float) -> void: _beacon.set_instance_shader_parameter(&"progress", v), 0.0, 1.0, 1.2)
+
+
+func _hide_beacon() -> void:
+	if _beacon_tween != null:
+		_beacon_tween.kill()
+		_beacon_tween = null
+	_beacon.visible = false
+	_beacon_label.visible = false
+	_beacon_at = Vector3.INF
+
+
+## A Drink that just landed on this peer (bought, a gift, a slot win, the house): its name, in its tier's colour.
+func _on_live_changed() -> void:
+	var local := multiplayer.get_unique_id()
+	var now := {}
+	for r in _effects.live_drinks():
+		var key := "%d:%s:%s" % [r.peer_id, r.drink.id, r.gift]
+		now[key] = true
+		if not _drinks_seen.has(key) and r.peer_id == local:
+			_drink_banner(r.drink)
+	_drinks_seen = now
+
+
+func _drink_banner(d: Drink) -> void:
+	var color := DrinkTier.colour(d.tier)
+	_stage.banner(FxStage.ROW_MINOR, d.display_name.to_upper() + "!", color, 1.1)
+	if _tier() < 2:
+		_stage.flash(color, 0.14, 0.4)
+	_fire(&"drink", float(d.tier))
+
+
+func _on_round_started(round_index: int, _time: float, _hazard_tier: int) -> void:
+	_stage.banner(FxStage.ROW_COMBO, "ROUND %d - GO!" % round_index, GO_COLOR, 1.0)
+	if _tier() < 2:
+		_stage.flash(GO_COLOR, 0.12, 0.5)
+	_fire(&"go", float(round_index))
+
+
+func _on_round_ended(reason: StringName, _points: int) -> void:
+	_hide_beacon()
+	match reason:
+		&"cleared":
+			var k := _tier_scale()
+			_stage.banner(FxStage.ROW_TRICK, "TABLE CLEARED!", Color(1.0, 0.85, 0.2), 1.1)
+			_stage.confetti(3, k)
+			if _tier() < 2:
+				_stage.flash(Color(1.0, 0.85, 0.2), 0.3, 0.8)
+			_shake(0.6)
+			_fire(&"cleared", 1.0)
+		&"timer":
+			_stage.banner(FxStage.ROW_COMBO, "TIME!", Color(1.0, 0.45, 0.35), 1.0)
+			_fire(&"time", 0.0)
+		_:
+			_stage.banner(FxStage.ROW_COMBO, "ROUND OVER", Color(0.75, 0.8, 0.95), 0.8)
+			_fire(&"time", 1.0)
 
 
 # ---------------------------------------------------------------- sources
@@ -187,6 +319,12 @@ func _on_trick(trick: TrickShot, shot_id: String) -> void:
 	var color: Color = TRICK_COLORS.get(trick.id, Color.WHITE)
 	var k := _tier_scale()
 	var centre := table.to_global(Vector3(0.0, table.cloth_y() + _r * 14.0, 0.0))
+	if combo.shot_pots == 0:  # a trick on a Shot that potted nothing pays nothing: a word, not a show
+		var title: String = TRICK_TITLES.get(trick.id, "TRICK SHOT!")
+		_stage.banner(FxStage.ROW_MINOR, title, color.lerp(Color.WHITE, 0.35), 0.9)
+		_label(centre, title, color, 1.0, 1.3)
+		_fire(&"trick_minor", trick.multiplier)
+		return
 	_stage.banner(FxStage.ROW_TRICK, TRICK_TITLES.get(trick.id, "TRICK SHOT!"), color, 0.8 + 0.2 * tier)
 	_stage.banner(FxStage.ROW_MINOR, "PAYS x%.2f" % trick.multiplier, color.lerp(Color.WHITE, 0.5), 1.0 + 0.1 * tier)
 	_stage.confetti(tier, k)
@@ -217,6 +355,11 @@ func _hit(kind: int, pos: Vector3, normal: Vector3, strength: float) -> void:
 	var t := clampf(strength / HARD_MPS, 0.0, 1.0)
 	var k := _tier_scale()
 	var up := Vector3.UP
+	if _flames and t > 0.15:  # Flaming Shot: a second, fiery pop and a fountain of embers on every real hit
+		_pop(pos, _r * lerpf(5.0, 12.0, t), FLAME_COLOR, 0.5)
+		_fountain(pos, lerpf(0.4, 0.9, t) * k, FLAME_COLOR)
+		_light_kick(pos, FLAME_COLOR, lerpf(1.0, 3.0, t))
+		_fire(&"flames", strength)
 	match kind:
 		FxHitTap.Kind.BALL:
 			_pop(pos, _r * lerpf(4.0, 10.0, t), Color(1.0, 0.9, 0.55), 0.4)
@@ -252,6 +395,11 @@ func _pot(at: Vector3, color: Color, counts: bool) -> void:
 	_light_kick(at, tint, 2.5 + lvl * 0.6)
 	_shake(0.12 + 0.05 * lvl)
 	var text := "POT!"
+	if _beacon_at.is_finite() and Vector2(at.x, at.z).distance_to(Vector2(_beacon_at.x, _beacon_at.z)) < _r * 3.0:
+		text = "JACKPOT!"
+		_stage.confetti(1, k * 0.6)
+		_shake(0.3)
+		_fire(&"jackpot", 1.0)
 	if c.n >= FxCombo.MIN_ANNOUNCE:
 		text = "COMBO x%d" % c.n
 		_stage.banner(FxStage.ROW_COMBO, text + "!".repeat(mini(lvl >> 1, 3)), COMBO_COLORS[lvl], 0.85 + 0.12 * lvl)
@@ -295,6 +443,14 @@ func _frame_ok() -> bool:
 	return _frame_hits <= TIER_HITS_PER_FRAME[_tier()]
 
 
+## 1 up close, up to POP_FAR_MAX at the far end of the table: the camera stands at the near rail, a pop in metres shrinks to a speck there.
+func _far_scale(pos: Vector3) -> float:
+	var cam := get_viewport().get_camera_3d()
+	if cam == null:
+		return 1.0
+	return clampf(cam.global_position.distance_to(pos) / POP_REF_M, 1.0, POP_FAR_MAX)
+
+
 func _tier() -> int:
 	return clampi(QualityManager.current_tier, 0, 2)
 
@@ -328,6 +484,10 @@ func _build_pools() -> void:
 		_label_t.append(-1.0)
 		_label_dur.append(1.0)
 		_label_y.append(0.0)
+	_beacon = _add(FxPresets.pop_sprite())
+	_beacon.visible = false
+	_beacon_label = _add(FxPresets.label3d())
+	_beacon_label.visible = false
 	_light = OmniLight3D.new()
 	_light.omni_range = _r * 90.0
 	_light.shadow_enabled = false
@@ -380,7 +540,7 @@ func _pop(pos: Vector3, size: float, color: Color, sec: float) -> void:
 	var i := _take(&"pop", POP_SLOTS)
 	var m := _pops[i]
 	m.global_position = pos
-	m.scale = Vector3.ONE * size
+	m.scale = Vector3.ONE * size * _far_scale(pos)
 	m.set_instance_shader_parameter(&"tint", color)
 	m.set_instance_shader_parameter(&"progress", 0.0)
 	m.set_instance_shader_parameter(&"rays", [5.0, 6.0, 8.0][i % 3])

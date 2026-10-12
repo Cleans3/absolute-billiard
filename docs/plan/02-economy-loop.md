@@ -230,7 +230,7 @@ A slot machine stands against the west wall (footprint centre `Bar.SLOT_AT = (-6
 | `bells` | 3 bells | 7 | 216 | — |
 | `cherries` / `lemons` | 3 cherries / 3 lemons | 4 | 111 each | — |
 | `wild` WILD 8-BALLS | exactly 2 eight-balls | 3 | 52 | a free drink for the spinner |
-| `cherry2` | exactly 2 cherries | 2 | 9.7 | — |
+| `cherry2` | exactly 2 cherries | 2 | 9.7 | hype +0.3 and viewers +150: the chat reacts (one spin in ten) |
 | `cherry1` CHERRY BACK | exactly 1 cherry | 1 | 2.6 | — (the stake back) |
 | `zap` SHORT CIRCUIT | exactly 2 skulls | 0 | 24 | **ZAP** |
 | `miss` | anything else | 0 | 2.3 | — |
@@ -239,13 +239,18 @@ Order of precedence for a mixed hand: three of a kind, then two eight-balls, the
 
 **Chaos is always a real Effect.** A drink is `EffectManager.serve_drink` (its `Effect`s, the 3-per-player cap and the Blackboard line apply); a hazard is `EventScheduler.trigger_now` (the Event's `Effect`s and `reward_mult`; one hazard at a time, never between Rounds where it would outlast its Round); hype and viewers go through `StreamManager`; the ZAP is `PlayerSpawner.knock_away`. The host picks what each chaos entry will be **when it rolls the spin** (a drink the spinner cannot take, a Legendary, an Intermission-only drink in a live Round and a hazard already running are never picked, so the payload never promises something that will not happen) and fires it at the reveal.
 
-**Timeline of one spin** (`SlotMath` timings, identical on every peer): lever at 0 s; drums stop left to right at `1.1 / 1.7 / 2.3 s`; a near-miss (first two drums match, third differs) keeps the last drum going `0.9 s` longer; the host pays and fires the chaos when the last drum lands (`reveal_sec`), the machine settles `0.5 s` later (`spin_sec`, at most `3.7 s`, `MAX_SPIN_SEC`). The stake leaves at the lever, the win arrives with the drum, so the HUD never spoils the reels. A phase change **flushes** a pending reveal at once, so a win is never lost to the Round ending or paid into the next Night.
+**Timeline of one spin** (`SlotMath` timings, identical on every peer): lever at 0 s; drums stop left to right at `0.9 / 1.4 / 1.9 s`; a near-miss (first two drums match, third differs) keeps the last drum going `0.7 s` longer; the host pays and fires the chaos when the last drum lands (`reveal_sec`), the machine settles `0.4 s` later (`spin_sec`, at most `3.0 s`, `MAX_SPIN_SEC`; the result is on the reels within `2.6 s` of the lever, the playtest target is 3 s). The stake leaves at the lever, the win arrives with the drum, so the HUD never spoils the reels. A phase change **flushes** a pending reveal at once, so a win is never lost to the Round ending or paid into the next Night.
 
 **Rules** (all host-side, `WorldInteractions` → `SlotHouse`): the prop and reach (`too_far`), a valid tier (`bad_payload`), phase Intermission or Round live (`slot_closed`), the **shooter is refused while a Shot is in flight** (`shooter_busy`: between shots they may gamble, with the shot clock running; a solo player can use it any time but mid-shot), **one spin at a time** for the whole crew (`busy`: the machine is a single resource; nobody else's play is blocked, they wait ~3 s), and the stake last (`cant_afford`), so a refusal never costs anything. Each refusal has its sentence in `WaitText`. Net: no client RNG, the client's payload is discarded and rebuilt by the host.
 
 **Network.** `slot_spin` is a bare kind (target 0, payload `{tier}`) like `go_live` / `answer_phone`: no `WorldInteraction` resource, **no new RPC**. The host rebuilds the payload into `{tier, bet, stops, win, payout, chaos}` and `world_interaction_applied` carries it to every peer (04 §5); each peer's `SlotMachine` plays the same drums from `stops`, each `SlotScreen` words the result from `win` and `chaos`. Effects and Cash reach clients through their own mirrors (`apply_effect`, `update_cash`).
 
 **Look.** Procedural, one mesh per part, **one material** (`slot_machine.gdshader`: vertex colour tint, `COLOR.a` = chasing bulb, `UV2` = bulb phase / steady glow, an 8-cell symbol atlas `assets/slot/symbols.svg` drawn by `src/tools/slot_art.py`; untextured faces sample its white cell): cobalt cabinet (the room is red), brass deck, three 24-face drums lit from inside, 61 chasing bulbs round the window and the marquee, a lever that is pulled, a LED readout and a `8-BALL SLOTS` marquee (`Label3D`). While spinning the drums smear (`instance uniform blur`); a win flashes the bulbs, a big win strobes them and pops a billboard (`+$120`, `JACKPOT!`, `TRIPLE 7!`, `ZAP!`), a jackpot or a ZAP shakes the cabinet. Dynamic prop, never in the lightmap, no shadow, no light. Budget (`src/tools/screenshot_slot.gd` run, dev PC, the machine filling a third of the view): draw calls +7 idle / +10 with a pop showing, primitives +1.7k idle, one 0.34 MB atlas (07 §2).
+
+
+### 3.10 The house pour (adhoc-1012a playtest)
+Round 1 of a Night has no hazard (06 D4), and a crew that starts a Night at $0 can buy nothing and gamble nothing, so the first Round was the dullest thing in the game (the autoplay playtest, `src/tools/playtest.gd`, counted zero chaos in it).
+`EconomyManager._house_pour()`: on the Night's first Intermission (`round_index == 0`, host) the Bartender pours **every crew member one Common drink on the house**: one seeded pick per Night (`hash([campaign_seed, night, POUR_SALT])`) from `POUR_DRINKS` (Beer, Bar Nuts, Soda Pop, Pretzels, Pickle Juice; Ice Water does nothing and is left out). It is a normal `EffectManager.serve_drink`, so the 3-Drink cap, the Blackboard line and the banner (10 §3.4) apply; it costs no Cash, is not on the shelf and ends with Round 1 like any Drink. Resuming a checkpoint does not pour again (`round_index > 0`).
 
 ---
 

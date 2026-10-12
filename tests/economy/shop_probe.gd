@@ -60,6 +60,9 @@ func _run() -> void:
 	eco = level.get_node("EconomyManager")
 	loop = level.get_node("GameLoop")
 	fx = level.get_node("EffectManager")
+	var poured := fx.live_drinks()
+	_check(poured.size() == 1 and EconomyManager.POUR_DRINKS.has(poured[0].drink.id) and eco.cash == 0, "the first Intermission of a Night pours one house drink, free (%s)" % [poured.map(func(d: Dictionary) -> StringName: return d.drink.id)])
+	fx._on_round_ended(&"timer", 0)  # the house pour takes a Drink slot; these checks want all three free
 	stream = level.get_node("StreamManager")
 	_check(loop.phase == GameLoop.Phase.INTERMISSION, "starts in Intermission")
 	_shelf()

@@ -25,7 +25,7 @@ const WINS := {
 	&"cherries": {title = "CHERRY PIE", mult = 4, chaos = []},
 	&"lemons": {title = "LEMONADE", mult = 4, chaos = []},
 	&"wild": {title = "WILD 8-BALLS", mult = 3, chaos = [&"drink"]},
-	&"cherry2": {title = "TWO CHERRIES", mult = 2, chaos = []},
+	&"cherry2": {title = "TWO CHERRIES", mult = 2, chaos = [&"hype"]},
 	&"cherry1": {title = "CHERRY BACK", mult = 1, chaos = []},
 	&"zap": {title = "SHORT CIRCUIT", mult = 0, chaos = [&"zap"]},
 	&"miss": {title = "NO LUCK", mult = 0, chaos = []},
@@ -37,10 +37,10 @@ const BET_STEP := 5
 const BET_MIN := 10
 
 ## Seconds from the spin to each reel's stop; a near-miss (first two reels match) keeps the third drum going longer.
-const STOP_AT: Array[float] = [1.1, 1.7, 2.3]
-const TEASE_EXTRA := 0.9
-const SETTLE_SEC := 0.5  ## the drum's last bounce, then the readout
-const MAX_SPIN_SEC := 2.3 + 0.9 + 0.5  ## the longest spin: a tease (STOP_AT[2] + TEASE_EXTRA + SETTLE_SEC; the probe checks it)
+const STOP_AT: Array[float] = [0.9, 1.4, 1.9]
+const TEASE_EXTRA := 0.7
+const SETTLE_SEC := 0.4  ## the drum's last bounce, then the readout
+const MAX_SPIN_SEC := 1.9 + 0.7 + 0.4  ## the longest spin: a tease (STOP_AT[2] + TEASE_EXTRA + SETTLE_SEC; the probe checks it); 3.0 s, the playtest's target
 
 
 ## Win id of three stops.

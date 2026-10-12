@@ -17,6 +17,7 @@ const VOTE_TIMEOUT_SEC := 20.0  # [tune]
 @export var table: Table  # pocket ids for pocket_jackpot
 
 var pocket_ids: Array[StringName] = []  # filled from `table` on first use; probes set it directly
+var active_pocket := &""  # the pocket a RANDOM_POCKET Event (pocket_jackpot) pays on this Round, on every peer; ImpactFx marks it
 var rng := RandomNumberGenerator.new()
 
 var _offer: Array[StringName] = []
@@ -189,6 +190,7 @@ func apply_event(event_id: StringName, _round_index: int, pocket_id: StringName)
 	if e == null:
 		return
 	_active = e
+	active_pocket = pocket_id
 	effects.begin_event(e, pocket_id)
 	event_applied.emit(e.id, e.tier, e.reward_mult)
 
@@ -196,6 +198,7 @@ func apply_event(event_id: StringName, _round_index: int, pocket_id: StringName)
 func _on_round_ended(_reason: StringName, _round_points: int) -> void:
 	_half_at = -1.0
 	_chosen = null
+	active_pocket = &""
 	if _active != null:
 		var id := _active.id
 		_active = null
