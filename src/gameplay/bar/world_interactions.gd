@@ -35,7 +35,7 @@ var _cooldown_until := {}  # "peer:kind" -> msec
 var _hostile_this_turn := 0
 var _round_used := {}  # once_per_round kinds
 var _pending: Array[PoolDelta] = []  # payoffs waiting on the Shot's outcome
-var slot_house := SlotHouse.new()  # slot_spin's host rules (docs/plan/02 §3.8)
+var slot_house := SlotHouse.new()  # slot_spin's host rules (docs/plan/02 §3.9)
 
 
 func _ready() -> void:

@@ -1,6 +1,6 @@
 class_name SlotMachine
 extends Node3D
-## The bar slot machine (docs/plan/02 §3.8): cabinet, three drums, lever, bulbs and a readout, built in code. Every peer plays the
+## The bar slot machine (docs/plan/02 §3.9): cabinet, three drums, lever, bulbs and a readout, built in code. Every peer plays the
 ## same spin from the `slot_spin` interaction's payload (the host chose the stops); nothing here decides anything.
 
 signal landed(peer_id: int, payload: Dictionary)  ## the last drum stopped: the host pays now
@@ -20,6 +20,7 @@ var _lever: Node3D
 var _led: Label3D
 var _title: Label3D
 var _pop: Label3D
+var _coins: CPUParticles3D
 var _tween_lever: Tween
 var _tween_pop: Tween
 var _t := 0.0
@@ -46,7 +47,9 @@ func _ready() -> void:
 	add_to_group(&"slot_machine")
 	_mat = ShaderMaterial.new()
 	_mat.shader = SHADER
-	_mat.set_shader_parameter(&"atlas", ATLAS)
+	var atlas := ATLAS.get_image()  # the importer leaves a lossless texture without mipmaps: add them, the drums are seen from across the room
+	atlas.generate_mipmaps()
+	_mat.set_shader_parameter(&"atlas", ImageTexture.create_from_image(atlas))
 	_add_mesh(SlotCabinet.body_mesh(), Vector3.ZERO)
 	var drum := SlotCabinet.drum_mesh()
 	for i in SlotMath.REELS:
@@ -78,6 +81,27 @@ func _ready() -> void:
 	_pop.billboard = BaseMaterial3D.BILLBOARD_ENABLED
 	_pop.no_depth_test = true
 	_pop.visible = false
+	_coins = CPUParticles3D.new()  # a win spits coins from the tray; one draw call while they fly, no extra material
+	_coins.mesh = SlotCabinet.coin_mesh()
+	_coins.material_override = _mat
+	_coins.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_coins.emitting = false
+	_coins.one_shot = true
+	_coins.explosiveness = 0.9
+	_coins.lifetime = 0.9
+	_coins.local_coords = false
+	_coins.position = SlotCabinet.COIN_AT
+	_coins.direction = Vector3(0.0, 0.7, 1.0)
+	_coins.spread = 32.0
+	_coins.initial_velocity_min = 2.0
+	_coins.initial_velocity_max = 3.8
+	_coins.gravity = Vector3(0.0, -9.8, 0.0)
+	_coins.angle_min = 0.0
+	_coins.angle_max = 360.0
+	_coins.angular_velocity_min = -540.0
+	_coins.angular_velocity_max = 540.0
+	_coins.color = SlotCabinet.GOLD
+	add_child(_coins)
 	_home = position
 	set_process(false)
 	_bind.call_deferred()
@@ -223,6 +247,10 @@ func _land() -> void:
 		_celebrate(1.0, Color("FFC93A"), 0.0, "+$%d" % payout, 0.75)
 	elif payout > 0:
 		_celebrate(0.0, Color("FFE58A"), 0.0, "+$%d" % payout, 0.5)
+	if payout > int(_result[&"bet"]):  # more than the stake back: coins (a refund is not a win)
+		_coins.amount = 70 if win == &"jackpot" else (36 if mult >= BIG_MULT else 18)
+		_coins.restart()
+		_coins.emitting = true
 	landed.emit(_peer, _result)
 
 

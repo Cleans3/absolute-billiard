@@ -91,8 +91,8 @@ func _run() -> void:
 	await create_timer(0.8).timeout
 	await _shot("05_spinning")
 	await create_timer(1.2).timeout
-	await _shot("06_third_drum_teasing")
-	await create_timer(2.6).timeout
+	await _shot("06_third_drum_braking")
+	await create_timer(0.55).timeout
 	await _shot("07_lemons_landed")
 	house.flush()
 	machine._finish()

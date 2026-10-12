@@ -1,5 +1,5 @@
 extends SceneTree
-## SlotMath (docs/plan/02 §3.8): the house keeps an edge, every win id is reachable and priced, the tiers scale with the
+## SlotMath (docs/plan/02 §3.9): the house keeps an edge, every win id is reachable and priced, the tiers scale with the
 ## Quota, the timings hold. `godot --path . --headless -s tests/slot/slot_math_probe.gd`
 
 var _fails := 0

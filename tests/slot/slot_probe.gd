@@ -1,5 +1,5 @@
 extends SceneTree
-## The bar slot, solo (docs/plan/02 §3.8): Lobby → Solo → MainLevel. The machine stands at its contract spot with a prop, a
+## The bar slot, solo (docs/plan/02 §3.9): Lobby → Solo → MainLevel. The machine stands at its contract spot with a prop, a
 ## collision body and its screen; the host takes the stake once, rolls, pays once at the reveal and fires the chaos as real
 ## Effects; every refusal names its reason and costs nothing; the reels land on the host's stops; the screen follows.
 ## `godot --path . --headless -s tests/slot/slot_probe.gd`

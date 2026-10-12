@@ -1,6 +1,6 @@
 class_name SlotScreen
 extends UIModal
-## The bar slot's controls (docs/plan/02 §3.8): a strip at the bottom of the screen, so the machine stays in view while it spins.
+## The bar slot's controls (docs/plan/02 §3.9): a strip at the bottom of the screen, so the machine stays in view while it spins.
 ## Pick a stake, pull the lever; the host rolls and every peer watches the same reels. Local to each peer; the only network
 ## traffic is the `slot_spin` interaction. Priority 5: over the Bartender, under the hazard vote and Pause.
 

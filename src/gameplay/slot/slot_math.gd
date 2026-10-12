@@ -1,6 +1,6 @@
 class_name SlotMath
 extends RefCounted
-## The bar slot's rules, pure and static (docs/plan/02 §3.8): reels, paytable, bet tiers, timings. The host rolls with
+## The bar slot's rules, pure and static (docs/plan/02 §3.9): reels, paytable, bet tiers, timings. The host rolls with
 ## it, every peer replays the stops from the payload, `tests/slot/slot_probe.gd` enumerates it for the exact RTP.
 
 enum Sym { CHERRY, LEMON, BELL, BAR, SEVEN, EIGHT, SKULL }

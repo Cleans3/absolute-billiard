@@ -1,6 +1,6 @@
 class_name SlotHouse
 extends Node
-## Host rules of the bar slot (docs/plan/02 §3.8). WorldInteractions owns the one instance and runs a `slot_spin` through
+## Host rules of the bar slot (docs/plan/02 §3.9). WorldInteractions owns the one instance and runs a `slot_spin` through
 ## validate → charge → spin; the payout and the chaos land when the last drum does, or at once when the phase changes,
 ## so a win is never lost or paid into the next Night. The result rides the interaction's payload to every peer.
 

@@ -1,6 +1,6 @@
 class_name SlotCabinet
 extends RefCounted
-## Geometry of the bar slot machine, built in code (docs/plan/02 §3.8): one merged body mesh (cabinet, bulbs, buttons), the lever
+## Geometry of the bar slot machine, built in code (docs/plan/02 §3.9): one merged body mesh (cabinet, bulbs, buttons), the lever
 ## and a 24-face drum. Local space: floor at y 0, footprint centred on the origin, front toward +Z. Vertex data feeds
 ## slot_machine.gdshader: colour = tint, COLOR.a = chasing-bulb mask, UV2 = (bulb phase, steady glow); untextured faces
 ## sample the atlas's white cell.
@@ -18,6 +18,7 @@ const LEVER_AT := Vector3(0.462, 0.95, 0.0)
 const LED_AT := Vector3(0.0, 0.83, FRONT_Z + 0.0105)
 const TITLE_AT := Vector3(0.0, 1.71, FRONT_Z + 0.008)
 const POP_AT := Vector3(0.0, 2.25, 0.25)
+const COIN_AT := Vector3(0.0, 0.34, 0.42)  ## where the coins leave: the tray
 const CELLS := 8     ## atlas cells: 7 symbols + the white one
 const WHITE_UV := Vector2(0.9375, 0.5)
 
@@ -112,7 +113,7 @@ static func body_mesh() -> ArrayMesh:
 		b.box(Vector3(side * (hw + 0.025), DRUM_Y, FRONT_Z), Vector3(0.03, 0.04, 0.02), Color("FF2A3C"), 1.0)
 	b.box(Vector3(0.0, 0.83, FRONT_Z + 0.002), Vector3(0.56, 0.16, 0.012), BLACK)  # LED panel
 	b.box(Vector3(0.44, LEVER_AT.y, 0.0), Vector3(0.02, 0.16, 0.16), BRASS)  # lever mount on the right cheek
-	b.box(Vector3(0.45, LEVER_AT.y, 0.0), Vector3(0.008, 0.03, 0.03), STEEL)
+	b.box(Vector3(0.446, LEVER_AT.y, 0.0), Vector3(0.008, 0.03, 0.03), STEEL)
 	# header: marquee face and a crown
 	b.box(Vector3(0.0, 1.71, 0.0), Vector3(0.86, 0.22, 0.72), BODY)
 	b.box(Vector3(0.0, 1.71, FRONT_Z + 0.001), Vector3(0.74, 0.14, 0.006), BLACK, 0.12)
@@ -146,6 +147,13 @@ static func lever_mesh() -> ArrayMesh:
 	var b := Builder.new()
 	b.box(Vector3(0.0, 0.17, 0.0), Vector3(0.024, 0.34, 0.024), STEEL)
 	b.ball(Vector3(0.0, 0.37, 0.0), 0.05, Color("E8283C"), 0.5)
+	return b.commit()
+
+
+## A flat gold coin for the win burst; white so the particle colour tints it.
+static func coin_mesh() -> ArrayMesh:
+	var b := Builder.new()
+	b.box(Vector3.ZERO, Vector3(0.05, 0.05, 0.012), Color.WHITE, 0.55)
 	return b.commit()
 
 

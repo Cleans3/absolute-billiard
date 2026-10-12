@@ -1,4 +1,4 @@
-// The bar slot machine: one material for the cabinet, the bulbs and the three drums (docs/plan/02 §3.8).
+// The bar slot machine: one material for the cabinet, the bulbs and the three drums (docs/plan/02 §3.9).
 // Vertex colour = tint, COLOR.a = chasing-bulb mask, UV2 = (bulb phase 0..1 round its loop, steady glow). The cabinet is not in
 // the room's lightmap, so a flat fill keeps its dark side readable (same trick as humanoid.gdshader).
 shader_type spatial;

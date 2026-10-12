@@ -1,4 +1,4 @@
-"""Reel atlas of the bar slot (docs/plan/02 §3.8): assets/slot/symbols.svg, 8 cells of 128x64 side by side, in
+"""Reel atlas of the bar slot (docs/plan/02 §3.9): assets/slot/symbols.svg, 8 cells of 128x64 side by side, in
 `SlotMath.Sym` order (cherry, lemon, bell, bar, seven, eight, skull) then one plain white cell the cabinet's untextured
 faces sample. Plain SVG like the icons (no <text>, no filters, no clipPath: ThorVG draws it as written).
 Run `python3 src/tools/slot_art.py`, then `godot --path . --headless --import`."""

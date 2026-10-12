@@ -8,7 +8,7 @@ const PEDESTAL := preload("res://src/gameplay/bar/GoLivePedestal.tscn")
 const GO_LIVE_AT := Vector3(-3.7, 0.0, -1.0)  ## beside the table's south-west corner (table centre (0, 0, -3.5))
 const PHONE_PROP_AT := Vector3(6.1, 0.0, 3.5)  ## the aisle behind the counter, in front of the phone (09 §2.2)
 const PHONE_AT := Vector3(6.8, 1.28, 3.5)  ## the phone on the back-bar panel (x 6.8 face), between the cabinet and the low shelf
-const SLOT_AT := Vector3(-6.3, 0.0, 1.5)  ## the slot machine's footprint centre, against the west wall; its front faces +X (docs/plan/02 §3.8)
+const SLOT_AT := Vector3(-6.3, 0.0, 1.5)  ## the slot machine's footprint centre, against the west wall; its front faces +X (docs/plan/02 §3.9)
 # [interaction id or bar kind, position, target_id, prompt]
 const PROPS: Array = [
 	[&"bump_table", Vector3(0.0, 0.0, -1.2), 0, "Bump the table"],
@@ -25,7 +25,7 @@ const PROPS: Array = [
 	[&"chalk_the_cue", Vector3(2.4, 0.0, -1.2), 0, "Chalk the cue"],
 	[&"go_live", GO_LIVE_AT, 0, "GO LIVE"],  # no WorldInteraction resource: GameLoop.toggle_ready (02 §3.1)
 	[&"answer_phone", PHONE_PROP_AT, 0, "Answer the phone"],  # no WorldInteraction resource: StoryDirector (09 §3.2)
-	[&"slot_spin", SLOT_AT, 0, "Play the slots"],  # no WorldInteraction resource: SlotHouse (02 §3.8); SlotProp opens the SlotScreen
+	[&"slot_spin", SLOT_AT, 0, "Play the slots"],  # no WorldInteraction resource: SlotHouse (02 §3.9); SlotProp opens the SlotScreen
 	# the counter props: customer side of the counter (x 4.7-5.5), the bartender stands behind it at (6.0, 0, 2.5)
 	[&"throw_drink", Vector3(4.2, 0.0, 2.5), 0, "Throw a drink"],
 	[&"bar_buy", Vector3(4.2, 0.0, 2.5), 0, "Buy a drink"],
