@@ -17,6 +17,8 @@ ROWS = [
     ("late_feedback_shots", "shots with feedback > 0.3 s"),
     ("dead_max_s", "worst dead stretch (> 0.8 m/s), s"),
     ("shots_with_dead_over_3s", "shots with dead stretch > 3 s"),
+    ("pot_fx_within_3s", "pot FX within 3 s of the strike (a pot someone aimed)"),
+    ("pot_fx_after_3s", "pot FX later than 3 s (a ball that crept into the pocket)"),
     ("combo_shots", "combo shots (COMBO xN)"),
     ("trick_shots", "trick shots (paid or not)"),
     ("paid_trick_shots", "trick shots that paid (full show)"),
@@ -50,6 +52,9 @@ def load(d, prefix):
         r["fx_per_shot"] = sum(s["fx_count"] for s in shots) / max(len(shots), 1)
         r["paid_trick_shots"] = sum(1 for s in shots if s["trick_ids"] and s["pots"])
         r["rounds_with_full_show"] = sum(1 for rd in j["rounds"] if rd["beats"].get("trick", 0) + rd["beats"].get("combo", 0) > 0)
+        pot_t = [e[0] for x in shots for e in x["fx_log"] if e[1] == "pot"]
+        r["pot_fx_within_3s"] = sum(1 for t in pot_t if t <= 3.0)
+        r["pot_fx_after_3s"] = sum(1 for t in pot_t if t > 3.0)
         if all("above" in s for s in shots):
             for i, k in enumerate(("03", "08", "15")):
                 r[f"above_{k}_median_s"] = statistics.median(s["above"][i] for s in shots)
