@@ -12,7 +12,7 @@ enum Stance { STAND, CUE, CARRY }  ## same order as Player.Mode
 enum B { PELVIS, TORSO, HEAD, UARM_R, LARM_R, UARM_L, LARM_L, THIGH_R, SHIN_R, THIGH_L, SHIN_L }
 
 const HEAD_LAYER := 1 << 19    ## render layer 20: the local player's camera culls it, shadows still fall
-const MIRROR_LAYER := 1 << 9   ## render layer 10: what the wall mirror's camera draws (room shell, table, avatars)
+const MIRROR_LAYER := 1 << 9   ## render layer 10: what the wall mirror's window pass draws (avatars)
 const RAG_LAYER := 1 << 4      ## collision layer 5 `ragdoll` (07 §1): bones never touch each other or balls
 const RAG_MASK := 2 | 8        ## table rails + world (floor, walls, bar)
 const BLEND_SEC := 0.4
