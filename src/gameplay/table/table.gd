@@ -37,10 +37,19 @@ func get_pocket(id: StringName) -> PocketSpec:
 
 
 func _ready() -> void:
+	spec.apply_live_values(spec.live_values())  # float32 like the wire: host and clients model from the same numbers
 	sim.active_changed.connect(_set_pockets_live)
 	set_physics_process(false)
 	set_process(false)  # _process is defined: it would walk every child each frame (~60 us) until oscillation asks for it
 	rebuild()
+
+
+## Re-applies every TableSpec.LIVE_FIELDS value to the live bodies, balls and BallMotion (and, mid-Shot, to the clients):
+## no rebuild, no re-rack. Geometry fields still go through `rebuild()`.
+func apply_physics() -> void:
+	spec.apply_live_values(spec.live_values())
+	TableBuilder.apply_materials(self, spec, sim.cloth_friction_mult)
+	sim.apply_spec()
 
 
 ## The cloth colour (06 P18 bar skins). Visual only: friction lives in the spec and the Effects.
@@ -75,6 +84,7 @@ func rebuild() -> void:
 	TableBuilder.build(self, spec, layout, y, pocket_osc_m)
 	TableVisuals.build(self, spec, layout, y, pocket_osc_m)
 	TableVisuals.set_cloth_color(self, felt_color)
+	TableBuilder.apply_materials(self, spec, sim.cloth_friction_mult)
 
 	for area in get_children():
 		if area is Area3D and area.has_meta(&"pocket_id"):

@@ -25,7 +25,7 @@ func _init() -> void:
 
 func _run() -> void:
 	await physics_frame
-	var v0 := 1.5
+	var v0 := 1.0
 	var b := _ball(CUE_T, Vector3(-1.2, y, 0))
 	await physics_frame
 	print("probe: rolling")
@@ -38,7 +38,7 @@ func _run() -> void:
 	var dist := b.global_position.x + 1.2
 	var secs := (Time.get_ticks_msec() - t0) / 1000.0
 	print("roll %.1f m/s: stopped after %.2f m in %.1f s" % [v0, dist, secs])
-	assert(dist > 0.3 and dist < 3.0, "rolling resistance out of range")
+	assert(dist > 1.8 and dist < 3.2, "rolling resistance out of range")  # 01 §3: a = g·0.02 = 0.2 m/s², v²/2a = 2.55 m
 	_kill(b)
 
 	var soft := await _rail_angle(2.0)
@@ -392,7 +392,7 @@ func _rail_return() -> void:
 		await physics_frame
 	var back := peak_x - b.global_position.x
 	print("probe: rail return peak_x=%.2f final_x=%.2f back=%.2f (need >= %.2f)" % [peak_x, b.global_position.x, back, table.spec.length_m * 0.5])
-	assert(peak_x > hl - table.spec.ball_radius_m, "full-power shot must reach the foot rail")
+	assert(peak_x > hl - 3.0 * table.spec.ball_radius_m, "full-power shot must reach the foot rail")  # sampled once a tick: 8 cm at 10 m/s
 	assert(back >= table.spec.length_m * 0.5, "full-power shot must return at least half the table")
 	_kill(b)
 	await _rest()

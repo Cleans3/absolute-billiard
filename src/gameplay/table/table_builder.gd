@@ -13,8 +13,6 @@ const LAYER_POCKET := 1 << 2
 const BALL_LAYER := 1
 
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
-const CUP_FRICTION := 0.02        # a spinning ball hitting a grippy wall climbs it; the cup only has to hold the ball
-const CUP_BOUNCE := 0.1           # effective restitution of the cup floor and walls: a felt pouch, a ball dies in it
 const COVER_LIFT_M := 0.0015      # Moving Pockets cover top above the cloth: never coplanar with the bed (E2)
 const COVER_BEVEL_M := 0.015      # ... and ramped down to the cloth over this width, so a ball rolls up it unbothered
 const COVER_OVERLAP_M := 0.02     # cover reaches this far past the widest cut, onto the bed
@@ -50,13 +48,45 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	_build_safety_floor(parent, spec, y)
 
 
+## Contact materials. Jolt sums the two bounces (clamped to 1) and an `absorbent` side subtracts, against balls that carry
+## TableSpec.BASE_BOUNCE: cloth e = 0, cushion e = e0, cup e = cup_bounce. `rough` makes the table's friction win over the
+## ball's (the combine is MIN otherwise). `apply_materials` redoes the numbers on live bodies: no rebuild.
 static func _cloth_material(spec: TableSpec) -> PhysicsMaterial:
 	var m := PhysicsMaterial.new()
-	m.friction = spec.cloth_friction
-	m.rough = true  # friction combine is MIN; rough makes the cloth value win over the ball's
-	m.bounce = spec.ball_restitution  # bounce combine is MAX; absorbent subtracts -> 0 on cloth
+	m.rough = true
 	m.absorbent = true
+	_set_cloth(m, spec, 1.0)
 	return m
+
+
+static func _set_cloth(m: PhysicsMaterial, spec: TableSpec, friction_mult: float) -> void:
+	m.friction = spec.cloth_friction * friction_mult
+	m.bounce = TableSpec.BASE_BOUNCE
+
+
+static func _set_cushion(m: PhysicsMaterial, spec: TableSpec) -> void:
+	m.bounce = TableSpec.BASE_BOUNCE - spec.cushion_restitution
+	m.friction = spec.cushion_friction
+
+
+## A spinning ball hitting a grippy wall climbs it; the cup only has to hold the ball, a felt pouch it dies in.
+static func _set_cup(m: PhysicsMaterial, spec: TableSpec) -> void:
+	m.bounce = TableSpec.BASE_BOUNCE - spec.cup_bounce
+	m.friction = spec.cup_friction
+
+
+## Re-applies the spec's contact numbers to the bodies `build()` made. `cloth_mult` = PhysicsSim's cloth_friction_mult.
+static func apply_materials(parent: Node3D, spec: TableSpec, cloth_mult: float) -> void:
+	for c in parent.get_children():
+		if not (c is PhysicsBody3D) or c.physics_material_override == null:
+			continue
+		var n := String(c.name)
+		if n == "Bed" or n.begins_with("Cover_"):
+			_set_cloth(c.physics_material_override, spec, cloth_mult)
+		elif n.begins_with("Cup_"):
+			_set_cup(c.physics_material_override, spec)
+		elif c.has_meta(&"rail_normal"):
+			_set_cushion(c.physics_material_override, spec)
 
 
 ## Flat convex prisms, one body: Jolt's internal-edge removal works within a body, so a ball rolls over the seams
@@ -111,10 +141,9 @@ static func _build_cushion(parent: Node3D, spec: TableSpec, rail: TableLayout.Ra
 	body.set_meta(&"rail_id", rail.id)
 	body.set_meta(&"rail_normal", rail.inward_normal)
 	var pm := PhysicsMaterial.new()
-	pm.bounce = spec.ball_restitution - spec.cushion_restitution  # absorbent: effective e = cushion_restitution
 	pm.absorbent = true
-	pm.friction = spec.cushion_friction
 	pm.rough = true
+	_set_cushion(pm, spec)
 	body.physics_material_override = pm
 	var mid := (rail.a + rail.b) * 0.5
 	# thick enough that a full-power ball cannot cross it within one physics step and tunnel
@@ -175,10 +204,9 @@ static func _build_cup(parent: Node3D, spec: TableSpec, hole: TableLayout.Hole, 
 	body.collision_layer = LAYER_TABLE
 	body.collision_mask = 0
 	var pm := PhysicsMaterial.new()
-	pm.friction = CUP_FRICTION
 	pm.rough = true
-	pm.bounce = spec.ball_restitution - CUP_BOUNCE
 	pm.absorbent = true
+	_set_cup(pm, spec)
 	body.physics_material_override = pm
 	var t := maxf(spec.ball_radius_m * 2.0, _min_step_safe_thickness(spec))
 	var floor_y := y - spec.cup_depth_m

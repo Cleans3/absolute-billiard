@@ -30,6 +30,8 @@ const FLUSH_HZ := 30
 const HEARTBEAT_HZ := 2
 const HEARTBEAT_SNAP_M := 0.006  # client adopts a heartbeat state only when this far off
 const INTERP_DELAY_SEC := 0.1  # client renders this far behind the host (04 §2.4)
+const MOVING_SQ := 0.0001  # (m/s)²: a ball slower than this at the start of a step cannot start an impact
+const PHANTOM_DV := 0.03  # m/s: Jolt must have changed some impacted ball's velocity by this much, else there was none
 
 ## Installed by EffectManager: (stat: StringName, peer_id: int, base: float) -> float. Default = base.
 var stat_source: Callable
@@ -58,6 +60,10 @@ var _pred: Array[BallMotion.State] = []  # host: state the clients will have rec
 var _dirty := PackedByteArray()
 var _frame := PackedByteArray()
 var _hb := PackedByteArray()
+var _snap_p := PackedVector3Array()  # host: every ball's state at the start of the step Jolt is about to run (BallCollisions)
+var _snap_v := PackedVector3Array()
+var _snap_w := PackedVector3Array()
+var _snap_on := PackedByteArray()  # 1 = on the table and moving freely at that snapshot
 var _scratch := BallMotion.State.new()
 var _hb_state := BallMotion.State.new()
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
@@ -113,14 +119,18 @@ func set_tilt_direction(dir: Vector2) -> void:
 func _sync_motion_params() -> void:
 	var tilt := tilt_direction * float(ProjectSettings.get_setting("physics/3d/default_gravity")) * sin(deg_to_rad(table_tilt_deg))
 	for b in _balls:
+		BallMotion.apply_spec(b.motion, b.spec)
 		b.motion.friction_mult = cloth_friction_mult
 		b.motion.tilt = tilt
 	if _shot_live and _is_host() and not multiplayer.get_peers().is_empty():
 		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
 
 
+## 4 stats, then TableSpec.live_values() (04 §5): a client models from the host's feel numbers, debug edits included.
 func _motion_stats() -> PackedFloat32Array:
-	return PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
+	var out := PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
+	out.append_array(_spec().live_values())
+	return out
 
 
 @rpc("authority", "call_remote", "reliable", 1)
@@ -132,6 +142,7 @@ func _apply_motion_stats(stats: PackedFloat32Array) -> void:
 	cloth_friction_mult = stats[0]
 	table_tilt_deg = stats[1]
 	tilt_direction = Vector2(stats[2], stats[3])
+	_spec().apply_live_values(stats.slice(4))
 	_sync_motion_params()
 
 
@@ -155,9 +166,19 @@ func nudge(direction: Vector2, strength: float, source_peer_id: int) -> void:
 ## Ball–cloth contact friction is the bed body's material (Jolt), on top of the rolling-resistance term.
 func _scale_bed_friction(mult: float) -> void:
 	var table := get_parent() as Table
-	var bed := table.get_node_or_null("Bed") as StaticBody3D if table != null else null
-	if bed != null:
-		bed.physics_material_override.friction = table.spec.cloth_friction * mult
+	if table != null:
+		TableBuilder.apply_materials(table, table.spec, mult)
+
+
+func _spec() -> TableSpec:
+	return (get_parent() as Table).spec
+
+
+## Table.apply_physics(): every ball picks up the spec's live numbers, the BallMotion model (and, mid-Shot, the clients) too.
+func apply_spec() -> void:
+	for b in _balls:
+		b.apply_spec()
+	_sync_motion_params()
 
 
 func _ready() -> void:
@@ -226,6 +247,7 @@ func _on_struck(ball: Ball, intent: ShotIntent) -> void:
 			b.freeze = false  # thaw the rack: a body with _integrate_forces never sleeps, so rest = frozen (below)
 	Engine.physics_ticks_per_second = QualityManager.tick_cap(LIVE_TICK)
 	_begin_shot_stream(intent.shooter_id)
+	_snapshot()
 	shot_started.emit(ball, intent)
 	# Struck ball's own is_resting already flipped false synchronously (Ball.strike, before this
 	# signal fires) — recount now instead of waiting on the deferred resting_changed so `awake`
@@ -355,7 +377,7 @@ func _begin_shot_stream(shooter_id: int) -> void:
 		_seed_pred(b)
 	_dirty.fill(0)
 	BallEventCodec.begin(_frame, shot_id, _base_tick)
-	set_physics_process(_peers_listening())
+	set_physics_process(true)  # the host's impact resolver runs every live tick; the stream below only with listeners
 	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats(), pocket_time())
 
 
@@ -376,8 +398,12 @@ func _seed_pred(b: Ball) -> void:
 	BallEventCodec.quantize(p, origin())
 
 
-func _physics_process(_delta: float) -> void:
+func _physics_process(delta: float) -> void:
 	if not _shot_live:
+		return
+	_resolve_impacts(delta)
+	_snapshot()
+	if not _peers_listening():
 		return
 	var off := Engine.get_physics_frames() - _base_tick
 	var dt := 1.0 / LIVE_TICK
@@ -398,6 +424,97 @@ func _physics_process(_delta: float) -> void:
 		_flush()
 	if off % _hb_every == 0:
 		_send_heartbeat(off)
+
+
+## Host: the state every ball enters the next Jolt step with. After the step it is the "before" of whatever Jolt did.
+func _snapshot() -> void:
+	var n := _by_id.size()
+	if _snap_p.size() != n:
+		_snap_p.resize(n)
+		_snap_v.resize(n)
+		_snap_w.resize(n)
+		_snap_on.resize(n)
+	for i in n:
+		var b := _by_id[i]
+		var on := b != null and not b.retired and not b.is_pocketed and not b.freeze and b.is_inside_tree()
+		_snap_on[i] = 1 if on else 0
+		if on:
+			_snap_p[i] = b.global_position
+			_snap_v[i] = b.linear_velocity
+			_snap_w[i] = b.angular_velocity
+
+
+## Host, once per tick before the stream: ball–ball impacts of the step Jolt just ran are redone one pair at a time in
+## time order (BallCollisions) from the state before the step, and the balls that took part get those velocities. Positions
+## stay Jolt's, so nothing overlaps. Left to Jolt: a cluster touching a cushion or jaw, and any impact Jolt did not make.
+func _resolve_impacts(dt: float) -> void:
+	var spec := _spec()
+	if not spec.ball_cascade_enabled:
+		return
+	var n := mini(_snap_on.size(), _by_id.size())
+	var cand := {}
+	for i in n:
+		if _snap_on[i] == 0:
+			continue
+		var va := _snap_v[i]
+		for j in range(i + 1, n):
+			if _snap_on[j] == 0:
+				continue
+			var vb := _snap_v[j]
+			if va.length_squared() < MOVING_SQ and vb.length_squared() < MOVING_SQ:
+				continue
+			var reach := _by_id[i].radius + _by_id[j].radius + (va - vb).length() * dt + BallCollisions.TOUCH_EPS
+			if _snap_p[i].distance_squared_to(_snap_p[j]) <= reach * reach:
+				cand[i] = true
+				cand[j] = true
+	if cand.is_empty():
+		return
+	var vmax := 0.0
+	for i in cand:
+		vmax = maxf(vmax, _snap_v[i].length())
+	var chain := maxf(0.004, 2.0 * vmax * dt)  # a ball set moving by an impact reaches this far before the step ends
+	var grew := true
+	while grew:
+		grew = false
+		for k in n:
+			if _snap_on[k] == 0 or cand.has(k):
+				continue
+			for i in cand:
+				var reach: float = _by_id[k].radius + _by_id[i].radius + chain
+				if _snap_p[k].distance_squared_to(_snap_p[i]) <= reach * reach:
+					cand[k] = true
+					grew = true
+					break
+	var ids: Array = cand.keys()
+	ids.sort()
+	var bodies: Array[BallCollisions.Body] = []
+	for i: int in ids:
+		var b := _by_id[i]
+		if b.touched_wall() or not b.is_inside_tree() or b.retired or b.is_pocketed:
+			return  # a rail or a pot shares this step: Jolt's own solve stands
+		var body := BallCollisions.Body.new()
+		body.pos = _snap_p[i]
+		body.vel = _snap_v[i]
+		body.ang = _snap_w[i]
+		body.mass = b.mass
+		body.radius = b.radius
+		body.ref = b
+		bodies.append(body)
+	if BallCollisions.simulate(bodies, dt, spec.ball_restitution, spec.ball_friction) == 0:
+		return
+	var reacted := false
+	for body in bodies:
+		if body.hit and (body.ref as Ball).linear_velocity.distance_to(_snap_v[(body.ref as Ball).net_id]) > PHANTOM_DV:
+			reacted = true
+			break
+	if not reacted:
+		return
+	for body in bodies:
+		if body.hit:
+			var b := body.ref as Ball
+			b.linear_velocity = body.vel
+			b.angular_velocity = body.ang
+			_dirty[b.net_id] = 1
 
 
 ## Current Jolt state of `b` -> quantized -> `pred` and the frame. Rest snaps velocities to zero.
