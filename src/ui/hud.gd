@@ -128,6 +128,12 @@ func _on_shot_settled(_shot_id: String, cash: int, trick_id: StringName, foul: b
 	_flash(line)
 
 
+## The payout line belongs to the shot that just settled: it ends when the next aim starts, so a FOUL never rides into the view.
+func on_player_mode(mode: int) -> void:
+	if mode == Player.Mode.CUE:
+		_flash("")
+
+
 func _on_cash_changed(_balance: int, delta: int, reason: StringName) -> void:
 	_refresh_cash()
 	if reason == &"tip":
