@@ -20,7 +20,7 @@ const FINE_RATE := 0.10  # scratch fine = this share of the Night's Quota (06 P1
 const FINE_STEP := 5
 const FINE_MIN := 25
 const FINE_REASONS: Array[StringName] = [&"scratch", &"off_table"]  # RoundDirector.cue_respawned reasons that cost Cash
-const POUR_DRINKS: Array[StringName] = [&"beer", &"bar_nuts", &"soda_pop", &"pretzels", &"pickle_juice"]  # the house's free first drink (02 §3.10)
+const POUR_DRINKS: Array[StringName] = [&"bar_nuts", &"soda_pop", &"pretzels"]  # the house's free first drink: stream / clock only, never the cue or the Reward (02 §3.10)
 const POUR_SALT := 0x9042
 
 @export var stream: StreamManager

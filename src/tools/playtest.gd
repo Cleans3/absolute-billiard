@@ -597,6 +597,8 @@ func _take_shot() -> void:
 	var fx_busy := not stage.idle()
 	var aim_a: Variant = stage.get(&"_aim_a")  # null on a build without the aim fade (the before-run's tree)
 	var fx_opaque := fx_busy and (aim_a == null or float(aim_a) > 0.5)  # 0.35 s into the aim the show should be ghosted
+	var payout := level.get_node("UILayer/HUD").get(&"_payout") as Label
+	var stale_payout := payout.text if payout != null and payout.modulate.a > 0.05 else ""  # the last shot's result must not ride into the aim
 	if shots.size() < 3 or shots.size() % 6 == 0:
 		_save_full("aim_%02d" % (shots.size() + 1))
 	_aim_thumbs.append(_thumb())
@@ -605,7 +607,7 @@ func _take_shot() -> void:
 		elev = snappedf(plan.elev, 0.1), target = plan.target, pocket = String(plan.pocket), aim_err_deg = snappedf(plan.err_deg, 0.01),
 		fx = {}, fx_log = [], marks = [], pots = [], tricks = [], trick_ids = [], combo_n = 0, scratch = false, ended = false,
 		t_release = now(), t_strike = -1.0, t_end = -1.0, cash_before = eco.cash, awake_before = sim.awake,
-		last_mark = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], above = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, ball_count = rd.get_balls().size(),
+		last_mark = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], above = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, payout_at_aim = stale_payout, ball_count = rd.get_balls().size(),
 	}
 	(shot.marks as Array).append([now(), "release"])
 	frame_ms.clear()
@@ -863,6 +865,7 @@ func _report() -> Dictionary:
 	var kinds := {}
 	var aim_busy := 0
 	var aim_opaque := 0
+	var aim_stale := 0
 	var tails := PackedFloat32Array()
 	var rolls := PackedFloat32Array()
 	var tricks_shots := 0
@@ -885,6 +888,7 @@ func _report() -> Dictionary:
 		rolls.append(float(s.rolling_s))
 		aim_busy += 1 if s.fx_busy_at_aim else 0
 		aim_opaque += 1 if s.fx_opaque_at_aim else 0
+		aim_stale += 1 if String(s.get("payout_at_aim", "")) != "" else 0
 		pots += (s.pots as Array).size()
 		scratches += 1 if s.scratch else 0
 		if not (s.trick_ids as Array).is_empty():
@@ -942,7 +946,7 @@ func _report() -> Dictionary:
 		tag = tag, shots = n, rounds = rounds.size(), pots = pots, scratches = scratches, kinds = kinds,
 		shots_any_fx_pct = _pct(any_fx, n), shots_hit_fx_pct = _pct(hit_fx, n), late_feedback_shots = late,
 		first_fx_median_s = _median(first_fx), shot_duration_median_s = _median(durations), shot_duration_max_s = _max(durations),
-		aim_fx_busy_pct = _pct(aim_busy, n), aim_fx_opaque_pct = _pct(aim_opaque, n), tail_median_s = _median(tails), rolling_median_s = _median(rolls), dead_max_s = dead_worst, shots_with_dead_over_3s = dead_over, dead_total_s = snappedf(dead_total, 0.1),
+		aim_fx_busy_pct = _pct(aim_busy, n), aim_fx_opaque_pct = _pct(aim_opaque, n), aim_payout_stale = aim_stale, tail_median_s = _median(tails), rolling_median_s = _median(rolls), dead_max_s = dead_worst, shots_with_dead_over_3s = dead_over, dead_total_s = snappedf(dead_total, 0.1),
 		combo_shots = combo_shots, trick_shots = tricks_shots, rounds_with_combo_or_trick = combo_trick_rounds, rounds_with_chaos = chaos_rounds,
 		chaos_per_round = snappedf(float(chaos_total) / float(nr), 0.01), per_round = per_round,
 		slot_pulls = slots.size(), slot_result_median_s = _median(slot_times), slot_result_max_s = _max(slot_times), slot_spin_visible_median_s = _median(slot_vis),
@@ -994,7 +998,7 @@ func _summary_md(r: Dictionary) -> String:
 	lines.append("| >= 1 chaos event per Round | %d / %d Rounds, %.2f per Round | %s |" % [r.rounds_with_chaos, r.rounds, r.chaos_per_round, _ok(r.rounds_with_chaos >= rounds_n)])
 	lines.append("| slot result <= 3 s | median %.2f s, max %.2f s over %d pulls (reels visibly turning after %.2f s) | %s |" % [r.slot_result_median_s, r.slot_result_max_s, r.slot_pulls, r.slot_spin_visible_median_s, _ok(r.slot_pulls > 0 and r.slot_result_max_s <= 3.0)])
 	lines.append("| frame budget (dev PC, 07 §1) | render GPU p95 %.2f ms / CPU p95 %.2f ms (wall frame p95 %.1f ms, shared with other panes); draw calls max %d in shots, %d at aim (<= 120) | %s |" % [r.gpu_ms_p95_worst, r.cpu_ms_p95_worst, r.frame_ms_p95_worst, r.draw_calls_max, r.draw_calls_aim_max, _ok(r.draw_calls_max <= 120)])
-	lines.append("| FX never hide the aim | FX still alive when aiming starts: %.1f %% of shots, still opaque 0.35 s into the aim: %.1f %%; look at aims_%s.png | %s |" % [r.aim_fx_busy_pct, r.aim_fx_opaque_pct, r.tag, _ok(r.aim_fx_opaque_pct == 0.0)])
+	lines.append("| FX never hide the aim | FX still alive when aiming starts: %.1f %% of shots, still opaque 0.35 s into the aim: %.1f %%, last shot's HUD payout still showing: %d shots; look at aims_%s.png | %s |" % [r.aim_fx_busy_pct, r.aim_fx_opaque_pct, r.aim_payout_stale, r.tag, _ok(r.aim_fx_opaque_pct == 0.0 and r.aim_payout_stale == 0)])
 	lines.append("")
 	lines.append("FX fired: %s" % JSON.stringify(r.kinds))
 	lines.append("Shot duration median %.1f s (max %.1f s), of which a ball moves faster than 0.3 / 0.8 / 1.5 m/s for a median %.1f / %.1f / %.1f s (the rest is creep to rest); slot net %+d, slot chaos %d." % [r.shot_duration_median_s, r.shot_duration_max_s, r.above_median_s[0], r.above_median_s[1], r.above_median_s[2], r.slot_net, r.slot_chaos])

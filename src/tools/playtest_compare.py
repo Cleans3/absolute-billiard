@@ -28,6 +28,7 @@ ROWS = [
     ("slot_pulls", "slot pulls"),
     ("slot_chaos", "slot chaos fired"),
     ("aim_fx_opaque_pct", "FX opaque 0.35 s into the aim, % of shots"),
+    ("aim_payout_stale", "shots whose aim still shows the last payout line"),
     ("shot_duration_median_s", "shot duration median, s"),
     ("above_08_median_s", "per shot: seconds a ball moves > 0.8 m/s, median"),
     ("above_03_median_s", "per shot: seconds a ball moves > 0.3 m/s, median"),
