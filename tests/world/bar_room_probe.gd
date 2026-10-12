@@ -165,12 +165,12 @@ func _pbr(room: BarRoom) -> void:
 
 
 ## adhoc-1012a seam: the slot machine's spot (-6.3, 0, 1.5) on the west wall, 1.2 m clear in front, holds no collider; the
-## keep-clear zone is on DecorPlan so the generator refuses decor there.
+## keep-clear reach square (x -7.5..-5.1, z 0.3..2.7) is on DecorPlan so the generator refuses decor there.
 func _slot_zone(room: BarRoom) -> void:
 	var space := (room as Node3D).get_world_3d().direct_space_state
 	for p in [Vector3(-6.3, 0.0, 1.5), Vector3(-5.6, 0.0, 1.5), Vector3(-5.2, 0.0, 1.1), Vector3(-6.3, 0.0, 2.0)]:
 		_check(_capsule_free(space, p), "slot machine zone is free at %s" % p)
-	_check(DecorPlan.floor_keep_clear().any(func(r: Rect2) -> bool: return r.encloses(Rect2(-6.7, 1.05, 0.8, 0.9))), "DecorPlan keeps the slot machine's footprint clear")
+	_check(DecorPlan.floor_keep_clear().any(func(r: Rect2) -> bool: return r.encloses(Rect2(-7.5, 0.3, 2.4, 2.4))), "DecorPlan keeps the slot machine's reach square (x -7.5..-5.1, z 0.3..2.7) clear")
 
 
 func _ray(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:
