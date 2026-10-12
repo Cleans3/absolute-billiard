@@ -40,6 +40,7 @@ const BET_MIN := 10
 const STOP_AT: Array[float] = [1.1, 1.7, 2.3]
 const TEASE_EXTRA := 0.9
 const SETTLE_SEC := 0.5  ## the drum's last bounce, then the readout
+const MAX_SPIN_SEC := 2.3 + 0.9 + 0.5  ## the longest spin: a tease (STOP_AT[2] + TEASE_EXTRA + SETTLE_SEC; the probe checks it)
 
 
 ## Win id of three stops.
@@ -86,13 +87,17 @@ static func teases(stops: PackedInt32Array) -> bool:
 	return STRIP[stops[0]] == STRIP[stops[1]] and STRIP[stops[1]] != STRIP[stops[2]]
 
 
-## Seconds the reels run for these stops: the host reveals the payout then, the machine stops its last drum then.
+## Seconds the reels run for these stops: the host reveals the payout when the last drum lands (`reveal_sec`).
 static func reel_stop_at(reel: int, stops: PackedInt32Array) -> float:
 	return STOP_AT[reel] + (TEASE_EXTRA if reel == REELS - 1 and teases(stops) else 0.0)
 
 
+static func reveal_sec(stops: PackedInt32Array) -> float:
+	return reel_stop_at(REELS - 1, stops)
+
+
 static func spin_sec(stops: PackedInt32Array) -> float:
-	return reel_stop_at(REELS - 1, stops) + SETTLE_SEC
+	return reveal_sec(stops) + SETTLE_SEC
 
 
 ## Expected return of one unit of bet over every stop triple (the drums are independent and uniform).

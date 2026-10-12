@@ -87,6 +87,12 @@ func _init() -> void:
 	_check(SlotMath.reel_stop_at(0, tease) < SlotMath.reel_stop_at(1, tease) and SlotMath.reel_stop_at(1, tease) < SlotMath.reel_stop_at(2, plain), "drums stop left to right")
 	_check(is_equal_approx(SlotMath.spin_sec(tease) - SlotMath.spin_sec(plain), SlotMath.TEASE_EXTRA), "the tease costs TEASE_EXTRA seconds")
 	_check(SlotMath.spin_sec(tease) < 5.0, "a spin never takes 5 s (%.1f)" % SlotMath.spin_sec(tease))
+	var longest := 0.0
+	for x in n:
+		for y in n:
+			for z in n:
+				longest = maxf(longest, SlotMath.spin_sec(PackedInt32Array([x, y, z])))
+	_check(is_equal_approx(longest, SlotMath.MAX_SPIN_SEC), "MAX_SPIN_SEC %.2f is the longest spin (%.2f)" % [SlotMath.MAX_SPIN_SEC, longest])
 
 	print("SLOT MATH %s (RTP %.4f, hit rate %.3f, jackpot 1/%d)" % ["OK" if _fails == 0 else "FAILED", rtp, hit_rate, n * n * n / int(seen[&"jackpot"])])
 	quit(0 if _fails == 0 else 1)
