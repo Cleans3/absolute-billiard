@@ -1,6 +1,6 @@
 extends SceneTree
 ## The wall mirror (C14, 06 P26, adhoc-1012a), the parts that need no renderer: placement, the render layers (shell + table
-## on the room capture, avatars + the local head on the window pass, balls on neither), the window camera's geometry, the
+## on the room capture, table + avatars + the local head on the window pass, balls on neither), the window camera's geometry, the
 ## gates (range, side, off screen), every-frame drawing, the cube face table vs the shader. The capture itself needs a
 ## window: src/tools/screenshot_mirror.gd.
 ##   godot --path . --headless -s tests/player/mirror_probe.gd
@@ -66,10 +66,10 @@ func _run() -> void:
 	var table_ok := false
 	for mi: MeshInstance3D in level.get_node("Table").find_children("*", "MeshInstance3D", true, false):
 		if not mi.get_parent() is RigidBody3D:
-			table_ok = (mi.layers & Mirror.ROOM_LAYER) != 0
+			table_ok = (mi.layers & Mirror.LAYER) != 0 and (mi.layers & Mirror.ROOM_LAYER) == 0
 			if not table_ok:
 				break
-	_check(table_ok, "the table's meshes are on the room-capture layer")
+	_check(table_ok, "the table's meshes are on the window-pass layer only (too near the capture point to box-project)")
 	var ball_hit := false
 	for b: Ball in level.get_node("RoundDirector").get_balls():
 		for mi: MeshInstance3D in b.find_children("*", "MeshInstance3D", true, false):
