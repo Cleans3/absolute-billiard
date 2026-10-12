@@ -406,6 +406,17 @@ func _fake_events() -> void:
 	_check(int(_kinds.get(&"flames", 0)) == 1 and int(_kinds.get(&"ball", 0)) == 1, "a hit under the Flaming Shot throws embers")
 	fx._flames = false
 	director.shot_ended.emit("probe-5", 1, 0, none, false)
+	# the Pocket Jackpot marks its pocket for the Round and a pot there is a JACKPOT
+	var jp: PocketSpec = table.pockets[table.pockets.keys()[0]]
+	fx._show_beacon(table.pockets.keys()[0], 3.0)
+	_check(fx._beacon.visible and fx._beacon_label.visible and fx._beacon_label.text == "x3", "the jackpot pocket is marked")
+	sim.shot_started_net.emit(8, 1, 0)
+	_kinds.clear()
+	fx._pot(Vector3(jp.position.x, jp.position.y, jp.position.z), Color.RED, true)
+	_check(int(_kinds.get(&"jackpot", 0)) == 1, "a pot in the marked pocket is a JACKPOT")
+	director.shot_ended.emit("probe-6", 1, 0, none, false)
+	fx._on_round_ended(&"shots", 0)
+	_check(not fx._beacon.visible and not fx._beacon_label.visible, "the mark goes with the Round")
 
 
 # ---- tiers -------------------------------------------------------------------------------------

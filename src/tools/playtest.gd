@@ -186,6 +186,7 @@ func _sample() -> void:
 			shot.moving_s = float(shot.moving_s) + dt
 		for i in SPEED_STEPS.size():  # seconds a ball moved faster than the step since the last visible feedback
 			if v > SPEED_STEPS[i]:
+				(shot.above as Array)[i] = float((shot.above as Array)[i]) + dt
 				(shot.acc as Array)[i] = float((shot.acc as Array)[i]) + dt
 				(shot.dead_at as Array)[i] = maxf(float((shot.dead_at as Array)[i]), float((shot.acc as Array)[i]))
 		var rid := root.get_viewport_rid()
@@ -380,6 +381,7 @@ func _vote() -> void:
 	_vote_seen.append(pick.text if pick.text != "" else pick.name)
 	round_rec_note("vote", pick.text if pick.text != "" else pick.name)
 	await create_timer(0.4).timeout  # reading time
+	_save_full("vote_r%d" % (loop.round_index + 1))
 	pick.pressed.emit()
 
 
@@ -432,6 +434,7 @@ func _bar() -> void:
 	var menu := level.get_node("UILayer/BartenderMenu") as BartenderMenu
 	menu.open()
 	await create_timer(0.5).timeout
+	_save_full("bar_r%d" % (loop.round_index + 1))
 	var bought: Array[String] = []
 	var budget := int(float(eco.cash) * spend)
 	for i in eco.stock_size():
@@ -482,7 +485,10 @@ func _slot_session() -> void:
 		await _wait_until(func() -> bool: return _slot_landed_evt, 8.0)
 		if not _slot_landed_evt:
 			anomalies.append("slot never landed (tier %d)" % tier)
-		await create_timer(1.0).timeout  # reads the result
+		await create_timer(0.6).timeout  # reads the result
+		if slots.size() <= 3:
+			_save_full("slot_%d" % slots.size())
+		await create_timer(0.4).timeout
 		_slot_press = -1.0
 	screen.close()
 	await process_frame
@@ -589,7 +595,8 @@ func _take_shot() -> void:
 	await create_timer(0.35).timeout  # the player's aiming time; the aim screenshot sees the table as it is then
 	var stage := fx.get(&"_stage") as FxStage
 	var fx_busy := not stage.idle()
-	var fx_opaque := fx_busy and float(stage.get(&"_aim_a")) > 0.5  # 0.35 s into the aim the show should be ghosted
+	var aim_a: Variant = stage.get(&"_aim_a")  # null on a build without the aim fade (the before-run's tree)
+	var fx_opaque := fx_busy and (aim_a == null or float(aim_a) > 0.5)  # 0.35 s into the aim the show should be ghosted
 	if shots.size() < 3 or shots.size() % 6 == 0:
 		_save_full("aim_%02d" % (shots.size() + 1))
 	_aim_thumbs.append(_thumb())
@@ -598,7 +605,7 @@ func _take_shot() -> void:
 		elev = snappedf(plan.elev, 0.1), target = plan.target, pocket = String(plan.pocket), aim_err_deg = snappedf(plan.err_deg, 0.01),
 		fx = {}, fx_log = [], marks = [], pots = [], tricks = [], trick_ids = [], combo_n = 0, scratch = false, ended = false,
 		t_release = now(), t_strike = -1.0, t_end = -1.0, cash_before = eco.cash, awake_before = sim.awake,
-		last_mark = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, ball_count = rd.get_balls().size(),
+		last_mark = now(), moving_s = 0.0, acc = [0.0, 0.0, 0.0], above = [0.0, 0.0, 0.0], dead_at = [0.0, 0.0, 0.0], dc_aim = int(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)), fx_busy_at_aim = fx_busy, fx_opaque_at_aim = fx_opaque, ball_count = rd.get_balls().size(),
 	}
 	(shot.marks as Array).append([now(), "release"])
 	frame_ms.clear()
@@ -668,6 +675,7 @@ func _finish_shot() -> void:
 	shot.thumbs = _cap_frames.size()
 	shot.erase("last_mark")
 	shot.erase("acc")
+	shot.above = (shot.above as Array).map(func(v: float) -> float: return snappedf(v, 0.01))
 	shot.marks = (shot.marks as Array).map(func(m: Array) -> Array: return [snappedf(float(m[0]) - t_rel, 0.01), m[1]])
 	_snapshot_live()
 	_keep_if_representative()
@@ -912,6 +920,10 @@ func _report() -> Dictionary:
 		slot_vis.append(float(s.spin_visible_s))
 		slot_net += int(s.payout) - int(s.bet)
 		slot_chaos += (s.chaos as Array).size()
+	var above: Array = [PackedFloat32Array(), PackedFloat32Array(), PackedFloat32Array()]
+	for s in shots:
+		for i in 3:
+			(above[i] as PackedFloat32Array).append(float((s.above as Array)[i]))
 	var all_frames := PackedFloat32Array()
 	var gpu := PackedFloat32Array()
 	var cpu := PackedFloat32Array()
@@ -935,7 +947,7 @@ func _report() -> Dictionary:
 		chaos_per_round = snappedf(float(chaos_total) / float(nr), 0.01), per_round = per_round,
 		slot_pulls = slots.size(), slot_result_median_s = _median(slot_times), slot_result_max_s = _max(slot_times), slot_spin_visible_median_s = _median(slot_vis),
 		slot_net = slot_net, slot_chaos = slot_chaos,
-		frame_ms_p95_worst = _max(all_frames), gpu_ms_p95_worst = _max(gpu), cpu_ms_p95_worst = _max(cpu), draw_calls_max = dc_max, draw_calls_aim_max = dc_aim, dead_at_speed = dead_steps, story_cards_closed = _story_cards, anomalies = anomalies.size(),
+		above_median_s = [_median(above[0]), _median(above[1]), _median(above[2])], frame_ms_p95_worst = _max(all_frames), gpu_ms_p95_worst = _max(gpu), cpu_ms_p95_worst = _max(cpu), draw_calls_max = dc_max, draw_calls_aim_max = dc_aim, dead_at_speed = dead_steps, story_cards_closed = _story_cards, anomalies = anomalies.size(),
 		cash_end = eco.cash, nights = night_results,
 	}
 
@@ -985,7 +997,7 @@ func _summary_md(r: Dictionary) -> String:
 	lines.append("| FX never hide the aim | FX still alive when aiming starts: %.1f %% of shots, still opaque 0.35 s into the aim: %.1f %%; look at aims_%s.png | %s |" % [r.aim_fx_busy_pct, r.aim_fx_opaque_pct, r.tag, _ok(r.aim_fx_opaque_pct == 0.0)])
 	lines.append("")
 	lines.append("FX fired: %s" % JSON.stringify(r.kinds))
-	lines.append("Shot duration median %.1f s (max %.1f s): rolling > %.1f m/s %.1f s, last FX -> resolved %.1f s; slot net %+d, slot chaos %d." % [r.shot_duration_median_s, r.shot_duration_max_s, ROLL_MPS, r.rolling_median_s, r.tail_median_s, r.slot_net, r.slot_chaos])
+	lines.append("Shot duration median %.1f s (max %.1f s), of which a ball moves faster than 0.3 / 0.8 / 1.5 m/s for a median %.1f / %.1f / %.1f s (the rest is creep to rest); slot net %+d, slot chaos %d." % [r.shot_duration_median_s, r.shot_duration_max_s, r.above_median_s[0], r.above_median_s[1], r.above_median_s[2], r.slot_net, r.slot_chaos])
 	lines.append("")
 	lines.append("| Round | hazard tier | shots | points | combos+tricks | chaos | ended | FX beats |")
 	lines.append("|---|---|---|---|---|---|---|---|")
