@@ -205,7 +205,10 @@ func _run() -> void:
 	var prop_m := _pbr("prop", Color.WHITE, "metal", true, 0.6)  # white: every metal part carries its own paint in its vertex colour
 	var pink_m := _mat("neon_pink", Color.BLACK, 0.5, 0.0, Color(1.0, 0.15, 0.55), 3.0)
 	var cyan_m := _mat("neon_cyan", Color.BLACK, 0.5, 0.0, Color(0.1, 0.85, 1.0), 3.0)
-	var tv_m := _mat("tv_screen", Color.BLACK, 0.3, 0.0, Color(0.45, 0.6, 1.0), 2.2)
+	var tv_m := _mat("tv_screen", Color.BLACK, 0.3, 0.0, Color.WHITE, 1.7)
+	tv_m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
+	tv_m.emission_texture = load("res://assets/decor/tv_screen.png")
+	_save_mat("tv_screen", tv_m)
 	var juke_m := _mat("jukebox_glass", Color.BLACK, 0.3, 0.0, Color(1.0, 0.6, 0.15), 2.5)
 
 	var s_floor := _st(floor_m, TILE.floor)
@@ -271,16 +274,20 @@ func _run() -> void:
 	for tp in TABLES:
 		stools.append(tp + Vector3(0.75, 0, 0))
 		stools.append(tp + Vector3(-0.75, 0, 0))
-	_box(s_prop, Vector3(6.55, 0.95, 5.8), Vector3(0.75, 1.9, 1.1), 0.0, DARK)                          # jukebox body
-	_box(s_prop, Vector3(6.2, 1.9, 5.8), Vector3(0.12, 0.1, 1.1), 0.0, BRASS)                           # jukebox crown
+	_jukebox(s_wood, s_wain, s_prop)
+	_taps(s_prop)
 	_box(s_prop, Vector3(0, 2.1, HALF - 0.06), Vector3(2.5, 1.5, 0.12), 0.0, DARK)                      # TV frame (south wall)
 	_box(s_prop, Vector3(-HALF + 0.08, 1.4, 5.8), Vector3(0.16, 0.5, 0.35), 0.0, DARK)                  # fuse box (flick_lights)
 	_lamp(s_prop)
 	_neon(s_pink, s_cyan, s_prop)
 
 	# --- screens (two surfaces): TV and jukebox glass ---
-	_box(s_tv, Vector3(0, 2.1, HALF - 0.14), Vector3(2.3, 1.3, 0.04))
-	_box(s_juke, Vector3(6.17, 1.35, 5.8), Vector3(0.05, 0.9, 0.8))
+	var tf := _wall_frame(&"S", 0.0, 2.1, 0.16)   # the TV picture: one quad, the whole broadcast still on it
+	var tc: Vector3 = tf.c
+	var tw: Vector3 = (tf.r as Vector3) * 1.15
+	var th := Vector3.UP * 0.65
+	_quad(s_tv, [tc - tw + th, tc + tw + th, tc + tw - th, tc - tw - th], [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)], tf.n)
+	_box(s_juke, Vector3(6.16, 1.14, 5.8), Vector3(0.05, 0.56, 0.8))
 
 	# --- decor: CC0 props into the room's own surfaces + one atlas surface for flat colours and posters ---
 	var decor := _build_decor({&"wood": s_wood, &"seat": s_seat, &"prop": s_prop}, stools)
@@ -354,6 +361,38 @@ func _round_table(s_wood: SurfaceTool, s_prop: SurfaceTool, c: Vector3) -> void:
 	_lathe(s_wood, c, [Vector2(0.0, 0.95), Vector2(0.44, 0.95), Vector2(0.5, 0.97), Vector2(0.5, 0.995), Vector2(0.47, 1.01), Vector2(0.0, 1.01)], 24)
 	_lathe(s_prop, c, [Vector2(0.34, 0.0), Vector2(0.34, 0.03), Vector2(0.12, 0.09), Vector2(0.06, 0.16), Vector2(0.06, 0.95)], 14, DARK)
 	_cyl(s_prop, c + Vector3(0, 0.955, 0), 0.14, 0.03, 12, BRASS)                              # collar under the top
+
+
+## The jukebox against the east wall inside its 0.75 x 1.9 x 1.1 collision box (x 6.175-6.925, front faces -x): plinth, panelled
+## cabinet with a grille, the glowing window in a brass bezel, brass pillars, an arched wood crown.
+func _jukebox(s_wood: SurfaceTool, s_wain: SurfaceTool, s_prop: SurfaceTool) -> void:
+	var cx := 6.55
+	var cz := 5.8
+	_box(s_wood, Vector3(cx, 0.08, cz), Vector3(0.75, 0.16, 1.1))                                     # plinth
+	_box(s_wain, Vector3(cx, 0.47, cz), Vector3(0.73, 0.62, 1.06))                                    # lower cabinet
+	_box(s_prop, Vector3(cx - 0.375, 0.47, cz), Vector3(0.03, 0.4, 0.7), 0.0, Color(0.03, 0.03, 0.035))  # speaker grille
+	for dz in [-0.37, 0.37]:
+		_box(s_prop, Vector3(cx - 0.385, 0.47, cz + dz), Vector3(0.02, 0.44, 0.04), 0.0, BRASS)
+	for dy in [0.25, 0.69]:
+		_box(s_prop, Vector3(cx - 0.385, dy, cz), Vector3(0.02, 0.04, 0.78), 0.0, BRASS)
+	_box(s_wain, Vector3(cx, 1.14, cz), Vector3(0.75, 0.72, 1.1))                                     # window body
+	for dy in [0.84, 1.44]:
+		_box(s_prop, Vector3(cx - 0.4, dy, cz), Vector3(0.04, 0.04, 0.9), 0.0, BRASS)                 # bezel top / bottom
+	for dz in [-0.45, 0.45]:
+		_box(s_prop, Vector3(cx - 0.4, 1.14, cz + dz), Vector3(0.04, 0.64, 0.04), 0.0, BRASS)         # bezel sides
+	_tube(s_wood, Vector3(cx, 1.5, cz - 0.55), Vector3(cx, 1.5, cz + 0.55), 0.37, 18)                  # arched crown (lower half sits in the body)
+	for dz in [-0.52, 0.52]:
+		_tube(s_prop, Vector3(cx - 0.36, 0.16, cz + dz), Vector3(cx - 0.36, 1.5, cz + dz), 0.03, 10, BRASS)  # pillars
+
+
+## Three beer taps on the counter's far (bartender) edge, clear of the serve spot at z 2.5.
+func _taps(s_prop: SurfaceTool) -> void:
+	_box(s_prop, Vector3(5.3, 1.09, 3.6), Vector3(0.22, 0.02, 0.7), 0.0, DARK)                         # drip tray
+	for z in [3.35, 3.6, 3.85]:
+		_cyl(s_prop, Vector3(5.3, 1.12, z), 0.03, 0.04, 10, BRASS)                                       # base
+		_tube(s_prop, Vector3(5.3, 1.14, z), Vector3(5.3, 1.34, z), 0.014, 8, Color(0.8, 0.8, 0.82))     # chrome stem
+		_box(s_prop, Vector3(5.26, 1.3, z), Vector3(0.1, 0.02, 0.02), 0.0, Color(0.8, 0.8, 0.82))        # spout
+		_box(s_prop, Vector3(5.3, 1.4, z), Vector3(0.025, 0.1, 0.03), 0.0, DARK)                         # handle
 
 
 ## The pool-hall lamp over the table: green cone shade with a cream lining, rod to the ceiling. The light itself is a node.
@@ -593,6 +632,7 @@ func _load_model(pack: StringName, model: String) -> Dictionary:
 func _place(tools: Dictionary, model: Dictionary, it: Array) -> Dictionary:
 	var scale: float = DecorPlan.PACKS[it[1]].scale * (it[6] if it.size() > 6 else 1.0)
 	var forced: StringName = it[7] if it.size() > 7 else &""
+	var dim: float = it[8] if it.size() > 8 else 1.0
 	var pos: Vector3 = it[3]
 	var rot := Basis(Vector3.UP, deg_to_rad(it[4]))
 	var lo: Vector3 = model.min
@@ -618,7 +658,7 @@ func _place(tools: Dictionary, model: Dictionary, it: Array) -> Dictionary:
 			for i: int in tri:
 				var p := pos + rot * ((v[i] - centre) * scale)
 				var n: Vector3 = rot * sf.normals[i]
-				var c: Color = cols[i] * DecorPlan.PROP_TINT if keep >= 1.0 else Color.WHITE.lerp(cols[i], keep)
+				var c: Color = cols[i] * DecorPlan.PROP_TINT * dim if keep >= 1.0 else Color.WHITE.lerp(cols[i], keep)
 				st.set_color(c)
 				st.set_uv(DecorPlan.WHITE_UV if tile <= 0.0 else _uv(p, n, tile))
 				st.set_normal(n)

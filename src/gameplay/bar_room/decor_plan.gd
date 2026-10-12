@@ -47,8 +47,8 @@ const HALF := 7.0
 const CEIL := 3.6
 const TABLE_TOP_Y := 1.01   # round bar tables (build_bar_room.gd: top at 0.98, 0.06 thick)
 
-## [id, pack, model, Vector3(x, y, z), yaw_deg, kind, scale multiplier = 1.0, class = auto (see `classify`)] — x,z = footprint
-## centre, y = bottom of the model.
+## [id, pack, model, Vector3(x, y, z), yaw_deg, kind, scale multiplier = 1.0, class = auto (see `classify`), brightness = 1.0]
+## — x,z = footprint centre, y = bottom of the model.
 ## kind: &"floor" collides + keep-clear checked; &"flat" (rug: no collision, keep-clear only vs the door and the table band);
 ## &"on_table" / &"top" sit on another prop (no collision, no keep-clear); &"hang" y = TOP of the model (ceiling mount).
 const ITEMS: Array = [
@@ -66,7 +66,7 @@ const ITEMS: Array = [
 	[&"shelf_a", &"furniture", "bookcaseOpen", Vector3(2.8, 0.0, 6.72), AGAINST_SOUTH, &"floor", 1.0, &"wood"],
 	[&"shelf_b", &"furniture", "bookcaseOpen", Vector3(3.7, 0.0, 6.72), AGAINST_SOUTH, &"floor", 1.0, &"wood"],
 	[&"books_a", &"furniture", "books", Vector3(2.8, 1.76, 6.72), AGAINST_SOUTH, &"top", 1.0, &"decor"],
-	[&"fridge", &"furniture", "kitchenFridge", Vector3(4.6, 0.0, 6.66), AGAINST_SOUTH, &"floor"],
+	[&"fridge", &"furniture", "kitchenFridge", Vector3(4.6, 0.0, 6.66), AGAINST_SOUTH, &"floor", 1.0, &"decor", 0.55],
 	[&"lamp_s", &"furniture", "lampSquareFloor", Vector3(-4.0, 0.0, 6.78), 0.0, &"floor"],
 	# west wall
 	[&"coatrack", &"furniture", "coatRackStanding", Vector3(-6.62, 0.0, -0.85), 0.0, &"floor", 1.0, &"wood"],

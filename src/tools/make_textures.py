@@ -6,7 +6,7 @@
 albedo = diffuse desaturated toward grey and scaled to a fixed mean luminance: a detail map that multiplies the material's
          albedo_color, so a BarSkin colour is still set verbatim and only gains grain; normal = OpenGL green-up (Godot's);
 orm    = Poly Haven `arm` (AO, roughness, metallic) which is exactly Godot's ORM channel order.
-Sizes follow 07 §8: hero albedo 1024, everything else 512; albedo/orm are lossy WebP (the importer VRAM-compresses them anyway),
+Sizes follow 07 §8: felt and floor albedo 1024, everything else 512 or less; albedo/orm are lossy WebP (the importer VRAM-compresses them anyway),
 normals stay lossless PNG. Needs only Pillow. Downloads are untrusted data: the cache holds
 nothing but images that Pillow decodes, never code.
 """
@@ -25,12 +25,12 @@ MEAN = {"felt": 0.9}
 # name: (poly haven id, albedo px, normal px or 0 for none, orm px, colour kept 0..1)
 SETS = {
     "floor": ("dark_wooden_planks", 1024, 512, 512, 0.4),
-    "wall": ("red_brick_03", 1024, 512, 512, 0.6),
+    "wall": ("red_brick_03", 512, 512, 512, 0.6),
     "wainscot": ("wooden_panels", 512, 512, 512, 0.4),
-    "ceiling": ("ceiling_interior", 512, 0, 512, 0.2),
+    "ceiling": ("ceiling_interior", 512, 0, 256, 0.2),
     "wood": ("dark_wood", 512, 512, 512, 0.4),
-    "seat": ("brown_leather", 512, 512, 512, 0.2),
-    "metal": ("metal_plate_02", 512, 512, 512, 0.2),
+    "seat": ("brown_leather", 512, 256, 512, 0.2),
+    "metal": ("metal_plate_02", 512, 256, 512, 0.2),
     "felt": ("velour_velvet", 1024, 512, 512, 0.1),
 }
 
@@ -109,9 +109,12 @@ detect_3d/compress_to=0
 
 
 def write_import(rel: str, hq: bool, normal: bool) -> None:
-    """VRAM-compressed with mipmaps, 07 §8: hero albedo (>= 1024) ASTC via high_quality, the rest ETC2; normals as normal maps.
-    Godot fills in uid / dest paths on the next `godot --headless --import`."""
-    with open(os.path.join(OUT, rel + ".import"), "w") as f:
+    """VRAM-compressed with mipmaps, 07 §8: the felt ASTC via high_quality, everything else ETC2; normals as normal maps.
+    Godot fills in uid / dest paths on the next `godot --headless --import`; an existing .import is left alone (it holds the uid)."""
+    path = os.path.join(OUT, rel + ".import")
+    if os.path.exists(path):
+        return
+    with open(path, "w") as f:
         f.write(IMPORT.format(rel=rel, hq="true" if hq else "false", nm=1 if normal else 0))
 
 
@@ -135,7 +138,7 @@ def main() -> None:
         if n_px:
             nor = Image.open(os.path.join(cache, f"{ph}_nor.jpg")).convert("RGB")
             nor.resize((n_px, n_px), Image.LANCZOS).save(os.path.join(out, "normal.png"), optimize=True)
-        write_import(f"{name}/albedo.webp", a_px >= 1024, False)
+        write_import(f"{name}/albedo.webp", name == "felt", False)
         write_import(f"{name}/orm.webp", False, False)
         if n_px:
             write_import(f"{name}/normal.png", False, True)

@@ -1,7 +1,7 @@
 extends SceneTree
 
 ## One-shot: MainLevel-equivalent framing of the bar room (BarRoom + Table + balls) to a PNG. Needs a window.
-##   godot --path . -s src/tools/screenshot_bar_room.gd -- <out.png> [view]   view: table | bar | wide | felt | counter | backbar | west | lounge | door | ceiling
+##   godot --path . -s src/tools/screenshot_bar_room.gd -- <out.png> [view]   view: table | bar | wide | felt | counter | backbar | west | lounge | door | ceiling | juke | tv
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const ROOM := preload("res://src/gameplay/bar_room/BarRoom.tscn")
 const DEMO_RACK := preload("res://src/gameplay/round/demo_rack.gd")
@@ -48,6 +48,12 @@ func _run() -> void:
 		"lounge":
 			cam.position = Vector3(0.5, 1.7, -1.2)
 			cam.look_at(Vector3(5.6, 0.7, -6.0))
+		"juke":
+			cam.position = Vector3(4.4, 1.6, 3.6)
+			cam.look_at(Vector3(6.5, 1.2, 5.8))
+		"tv":
+			cam.position = Vector3(0.0, 1.7, 1.0)
+			cam.look_at(Vector3(1.0, 1.5, 7.0))
 		"door":
 			cam.position = Vector3(-0.5, 1.7, -2.0)
 			cam.look_at(Vector3(0.0, 1.8, -7.0))

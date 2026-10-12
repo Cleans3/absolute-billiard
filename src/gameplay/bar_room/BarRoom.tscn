@@ -1,4 +1,4 @@
-[gd_scene format=3 uid="uid://d1hen8wbett4v"]
+[gd_scene format=3 uid="uid://btn2rtukejtht"]
 
 [ext_resource type="Script" uid="uid://djsavapb15tv" path="res://src/gameplay/bar_room/bar_room.gd" id="1_2vvgs"]
 [ext_resource type="ArrayMesh" path="res://src/gameplay/bar_room/meshes/floor.res" id="2_vhy8s"]
@@ -142,44 +142,44 @@ fog_enabled = true
 fog_light_color = Color(0.13, 0.09, 0.08, 1)
 fog_density = 0.018
 
-[node name="BarRoom" type="Node3D" unique_id=1598896330]
+[node name="BarRoom" type="Node3D" unique_id=1159136681]
 script = ExtResource("1_2vvgs")
 
-[node name="Geometry" type="Node3D" parent="." unique_id=1636190949]
+[node name="Geometry" type="Node3D" parent="." unique_id=681298862]
 
-[node name="Floor" type="MeshInstance3D" parent="Geometry" unique_id=1476788915]
+[node name="Floor" type="MeshInstance3D" parent="Geometry" unique_id=148143330]
 cast_shadow = 0
 mesh = ExtResource("2_vhy8s")
 
-[node name="Walls" type="MeshInstance3D" parent="Geometry" unique_id=1877417066]
+[node name="Walls" type="MeshInstance3D" parent="Geometry" unique_id=733167868]
 cast_shadow = 0
 mesh = ExtResource("3_7q080")
 
-[node name="Ceiling" type="MeshInstance3D" parent="Geometry" unique_id=134303292]
+[node name="Ceiling" type="MeshInstance3D" parent="Geometry" unique_id=1185773059]
 cast_shadow = 0
 mesh = ExtResource("4_vbie5")
 
-[node name="Wood" type="MeshInstance3D" parent="Geometry" unique_id=862983921]
+[node name="Wood" type="MeshInstance3D" parent="Geometry" unique_id=1456156098]
 cast_shadow = 0
 mesh = ExtResource("5_84vdy")
 
-[node name="Seats" type="MeshInstance3D" parent="Geometry" unique_id=1544054609]
+[node name="Seats" type="MeshInstance3D" parent="Geometry" unique_id=1095937520]
 cast_shadow = 0
 mesh = ExtResource("6_sra8h")
 
-[node name="Props" type="MeshInstance3D" parent="Geometry" unique_id=1429969400]
+[node name="Props" type="MeshInstance3D" parent="Geometry" unique_id=1284930653]
 cast_shadow = 0
 mesh = ExtResource("7_wijsj")
 
-[node name="Neon" type="MeshInstance3D" parent="Geometry" unique_id=1448749303]
+[node name="Neon" type="MeshInstance3D" parent="Geometry" unique_id=347794457]
 cast_shadow = 0
 mesh = ExtResource("8_1g6mp")
 
-[node name="Screens" type="MeshInstance3D" parent="Geometry" unique_id=2035712150]
+[node name="Screens" type="MeshInstance3D" parent="Geometry" unique_id=1388272668]
 cast_shadow = 0
 mesh = ExtResource("9_cfohe")
 
-[node name="Decor" type="Node3D" parent="." unique_id=962082551]
+[node name="Decor" type="Node3D" parent="." unique_id=1102143333]
 metadata/items = Array[Dictionary]([{
 &"height": 0.92,
 &"id": &"sofa_ne",
@@ -700,171 +700,171 @@ metadata/items = Array[Dictionary]([{
 &"wall_rect": Rect2(4.75, 1.35, 0.9, 0.9)
 }])
 
-[node name="Mesh" type="MeshInstance3D" parent="Decor" unique_id=1335687813]
+[node name="Mesh" type="MeshInstance3D" parent="Decor" unique_id=745433797]
 cast_shadow = 0
 mesh = ExtResource("10_iruhh")
 
-[node name="Collision" type="StaticBody3D" parent="." unique_id=246739059]
+[node name="Collision" type="StaticBody3D" parent="." unique_id=1281787664]
 collision_layer = 8
 collision_mask = 0
 
-[node name="@CollisionShape3D@2" type="CollisionShape3D" parent="Collision" unique_id=1501493028]
+[node name="@CollisionShape3D@2" type="CollisionShape3D" parent="Collision" unique_id=582806403]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 shape = SubResource("BoxShape3D_rmvwf")
 
-[node name="@CollisionShape3D@3" type="CollisionShape3D" parent="Collision" unique_id=776271494]
+[node name="@CollisionShape3D@3" type="CollisionShape3D" parent="Collision" unique_id=630627975]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 4.1, 0)
 shape = SubResource("BoxShape3D_8rs4x")
 
-[node name="@CollisionShape3D@4" type="CollisionShape3D" parent="Collision" unique_id=1334889174]
+[node name="@CollisionShape3D@4" type="CollisionShape3D" parent="Collision" unique_id=1557633211]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, 7.5)
 shape = SubResource("BoxShape3D_4unvf")
 
-[node name="@CollisionShape3D@5" type="CollisionShape3D" parent="Collision" unique_id=547713244]
+[node name="@CollisionShape3D@5" type="CollisionShape3D" parent="Collision" unique_id=1102830624]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, -7.5)
 shape = SubResource("BoxShape3D_44gv2")
 
-[node name="@CollisionShape3D@6" type="CollisionShape3D" parent="Collision" unique_id=414145373]
+[node name="@CollisionShape3D@6" type="CollisionShape3D" parent="Collision" unique_id=68610317]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.5, 1.8, 0)
 shape = SubResource("BoxShape3D_fi2yn")
 
-[node name="@CollisionShape3D@7" type="CollisionShape3D" parent="Collision" unique_id=1252720361]
+[node name="@CollisionShape3D@7" type="CollisionShape3D" parent="Collision" unique_id=1639342085]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7.5, 1.8, 0)
 shape = SubResource("BoxShape3D_kyrch")
 
-[node name="@CollisionShape3D@8" type="CollisionShape3D" parent="Collision" unique_id=1049699561]
+[node name="@CollisionShape3D@8" type="CollisionShape3D" parent="Collision" unique_id=517347701]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.1, 0.55, 2.5)
 shape = SubResource("BoxShape3D_ifvxm")
 
-[node name="@CollisionShape3D@9" type="CollisionShape3D" parent="Collision" unique_id=1661449288]
+[node name="@CollisionShape3D@9" type="CollisionShape3D" parent="Collision" unique_id=2038950010]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.8, 1.6, 2.5)
 shape = SubResource("BoxShape3D_q1ofh")
 
-[node name="@CollisionShape3D@10" type="CollisionShape3D" parent="Collision" unique_id=1346036038]
+[node name="@CollisionShape3D@10" type="CollisionShape3D" parent="Collision" unique_id=1219102356]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.55, 0.95, 5.8)
 shape = SubResource("BoxShape3D_wjso7")
 
-[node name="@CollisionShape3D@11" type="CollisionShape3D" parent="Collision" unique_id=87478674]
+[node name="@CollisionShape3D@11" type="CollisionShape3D" parent="Collision" unique_id=1061725964]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0.4, 0)
 shape = SubResource("BoxShape3D_a6vd1")
 
-[node name="@CollisionShape3D@12" type="CollisionShape3D" parent="Collision" unique_id=804909500]
+[node name="@CollisionShape3D@12" type="CollisionShape3D" parent="Collision" unique_id=1650104551]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.3, 0.4, 1)
 shape = SubResource("BoxShape3D_cgo0i")
 
-[node name="@CollisionShape3D@13" type="CollisionShape3D" parent="Collision" unique_id=1389970169]
+[node name="@CollisionShape3D@13" type="CollisionShape3D" parent="Collision" unique_id=1434555616]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.3, 0.4, 2)
 shape = SubResource("BoxShape3D_d2n8a")
 
-[node name="@CollisionShape3D@14" type="CollisionShape3D" parent="Collision" unique_id=2023512285]
+[node name="@CollisionShape3D@14" type="CollisionShape3D" parent="Collision" unique_id=1576856569]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.3, 0.4, 3)
 shape = SubResource("BoxShape3D_vep2l")
 
-[node name="@CollisionShape3D@15" type="CollisionShape3D" parent="Collision" unique_id=470259816]
+[node name="@CollisionShape3D@15" type="CollisionShape3D" parent="Collision" unique_id=1376098812]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.3, 0.4, 4)
 shape = SubResource("BoxShape3D_ls0pi")
 
-[node name="@CollisionShape3D@16" type="CollisionShape3D" parent="Collision" unique_id=1954822388]
+[node name="@CollisionShape3D@16" type="CollisionShape3D" parent="Collision" unique_id=1277520687]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.45, 0.4, 2.6)
 shape = SubResource("BoxShape3D_m5u4c")
 
-[node name="@CollisionShape3D@17" type="CollisionShape3D" parent="Collision" unique_id=467365862]
+[node name="@CollisionShape3D@17" type="CollisionShape3D" parent="Collision" unique_id=213970149]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.95, 0.4, 2.6)
 shape = SubResource("BoxShape3D_siptr")
 
-[node name="@CollisionShape3D@18" type="CollisionShape3D" parent="Collision" unique_id=1616346202]
+[node name="@CollisionShape3D@18" type="CollisionShape3D" parent="Collision" unique_id=726905906]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4.45, 0.4, 4.4)
 shape = SubResource("BoxShape3D_5iiue")
 
-[node name="@CollisionShape3D@19" type="CollisionShape3D" parent="Collision" unique_id=1013474791]
+[node name="@CollisionShape3D@19" type="CollisionShape3D" parent="Collision" unique_id=1347338381]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.95, 0.4, 4.4)
 shape = SubResource("BoxShape3D_rsdb6")
 
-[node name="@CollisionShape3D@20" type="CollisionShape3D" parent="Collision" unique_id=1784375963]
+[node name="@CollisionShape3D@20" type="CollisionShape3D" parent="Collision" unique_id=1918062712]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.05, 0.4, 5.6)
 shape = SubResource("BoxShape3D_o7n1o")
 
-[node name="@CollisionShape3D@21" type="CollisionShape3D" parent="Collision" unique_id=1971502756]
+[node name="@CollisionShape3D@21" type="CollisionShape3D" parent="Collision" unique_id=901631092]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.55, 0.4, 5.6)
 shape = SubResource("BoxShape3D_ecb02")
 
-[node name="@CollisionShape3D@22" type="CollisionShape3D" parent="Collision" unique_id=153882773]
+[node name="@CollisionShape3D@22" type="CollisionShape3D" parent="Collision" unique_id=1917017788]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.2, 0.5, 2.6)
 shape = SubResource("BoxShape3D_o7scy")
 
-[node name="@CollisionShape3D@23" type="CollisionShape3D" parent="Collision" unique_id=1636255998]
+[node name="@CollisionShape3D@23" type="CollisionShape3D" parent="Collision" unique_id=551755708]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.2, 0.5, 4.4)
 shape = SubResource("BoxShape3D_kabyx")
 
-[node name="@CollisionShape3D@24" type="CollisionShape3D" parent="Collision" unique_id=157385979]
+[node name="@CollisionShape3D@24" type="CollisionShape3D" parent="Collision" unique_id=1914235949]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.8, 0.5, 5.6)
 shape = SubResource("BoxShape3D_hvdff")
 
-[node name="@CollisionShape3D@25" type="CollisionShape3D" parent="Collision" unique_id=301885456]
+[node name="@CollisionShape3D@25" type="CollisionShape3D" parent="Collision" unique_id=745482110]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.6, 0.46, -6.55)
 shape = SubResource("BoxShape3D_n40ov")
 
-[node name="@CollisionShape3D@26" type="CollisionShape3D" parent="Collision" unique_id=823951188]
+[node name="@CollisionShape3D@26" type="CollisionShape3D" parent="Collision" unique_id=536872093]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5.6, 0.46, -6.55)
 shape = SubResource("BoxShape3D_q1a72")
 
-[node name="@CollisionShape3D@27" type="CollisionShape3D" parent="Collision" unique_id=962456599]
+[node name="@CollisionShape3D@27" type="CollisionShape3D" parent="Collision" unique_id=1963645985]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.8, 0.86, -6.7)
 shape = SubResource("BoxShape3D_e7xl0")
 
-[node name="@CollisionShape3D@28" type="CollisionShape3D" parent="Collision" unique_id=2015242498]
+[node name="@CollisionShape3D@28" type="CollisionShape3D" parent="Collision" unique_id=1059937955]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.8, 0.86, -6.7)
 shape = SubResource("BoxShape3D_ccr3k")
 
-[node name="@CollisionShape3D@29" type="CollisionShape3D" parent="Collision" unique_id=1028336438]
+[node name="@CollisionShape3D@29" type="CollisionShape3D" parent="Collision" unique_id=628042797]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.7, 0.6540168, -5.8)
 shape = SubResource("BoxShape3D_3t2nh")
 
-[node name="@CollisionShape3D@30" type="CollisionShape3D" parent="Collision" unique_id=100423652]
+[node name="@CollisionShape3D@30" type="CollisionShape3D" parent="Collision" unique_id=1297219124]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1.9000001, 0.6364, 6.78)
 shape = SubResource("BoxShape3D_7alcn")
 
-[node name="@CollisionShape3D@31" type="CollisionShape3D" parent="Collision" unique_id=193669259]
+[node name="@CollisionShape3D@31" type="CollisionShape3D" parent="Collision" unique_id=1933775245]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.9000001, 0.6364, 6.78)
 shape = SubResource("BoxShape3D_f70vo")
 
-[node name="@CollisionShape3D@32" type="CollisionShape3D" parent="Collision" unique_id=391163061]
+[node name="@CollisionShape3D@32" type="CollisionShape3D" parent="Collision" unique_id=634904066]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.8, 0.87999994, 6.72)
 shape = SubResource("BoxShape3D_ka2ui")
 
-[node name="@CollisionShape3D@33" type="CollisionShape3D" parent="Collision" unique_id=1868212565]
+[node name="@CollisionShape3D@33" type="CollisionShape3D" parent="Collision" unique_id=1211884227]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.6999998, 0.87999994, 6.72)
 shape = SubResource("BoxShape3D_jewdo")
 
-[node name="@CollisionShape3D@34" type="CollisionShape3D" parent="Collision" unique_id=742065103]
+[node name="@CollisionShape3D@34" type="CollisionShape3D" parent="Collision" unique_id=532579931]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.6, 0.92, 6.66)
 shape = SubResource("BoxShape3D_ulj2y")
 
-[node name="@CollisionShape3D@35" type="CollisionShape3D" parent="Collision" unique_id=238757611]
+[node name="@CollisionShape3D@35" type="CollisionShape3D" parent="Collision" unique_id=651707786]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -4, 0.86, 6.78)
 shape = SubResource("BoxShape3D_bqnpp")
 
-[node name="@CollisionShape3D@36" type="CollisionShape3D" parent="Collision" unique_id=99978982]
+[node name="@CollisionShape3D@36" type="CollisionShape3D" parent="Collision" unique_id=887562024]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.62, 0.77, -0.85)
 shape = SubResource("BoxShape3D_yclbd")
 
-[node name="@CollisionShape3D@37" type="CollisionShape3D" parent="Collision" unique_id=1550821397]
+[node name="@CollisionShape3D@37" type="CollisionShape3D" parent="Collision" unique_id=1487466102]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.7, 0.38440755, 0.95)
 shape = SubResource("BoxShape3D_2vlt5")
 
-[node name="@CollisionShape3D@38" type="CollisionShape3D" parent="Collision" unique_id=177355255]
+[node name="@CollisionShape3D@38" type="CollisionShape3D" parent="Collision" unique_id=211973986]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.55, 0.43, -1.1)
 shape = SubResource("BoxShape3D_3616j")
 
-[node name="@CollisionShape3D@39" type="CollisionShape3D" parent="Collision" unique_id=1093107629]
+[node name="@CollisionShape3D@39" type="CollisionShape3D" parent="Collision" unique_id=1529699070]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 6.6, 0.43, -0.5)
 shape = SubResource("BoxShape3D_2fl3h")
 
-[node name="@CollisionShape3D@40" type="CollisionShape3D" parent="Collision" unique_id=330716061]
+[node name="@CollisionShape3D@40" type="CollisionShape3D" parent="Collision" unique_id=942764360]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.9, 0.3125, -0.95000005)
 shape = SubResource("BoxShape3D_64opo")
 
-[node name="TableLamp" type="SpotLight3D" parent="." unique_id=1639858886]
+[node name="TableLamp" type="SpotLight3D" parent="." unique_id=745355625]
 transform = Transform3D(1, 0, 0, 0, -4.371139e-08, 1, 0, -1, -4.371139e-08, 0, 2.95, -3.5)
 light_color = Color(1, 0.86, 0.62, 1)
 light_energy = 14.0
@@ -874,48 +874,48 @@ spot_range = 6.0
 spot_angle = 58.0
 spot_angle_attenuation = 1.4
 
-[node name="BarFill" type="OmniLight3D" parent="." unique_id=881351556]
+[node name="BarFill" type="OmniLight3D" parent="." unique_id=884885193]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.5, 2.6, 2.5)
 light_color = Color(1, 0.7, 0.4, 1)
 light_energy = 3.0
 omni_range = 6.0
 
-[node name="BakedNeonPink" type="OmniLight3D" parent="." unique_id=1322368340]
+[node name="BakedNeonPink" type="OmniLight3D" parent="." unique_id=439241081]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6, 2.2, 1.5)
 light_color = Color(1, 0.15, 0.55, 1)
 light_energy = 24.0
 light_bake_mode = 1
 omni_range = 7.0
 
-[node name="BakedNeonCyan" type="OmniLight3D" parent="." unique_id=637652667]
+[node name="BakedNeonCyan" type="OmniLight3D" parent="." unique_id=1517982170]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.6, -6.2)
 light_color = Color(0.1, 0.85, 1, 1)
 light_energy = 24.0
 light_bake_mode = 1
 omni_range = 8.0
 
-[node name="BakedJukebox" type="OmniLight3D" parent="." unique_id=436703044]
+[node name="BakedJukebox" type="OmniLight3D" parent="." unique_id=1644531746]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.6, 1.4, 5.8)
 light_color = Color(1, 0.6, 0.15, 1)
 light_energy = 12.0
 light_bake_mode = 1
 omni_range = 4.0
 
-[node name="BakedTV" type="OmniLight3D" parent="." unique_id=294331659]
+[node name="BakedTV" type="OmniLight3D" parent="." unique_id=197458299]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.1, 6)
 light_color = Color(0.45, 0.6, 1, 1)
 light_energy = 24.0
 light_bake_mode = 1
 omni_range = 6.0
 
-[node name="BakedRoomWarm" type="OmniLight3D" parent="." unique_id=2039420880]
+[node name="BakedRoomWarm" type="OmniLight3D" parent="." unique_id=1939854261]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.2, 1.5)
 light_color = Color(1, 0.75, 0.5, 1)
 light_energy = 28.0
 light_bake_mode = 1
 omni_range = 12.0
 
-[node name="ReflectTable" type="ReflectionProbe" parent="." unique_id=1989361653]
+[node name="ReflectTable" type="ReflectionProbe" parent="." unique_id=608206251]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.8, -3.5)
 intensity = 0.6
 size = Vector3(9, 3.5, 7)
@@ -923,7 +923,7 @@ box_projection = true
 interior = true
 cull_mask = 1
 
-[node name="ReflectBar" type="ReflectionProbe" parent="." unique_id=1678579158]
+[node name="ReflectBar" type="ReflectionProbe" parent="." unique_id=1869064536]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4, 1.8, 3.5)
 intensity = 0.6
 size = Vector3(6, 3.5, 7)
@@ -931,10 +931,10 @@ box_projection = true
 interior = true
 cull_mask = 1
 
-[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1735287833]
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1203727434]
 environment = SubResource("Environment_hk1se")
 
-[node name="Lightmap" type="LightmapGI" parent="." unique_id=1235052411]
+[node name="Lightmap" type="LightmapGI" parent="." unique_id=162808086]
 quality = 2
 bounces = 2
 interior = true

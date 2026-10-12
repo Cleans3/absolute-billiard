@@ -3,8 +3,8 @@
 importer="texture"
 type="CompressedTexture2D"
 uid="uid://c1tna6fkumb7b"
-path.bptc="res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.bptc.ctex"
-path.astc="res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.astc.ctex"
+path.s3tc="res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.s3tc.ctex"
+path.etc2="res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.etc2.ctex"
 metadata={
 "imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
@@ -13,12 +13,12 @@ metadata={
 [deps]
 
 source_file="res://assets/textures/floor/albedo.webp"
-dest_files=["res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.bptc.ctex", "res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.astc.ctex"]
+dest_files=["res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.s3tc.ctex", "res://.godot/imported/albedo.webp-e10480608ff053d80236d6f041d80f7e.etc2.ctex"]
 
 [params]
 
 compress/mode=2
-compress/high_quality=true
+compress/high_quality=false
 compress/lossy_quality=0.7
 compress/uastc_level=0
 compress/rdo_quality_loss=0.0

@@ -2,6 +2,7 @@ extends SceneTree
 ## Bar room polish (06 P13/P14/P17/P18): no fog planes, the counter stands off the wall with a >= 1 m aisle and a
 ## free bartender spot, BarSkin recolours the shared materials, Table felt, and the camera rig is a real 3-surface model.
 ## adhoc-1010a C10/C18: the Decor mesh (one draw call, one material), >= 12 distinct props + >= 6 posters, keep-clear zones, licences.
+## adhoc-1012a art: PBR texture sets (VRAM-compressed, mipmapped, licensed, world-mapped UVs) and the 07 §2 material budget.
 ##   godot --path . --headless -s tests/world/bar_room_probe.gd
 
 const ROOM := preload("res://src/gameplay/bar_room/BarRoom.tscn")
@@ -127,6 +128,42 @@ func _decor(room: BarRoom) -> void:
 	_check(not hit.is_empty() and hit.position.y > 0.3, "the NE sofa has a collider (hit y %.2f)" % (hit.position.y if not hit.is_empty() else -1.0))
 
 
+## adhoc-1012a: the room's surfaces are PBR (albedo + ORM [+ normal]) and stay within the 12 materials of 07 §2; every set is
+## imported VRAM-compressed with mipmaps (07 §8), has its licence beside it, and the floor is mapped in world metres (no stretch).
+func _pbr(room: BarRoom) -> void:
+	var mats := {}
+	for mi: MeshInstance3D in room.find_children("*", "MeshInstance3D", true, false):
+		for i in mi.mesh.get_surface_count():
+			var m := mi.mesh.surface_get_material(i)
+			mats[m.resource_name] = m
+	_check(mats.size() <= 12, "the room uses <= 12 materials (07 §2): %d %s" % [mats.size(), mats.keys()])
+	for id in [&"floor", &"wall", &"wainscot", &"ceiling", &"wood", &"seat", &"prop"]:
+		var m := mats.get(String(id)) as ORMMaterial3D
+		_check(m != null and m.albedo_texture != null and m.orm_texture != null, "%s is a PBR material (albedo + ORM)" % id)
+		if m != null and id != &"ceiling":
+			_check(m.normal_enabled and m.normal_texture != null, "%s has a normal map" % id)
+	var dir := "res://assets/textures/"
+	_check(FileAccess.file_exists(dir + "LICENSE.txt") and FileAccess.file_exists(dir + "SOURCE.md"), "the texture sets ship their licence and sources")
+	var sets := 0
+	for set_dir in DirAccess.get_directories_at(dir):
+		sets += 1
+		for f in DirAccess.get_files_at(dir + set_dir):
+			if not f.ends_with(".import"):
+				continue
+			var txt := FileAccess.get_file_as_string(dir + set_dir + "/" + f)
+			_check(txt.contains("compress/mode=2") and txt.contains("mipmaps/generate=true"), "%s/%s imports VRAM-compressed with mipmaps" % [set_dir, f])
+			_check(txt.contains("compress/normal_map=1") == f.begins_with("normal"), "%s/%s: normal-map flag only on normals" % [set_dir, f])
+	_check(sets >= 7, "at least the 7 room texture sets: %d" % sets)
+	var fl := room.get_node("Geometry/Floor") as MeshInstance3D
+	var uv: PackedVector2Array = fl.mesh.surface_get_arrays(0)[Mesh.ARRAY_TEX_UV]
+	var lo := Vector2(INF, INF)
+	var hi := Vector2(-INF, -INF)
+	for p in uv:
+		lo = lo.min(p)
+		hi = hi.max(p)
+	_check(absf((hi.x - lo.x) - 7.0) < 0.6, "floor planks are mapped in world metres (14 m / 2 m tile = 7 repeats): %s" % (hi - lo))
+
+
 func _ray(space: PhysicsDirectSpaceState3D, from: Vector3, to: Vector3) -> Dictionary:
 	var q := PhysicsRayQueryParameters3D.create(from, to, WORLD_MASK)
 	return space.intersect_ray(q)
@@ -196,6 +233,16 @@ func _felt() -> void:
 	await physics_frame
 	cloth = table.get_node("Cloth") as MeshInstance3D
 	_check((cloth.material_override as StandardMaterial3D).albedo_color.is_equal_approx(c), "the felt survives a table rebuild")
+	# adhoc-1012a: the felt has nap (albedo + normal), the wood parts share one PBR material, the table is <= 4 materials / meshes
+	var felt := cloth.material_override as StandardMaterial3D
+	_check(felt.albedo_texture != null and felt.normal_enabled and felt.normal_texture != null, "the felt carries its albedo + nap normal")
+	var table_mats := {}
+	for mi: MeshInstance3D in table.find_children("*", "MeshInstance3D", true, false):
+		if mi.material_override != null:
+			table_mats[mi.material_override] = true
+	_check(table_mats.size() <= 4, "the table is <= 4 materials (felt, wood, rubber, liners): %d" % table_mats.size())
+	var wood := table.get_node_or_null("Visual_wood") as MeshInstance3D
+	_check(wood != null and wood.material_override is ORMMaterial3D, "rails / apron / legs are one wood PBR mesh")
 	table.queue_free()
 
 
