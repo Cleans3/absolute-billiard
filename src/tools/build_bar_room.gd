@@ -24,6 +24,7 @@ const TABLES: Array[Vector3] = [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4)
 const TILE := {floor = 2.0, wall = 1.0, wainscot = 2.1, ceiling = 2.0, wood = 1.2, seat = 0.5, metal = 1.0}
 const DARK := Color(0.16, 0.16, 0.18)   # paint of the greybox metal parts (the prop material itself is white)
 const BRASS := Color(0.62, 0.42, 0.16)
+const CHROME := Color(0.78, 0.78, 0.8)
 
 var _tiles := {}   # SurfaceTool -> tile metres (0 = keep the primitive's own UV)
 
@@ -276,6 +277,8 @@ func _run() -> void:
 		stools.append(tp + Vector3(-0.75, 0, 0))
 	_jukebox(s_wood, s_wain, s_prop)
 	_taps(s_prop)
+	for i in stools.size():
+		_stool(s_seat, s_prop, stools[i], float(i * 47 % 360))
 	_box(s_prop, Vector3(0, 2.1, HALF - 0.06), Vector3(2.5, 1.5, 0.12), 0.0, DARK)                      # TV frame (south wall)
 	_box(s_prop, Vector3(-HALF + 0.08, 1.4, 5.8), Vector3(0.16, 0.5, 0.35), 0.0, DARK)                  # fuse box (flick_lights)
 	_lamp(s_prop)
@@ -290,7 +293,7 @@ func _run() -> void:
 	_box(s_juke, Vector3(6.16, 1.14, 5.8), Vector3(0.05, 0.56, 0.8))
 
 	# --- decor: CC0 props into the room's own surfaces + one atlas surface for flat colours and posters ---
-	var decor := _build_decor({&"wood": s_wood, &"seat": s_seat, &"prop": s_prop}, stools)
+	var decor := _build_decor({&"wood": s_wood, &"seat": s_seat, &"prop": s_prop})
 
 	var floor_mesh := _bake_mesh("floor", [s_floor])
 	var walls_mesh := _bake_mesh("walls", [s_walls])
@@ -361,6 +364,20 @@ func _round_table(s_wood: SurfaceTool, s_prop: SurfaceTool, c: Vector3) -> void:
 	_lathe(s_wood, c, [Vector2(0.0, 0.95), Vector2(0.44, 0.95), Vector2(0.5, 0.97), Vector2(0.5, 0.995), Vector2(0.47, 1.01), Vector2(0.0, 1.01)], 24)
 	_lathe(s_prop, c, [Vector2(0.34, 0.0), Vector2(0.34, 0.03), Vector2(0.12, 0.09), Vector2(0.06, 0.16), Vector2(0.06, 0.95)], 14, DARK)
 	_cyl(s_prop, c + Vector3(0, 0.955, 0), 0.14, 0.03, 12, BRASS)                              # collar under the top
+
+
+## A bar stool at floor point `p` (seat top 0.808, collision 0.8 high): leather cushion with a rolled edge, chrome post, a footrest
+## ring on three spokes, a flared base. Faces are lathe-turned, `yaw` turns the spokes so a row of stools is not a copy of one.
+func _stool(s_seat: SurfaceTool, s_prop: SurfaceTool, p: Vector3, yaw: float) -> void:
+	_lathe(s_seat, p, [Vector2(0.0, 0.70), Vector2(0.19, 0.70), Vector2(0.215, 0.715), Vector2(0.225, 0.745), Vector2(0.222, 0.77),
+			Vector2(0.205, 0.795), Vector2(0.15, 0.806), Vector2(0.0, 0.81)], 14)
+	_cyl(s_prop, p + Vector3(0, 0.69, 0), 0.19, 0.02, 12, DARK)                                   # under-seat plate
+	_tube(s_prop, p + Vector3(0, 0.08, 0), p + Vector3(0, 0.69, 0), 0.028, 8, CHROME)              # post
+	_lathe(s_prop, p, [Vector2(0.172, 0.26), Vector2(0.186, 0.268), Vector2(0.186, 0.282), Vector2(0.172, 0.29)], 12, CHROME)  # footrest ring
+	for k in 3:
+		var a := deg_to_rad(yaw + k * 120.0)
+		_tube(s_prop, p + Vector3(0, 0.275, 0), p + Vector3(cos(a) * 0.18, 0.275, sin(a) * 0.18), 0.011, 6, CHROME)
+	_lathe(s_prop, p, [Vector2(0.25, 0.0), Vector2(0.25, 0.022), Vector2(0.2, 0.05), Vector2(0.075, 0.09), Vector2(0.03, 0.12)], 12, DARK)  # base
 
 
 ## The jukebox against the east wall inside its 0.75 x 1.9 x 1.1 collision box (x 6.175-6.925, front faces -x): plinth, panelled
@@ -532,7 +549,7 @@ func _build_env(root_n: Node3D) -> void:
 
 ## -> {st: SurfaceTool (the atlas surface, baked by the caller), items, boxes: Array[AABB], tris}. `tools` = class -> surface
 ## tool of the room's own wood / seat / prop surface. Aborts the run on a keep-clear violation.
-func _build_decor(tools: Dictionary, stools: Array[Vector3]) -> Dictionary:
+func _build_decor(tools: Dictionary) -> Dictionary:
 	var mat := StandardMaterial3D.new()
 	mat.albedo_texture = load(DecorPlan.ATLAS_PATH)
 	mat.vertex_color_use_as_albedo = true
@@ -549,8 +566,6 @@ func _build_decor(tools: Dictionary, stools: Array[Vector3]) -> Dictionary:
 	var models := {}
 	var list: Array = DecorPlan.ITEMS.duplicate()
 	list.append_array(DecorPlan.bar_items())
-	for i in stools.size():  # bar stools: Kenney stoolBar, red cushion -> seat, frame -> metal; scale to the old 0.8 m seat height
-		list.append([StringName("stool_%d" % i), &"furniture", "stoolBar", stools[i], float(i * 47 % 360), &"top", 0.91])
 	for it: Array in list:
 		var key: String = "%s/%s" % [it[1], it[2]]
 		if not models.has(key):
