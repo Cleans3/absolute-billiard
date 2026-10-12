@@ -1,0 +1,4 @@
+Poly Haven assets are released under Creative Commons Zero (CC0 1.0 Universal):
+https://creativecommons.org/publicdomain/zero/1.0/
+https://polyhaven.com/license
+Credit to the authors listed in SOURCE.md is not required.

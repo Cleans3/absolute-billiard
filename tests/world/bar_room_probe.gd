@@ -178,7 +178,7 @@ func _palette(room: Node) -> Dictionary:
 	var out := {}
 	for mi: MeshInstance3D in room.get_node("Geometry").get_children():
 		for i in mi.mesh.get_surface_count():
-			var m := mi.mesh.surface_get_material(i) as StandardMaterial3D
+			var m := mi.mesh.surface_get_material(i) as BaseMaterial3D
 			var id := StringName(m.resource_name)
 			out[id] = m.emission if id in [&"neon_pink", &"neon_cyan"] else m.albedo_color
 	return out

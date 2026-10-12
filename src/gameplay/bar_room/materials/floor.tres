@@ -1,6 +1,16 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/floor/albedo.webp" id="1_js3io"]
+[ext_resource type="Texture2D" path="res://assets/textures/floor/normal.png" id="2_f0vvd"]
+[ext_resource type="Texture2D" path="res://assets/textures/floor/orm.webp" id="3_w304r"]
 
 [resource]
 resource_name = "floor"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
 albedo_color = Color(0.2, 0.12, 0.075, 1)
-roughness = 0.55
+albedo_texture = ExtResource("1_js3io")
+orm_texture = ExtResource("3_w304r")
+normal_enabled = true
+normal_texture = ExtResource("2_f0vvd")
+ao_enabled = true

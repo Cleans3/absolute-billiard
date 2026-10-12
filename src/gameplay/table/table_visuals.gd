@@ -45,6 +45,13 @@ const LINER_COLOR := Color(0.12, 0.09, 0.07)
 
 const SIGHT_SIZE_RATIO := 0.35       # sight marker size as a multiple of ball radius
 
+## PBR sets (Poly Haven CC0, src/tools/make_textures.py): the felt's nap and the rails' wood grain. Both albedos are detail
+## maps that multiply the part's colour (the felt's is bright, mean 0.9, so a BarSkin felt colour stays what it says).
+const FELT_DIR := "res://assets/textures/felt/"
+const WOOD_DIR := "res://assets/textures/wood/"
+const FELT_TILE_M := 0.6   # metres per texture repeat
+const WOOD_TILE_M := 1.2
+
 
 static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float, osc_m := 0.0) -> void:
 	var cloth := _build_cloth(parent, spec, layout, y)
@@ -69,33 +76,78 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 	_merge_by_material(parent)
 
 
-## 07 §2: one MeshInstance3D per colour instead of one per rail/leg/sight/liner (63 -> 7 draw calls).
-## Runs last, over the meshes built above; children are table-local so their own transforms carry over.
+## 07 §2: one MeshInstance3D per kind of part instead of one per rail/leg/sight/liner (63 -> 4 draw calls with the cloth):
+## `Visual_wood` (rail blocks, apron, legs, horns, plugs: wood PBR, per-part vertex colour), `Visual_dark` (cushion rubber and
+## sights: matte flat colour) and `Visual_liner` (the pockets' double-sided cups). Runs last, over the meshes built above;
+## children are table-local so their own transforms carry over.
 static func _merge_by_material(parent: Node3D) -> void:
-	var groups: Dictionary = {}  # albedo Color -> SurfaceTool
-	var mats: Dictionary = {}
+	var groups: Dictionary = {}  # part -> SurfaceTool
 	var merged: Array[MeshInstance3D] = []
 	for c in parent.get_children():
 		var mi := c as MeshInstance3D
 		if mi == null or not mi.material_override is StandardMaterial3D or mi.name == &"Cloth":
 			continue  # the cloth keeps its node so a skin can recolour it
 		var color := (mi.material_override as StandardMaterial3D).albedo_color
-		if not groups.has(color):
+		var part := _part_of(color)
+		if not groups.has(part):
 			var st := SurfaceTool.new()
 			st.begin(Mesh.PRIMITIVE_TRIANGLES)
-			groups[color] = st
-			mats[color] = mi.material_override
-		(groups[color] as SurfaceTool).append_from(mi.mesh, 0, mi.transform)
+			groups[part] = st
+		_append_part(groups[part], mi.mesh, mi.transform, color)
 		merged.append(mi)
 	for mi in merged:
 		parent.remove_child(mi)
 		mi.free()
-	for color: Color in groups:
+	for part: StringName in groups:
 		var out := MeshInstance3D.new()
-		out.name = "Visual_" + color.to_html(false)
-		out.mesh = (groups[color] as SurfaceTool).commit()
-		out.material_override = mats[color]
+		out.name = "Visual_" + part
+		out.mesh = (groups[part] as SurfaceTool).commit()
+		match part:
+			&"wood":
+				out.material_override = _wood_material()
+			&"liner":
+				var m := _material(Color.WHITE)
+				m.vertex_color_use_as_albedo = true
+				m.vertex_color_is_srgb = true
+				m.cull_mode = BaseMaterial3D.CULL_DISABLED
+				out.material_override = m
+			_:
+				var m := _material(Color.WHITE)
+				m.vertex_color_use_as_albedo = true
+				m.vertex_color_is_srgb = true
+				out.material_override = m
 		parent.add_child(out)
+
+
+static func _part_of(color: Color) -> StringName:
+	if color in [RAIL_COLOR, APRON_COLOR, LEG_COLOR]:
+		return &"wood"
+	return &"liner" if color == LINER_COLOR else &"dark"
+
+
+## `mesh` through `xf` into `st`, every vertex `color`; wood parts are box-mapped (table-local metres) for the grain.
+static func _append_part(st: SurfaceTool, mesh: Mesh, xf: Transform3D, color: Color) -> void:
+	var a := mesh.surface_get_arrays(0)
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+	var order: PackedInt32Array = a[Mesh.ARRAY_INDEX] if a[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(v.size()))
+	for i in order:
+		var p := xf * v[i]
+		var n := (xf.basis * nrm[i]).normalized()
+		st.set_color(color)
+		st.set_normal(n)
+		st.set_uv(_uv(p, n, WOOD_TILE_M))
+		st.add_vertex(p)
+
+
+## Planar UV on the face's dominant axis, in repeats of `tile` metres (v runs down so grain stays level).
+static func _uv(p: Vector3, n: Vector3, tile: float) -> Vector2:
+	var a := n.abs()
+	if a.y >= a.x and a.y >= a.z:
+		return Vector2(p.x, p.z) / tile
+	if a.x >= a.z:
+		return Vector2(p.z, -p.y) / tile
+	return Vector2(p.x, -p.y) / tile
 
 
 ## Recolours the cloth after `build` (BarSkin felt, 06 P18); the cloth is the one visual that is never merged. The
@@ -115,6 +167,29 @@ static func _material(color: Color) -> StandardMaterial3D:
 	m.albedo_color = color
 	m.roughness = 1.0
 	m.metallic_specular = 0.0
+	return m
+
+
+## Felt: albedo detail + nap normal on the cloth colour. Still a StandardMaterial3D, its `albedo_color` is the felt colour.
+static func _cloth_material() -> StandardMaterial3D:
+	var m := _material(CLOTH_COLOR)
+	m.albedo_texture = load(FELT_DIR + "albedo.webp")
+	m.normal_enabled = true
+	m.normal_texture = load(FELT_DIR + "normal.png")
+	return m
+
+
+## Rails, apron, legs: one wood PBR material, each part's colour in its vertex colour.
+static func _wood_material() -> ORMMaterial3D:
+	var m := ORMMaterial3D.new()
+	m.albedo_texture = load(WOOD_DIR + "albedo.webp")
+	m.orm_texture = load(WOOD_DIR + "orm.webp")
+	m.ao_enabled = true
+	m.normal_enabled = true
+	m.normal_texture = load(WOOD_DIR + "normal.png")
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	m.metallic_specular = 0.15  # see `_material`: the lamp's white lobe is a glare, keep the wood's sheen low
 	return m
 
 
@@ -148,7 +223,7 @@ static func _build_cloth(parent: Node3D, spec: TableSpec, layout: TableLayout, y
 	var mesh := MeshInstance3D.new()
 	mesh.name = "Cloth"
 	mesh.mesh = st.commit()
-	mesh.material_override = _material(CLOTH_COLOR)
+	mesh.material_override = _cloth_material()
 	parent.add_child(mesh)
 	return mesh
 
@@ -179,6 +254,7 @@ static func _facing_tri(st: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, nor
 		c = t
 	for v in [a, b, c]:
 		st.set_normal(normal)
+		st.set_uv(_uv(v, normal, FELT_TILE_M))
 		st.add_vertex(v)
 
 

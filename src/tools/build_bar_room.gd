@@ -1,13 +1,16 @@
 extends SceneTree
 
 ## One-shot: regenerates src/gameplay/bar_room/{meshes,materials}/* and BarRoom.tscn (04 §2.2, 07 §2).
-## Static greybox merged by material (8 MeshInstance3D), UV2 unwrapped for LightmapGI, layer-4 collision, BarRoom script on the root.
-## Plus `Decor`: every prop and poster of DecorPlan merged into ONE static mesh with ONE material (the poster atlas, vertex colour
-## for untextured props), CC0 glb read from assets/third_party/ and never shipped.
+## Static room merged by material (8 MeshInstance3D), UV2 unwrapped for LightmapGI, layer-4 collision, BarRoom script on the root.
+## Every textured surface is box-mapped in world metres (UV = position / tile, per face axis) so no texture stretches, on
+## ORMMaterial3D sets from assets/textures (Poly Haven CC0, src/tools/make_textures.py).
+## `Decor` is DecorPlan's CC0 Kenney props routed per triangle into the room's own surfaces (wood / seat / prop) or, for flat
+## colours + the posters, into one atlas surface (adhoc-1010a C10/C18); the source .glb are read from assets/third_party/ and never shipped.
 ##   godot --path . --headless -s src/tools/build_bar_room.gd
-## Then bake with src/tools/bake_lightmaps.gd (needs a GPU window).
+## Then bake with src/tools/bake_lightmaps.sh (needs a GPU window).
 
 const DIR := "res://src/gameplay/bar_room/"
+const TEX := "res://assets/textures/%s/%s"
 const HALF := 7.0       # interior half-extent in x and z (matches the old CSG walls)
 const CEIL := 3.6
 const TEXEL := 0.15     # xatlas texel size in metres
@@ -16,14 +19,20 @@ const COUNTER_BODY_X := 5.15   # body x 4.85-5.45
 const COUNTER_TOP_X := 5.1     # top x 4.7-5.5 (also the collision box)
 const BACKBAR_X := 6.8         # shelves + cabinet x 6.6-7.0, flush to the east wall
 const STOOL_X := 4.3
+const TABLES: Array[Vector3] = [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4), Vector3(-2.8, 0.0, 5.6)]
+## World metres one texture repeat covers (Poly Haven's real-world size where it fits the prop).
+const TILE := {floor = 2.0, wall = 1.0, wainscot = 2.1, ceiling = 2.0, wood = 1.2, seat = 0.5, metal = 1.0}
+const DARK := Color(0.16, 0.16, 0.18)   # paint of the greybox metal parts (the prop material itself is white)
+const BRASS := Color(0.62, 0.42, 0.16)
 
-var _mats := {}
+var _tiles := {}   # SurfaceTool -> tile metres (0 = keep the primitive's own UV)
 
 
 func _init() -> void:
 	call_deferred("_run")
 
 
+## Emissive / flat material (neon, screens).
 func _mat(id: String, albedo: Color, rough := 0.85, metal := 0.0, emit := Color.BLACK, energy := 0.0) -> StandardMaterial3D:
 	var m := StandardMaterial3D.new()
 	m.albedo_color = albedo
@@ -33,34 +42,143 @@ func _mat(id: String, albedo: Color, rough := 0.85, metal := 0.0, emit := Color.
 		m.emission_enabled = true
 		m.emission = emit
 		m.emission_energy_multiplier = energy
-	m.resource_name = id
-	ResourceSaver.save(m, DIR + "materials/%s.tres" % id)
-	m.take_over_path(DIR + "materials/%s.tres" % id)
-	_mats[id] = m
+	_save_mat(id, m)
 	return m
 
 
-func _st(mat: StandardMaterial3D) -> SurfaceTool:
+## PBR material: `set` = assets/textures/<set>/{albedo.webp, orm.webp, normal.png}. `color` multiplies the albedo detail map
+## (a BarSkin colour is set on it verbatim, BarRoom.apply_skin), the vertex colour multiplies again (white = untouched).
+func _pbr(id: String, color: Color, set: String, normal := true, metal := 0.0) -> ORMMaterial3D:
+	var m := ORMMaterial3D.new()
+	m.albedo_color = color
+	m.albedo_texture = load(TEX % [set, "albedo.webp"])
+	m.orm_texture = load(TEX % [set, "orm.webp"])
+	m.ao_enabled = true
+	m.metallic = metal
+	m.roughness = 1.0
+	if normal:
+		m.normal_enabled = true
+		m.normal_texture = load(TEX % [set, "normal.png"])
+	m.vertex_color_use_as_albedo = true
+	m.vertex_color_is_srgb = true
+	_save_mat(id, m)
+	return m
+
+
+func _save_mat(id: String, m: BaseMaterial3D) -> void:
+	m.resource_name = id
+	ResourceSaver.save(m, DIR + "materials/%s.tres" % id)
+	m.take_over_path(DIR + "materials/%s.tres" % id)
+
+
+## A surface tool for `mat`; `tile` > 0 world-box-maps everything added through `_box` / `_cyl` / `_lathe` / `_place`.
+func _st(mat: BaseMaterial3D, tile := 0.0) -> SurfaceTool:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
 	st.set_material(mat)
+	_tiles[st] = tile
 	return st
 
 
-func _box(st: SurfaceTool, center: Vector3, size: Vector3, yaw_deg := 0.0) -> void:
+## Planar UV on the face's dominant axis, in tiles. v runs down the wall so grain / bricks stand upright.
+func _uv(p: Vector3, n: Vector3, tile: float) -> Vector2:
+	var a := n.abs()
+	if a.y >= a.x and a.y >= a.z:
+		return Vector2(p.x, p.z) / tile
+	if a.x >= a.z:
+		return Vector2(p.z, -p.y) / tile
+	return Vector2(p.x, -p.y) / tile
+
+
+## A primitive into `st` through `xf`. Box-mapped when the tool has a tile; a cylinder's side wraps around by `wrap_r`.
+func _append(st: SurfaceTool, m: PrimitiveMesh, xf: Transform3D, color := Color.WHITE, wrap_r := 0.0) -> void:
+	var tile: float = _tiles.get(st, 0.0)
+	var a := m.get_mesh_arrays()
+	var v: PackedVector3Array = a[Mesh.ARRAY_VERTEX]
+	var nrm: PackedVector3Array = a[Mesh.ARRAY_NORMAL]
+	var uv: PackedVector2Array = a[Mesh.ARRAY_TEX_UV]
+	for i in a[Mesh.ARRAY_INDEX]:
+		var p := xf * v[i]
+		var n := (xf.basis * nrm[i]).normalized()
+		st.set_color(color)
+		st.set_normal(n)
+		if tile <= 0.0:
+			st.set_uv(uv[i])
+		elif wrap_r > 0.0 and absf(n.y) < 0.7:
+			st.set_uv(Vector2(uv[i].x * TAU * wrap_r, -p.y) / tile)
+		else:
+			st.set_uv(_uv(p, n, tile))
+		st.add_vertex(p)
+
+
+func _box(st: SurfaceTool, center: Vector3, size: Vector3, yaw_deg := 0.0, color := Color.WHITE) -> void:
 	var bm := BoxMesh.new()
 	bm.size = size
-	st.append_from(bm, 0, Transform3D(Basis(Vector3.UP, deg_to_rad(yaw_deg)), center))
+	_append(st, bm, Transform3D(Basis(Vector3.UP, deg_to_rad(yaw_deg)), center), color)
 
 
-func _cyl(st: SurfaceTool, center: Vector3, radius: float, height: float, seg := 14) -> void:
+func _cyl(st: SurfaceTool, center: Vector3, radius: float, height: float, seg := 14, color := Color.WHITE) -> void:
 	var cm := CylinderMesh.new()
 	cm.top_radius = radius
 	cm.bottom_radius = radius
 	cm.height = height
 	cm.radial_segments = seg
 	cm.rings = 1
-	st.append_from(cm, 0, Transform3D(Basis.IDENTITY, center))
+	_append(st, cm, Transform3D(Basis.IDENTITY, center), color, radius)
+
+
+## A round bar of `radius` from `a` to `b` (neon tubes, rails).
+func _tube(st: SurfaceTool, a: Vector3, b: Vector3, radius: float, seg := 8, color := Color.WHITE) -> void:
+	var cm := CylinderMesh.new()
+	cm.top_radius = radius
+	cm.bottom_radius = radius
+	cm.height = a.distance_to(b)
+	cm.radial_segments = seg
+	cm.rings = 1
+	var dir := (b - a).normalized()
+	var basis := Basis() if dir.is_equal_approx(Vector3.UP) else Basis(Quaternion(Vector3.UP, dir))
+	_append(st, cm, Transform3D(basis, (a + b) * 0.5), color, radius)
+
+
+## Surface of revolution about the vertical axis through `centre`; `profile` = (radius, y) points bottom to top along the outside
+## (so the outward normal is to the right of travel). Flat bands, smooth round; caps planar-mapped, sides wrapped.
+func _lathe(st: SurfaceTool, centre: Vector3, profile: Array, seg := 16, color := Color.WHITE) -> void:
+	var tile: float = _tiles.get(st, 0.0)
+	for k in profile.size() - 1:
+		var pa: Vector2 = profile[k]
+		var pb: Vector2 = profile[k + 1]
+		var n2 := Vector2(pb.y - pa.y, pa.x - pb.x).normalized()
+		var rmid := (pa.x + pb.x) * 0.5
+		for j in seg:
+			var t0 := TAU * j / seg
+			var t1 := TAU * (j + 1) / seg
+			var corners := [[pa, t0], [pb, t0], [pb, t1], [pa, t1]]
+			var pts: Array[Vector3] = []
+			var nrm: Array[Vector3] = []
+			var uvs: Array[Vector2] = []
+			for c: Array in corners:
+				var pr: Vector2 = c[0]
+				var th: float = c[1]
+				var p := centre + Vector3(cos(th) * pr.x, pr.y, sin(th) * pr.x)
+				var n := Vector3(cos(th) * n2.x, n2.y, sin(th) * n2.x)
+				pts.append(p)
+				nrm.append(n)
+				if tile <= 0.0:
+					uvs.append(Vector2.ZERO)
+				elif absf(n2.y) > 0.7:
+					uvs.append(_uv(p, Vector3.UP, tile))
+				else:
+					uvs.append(Vector2(th * rmid, -p.y) / tile)
+			for tri: Array in [[0, 1, 2], [0, 2, 3]]:
+				var cr: Vector3 = (pts[tri[1]] - pts[tri[0]]).cross(pts[tri[2]] - pts[tri[0]])
+				if cr.length_squared() < 1e-12:
+					continue
+				var order: Array = tri if cr.dot(nrm[tri[0]]) <= 0.0 else [tri[0], tri[2], tri[1]]
+				for i: int in order:
+					st.set_color(color)
+					st.set_normal(nrm[i])
+					st.set_uv(uvs[i])
+					st.add_vertex(pts[i])
 
 
 ## Commits every surface tool into one ArrayMesh (one surface each), unwraps UV2, saves and returns it.
@@ -78,116 +196,105 @@ func _bake_mesh(id: String, sts: Array[SurfaceTool]) -> ArrayMesh:
 
 
 func _run() -> void:
-	var floor_m := _mat("floor", Color(0.20, 0.12, 0.075), 0.55)
-	var wall_m := _mat("wall", Color(0.30, 0.17, 0.15), 0.92)
-	var ceil_m := _mat("ceiling", Color(0.11, 0.085, 0.075), 0.95)
-	var wood_m := _mat("wood", Color(0.24, 0.13, 0.06), 0.6)
-	var wainscot_m := _mat("wainscot", Color(0.24, 0.13, 0.06), 0.6)  # own material so a BarSkin can tint it apart from the wood
-	var seat_m := _mat("seat", Color(0.42, 0.09, 0.08), 0.5)
-	var prop_m := _mat("prop", Color(0.16, 0.16, 0.18), 0.4, 0.5)
+	var floor_m := _pbr("floor", Color(0.20, 0.12, 0.075), "floor")
+	var wall_m := _pbr("wall", Color(0.30, 0.17, 0.15), "wall")
+	var ceil_m := _pbr("ceiling", Color(0.11, 0.085, 0.075), "ceiling", false)
+	var wood_m := _pbr("wood", Color(0.24, 0.13, 0.06), "wood")
+	var wainscot_m := _pbr("wainscot", Color(0.24, 0.13, 0.06), "wainscot")  # own material so a BarSkin can tint it apart from the wood
+	var seat_m := _pbr("seat", Color(0.42, 0.09, 0.08), "seat")
+	var prop_m := _pbr("prop", Color.WHITE, "metal", true, 0.6)  # white: every metal part carries its own paint in its vertex colour
 	var pink_m := _mat("neon_pink", Color.BLACK, 0.5, 0.0, Color(1.0, 0.15, 0.55), 3.0)
 	var cyan_m := _mat("neon_cyan", Color.BLACK, 0.5, 0.0, Color(0.1, 0.85, 1.0), 3.0)
 	var tv_m := _mat("tv_screen", Color.BLACK, 0.3, 0.0, Color(0.45, 0.6, 1.0), 2.2)
 	var juke_m := _mat("jukebox_glass", Color.BLACK, 0.3, 0.0, Color(1.0, 0.6, 0.15), 2.5)
 
+	var s_floor := _st(floor_m, TILE.floor)
+	var s_walls := _st(wall_m, TILE.wall)
+	var s_ceil := _st(ceil_m, TILE.ceiling)
+	var s_wood := _st(wood_m, TILE.wood)
+	var s_wain := _st(wainscot_m, TILE.wainscot)
+	var s_seat := _st(seat_m, TILE.seat)
+	var s_prop := _st(prop_m, TILE.metal)
+	var s_pink := _st(pink_m)
+	var s_cyan := _st(cyan_m)
+	var s_tv := _st(tv_m)
+	var s_juke := _st(juke_m)
+
 	# --- floor ---
-	var s := _st(floor_m)
-	_box(s, Vector3(0, -0.05, 0), Vector3(2 * HALF, 0.1, 2 * HALF))
-	var floor_mesh := _bake_mesh("floor", [s])
+	_box(s_floor, Vector3(0, -0.05, 0), Vector3(2 * HALF, 0.1, 2 * HALF))
 
 	# --- walls (north wall has the door opening) ---
-	s = _st(wall_m)
 	var t := 0.2
-	_box(s, Vector3(0, CEIL * 0.5, HALF + t * 0.5), Vector3(2 * HALF + 2 * t, CEIL, t))
-	_box(s, Vector3(-HALF - t * 0.5, CEIL * 0.5, 0), Vector3(t, CEIL, 2 * HALF))
-	_box(s, Vector3(HALF + t * 0.5, CEIL * 0.5, 0), Vector3(t, CEIL, 2 * HALF))
+	_box(s_walls, Vector3(0, CEIL * 0.5, HALF + t * 0.5), Vector3(2 * HALF + 2 * t, CEIL, t))
+	_box(s_walls, Vector3(-HALF - t * 0.5, CEIL * 0.5, 0), Vector3(t, CEIL, 2 * HALF))
+	_box(s_walls, Vector3(HALF + t * 0.5, CEIL * 0.5, 0), Vector3(t, CEIL, 2 * HALF))
 	var dw := 0.95  # half door width
 	var seg_w := HALF - dw
-	_box(s, Vector3(-(dw + seg_w * 0.5), CEIL * 0.5, -HALF - t * 0.5), Vector3(seg_w + t, CEIL, t))
-	_box(s, Vector3(dw + seg_w * 0.5, CEIL * 0.5, -HALF - t * 0.5), Vector3(seg_w + t, CEIL, t))
-	_box(s, Vector3(0, (2.3 + CEIL) * 0.5, -HALF - t * 0.5), Vector3(2 * dw, CEIL - 2.3, t))
-	var walls_mesh := _bake_mesh("walls", [s])
+	_box(s_walls, Vector3(-(dw + seg_w * 0.5), CEIL * 0.5, -HALF - t * 0.5), Vector3(seg_w + t, CEIL, t))
+	_box(s_walls, Vector3(dw + seg_w * 0.5, CEIL * 0.5, -HALF - t * 0.5), Vector3(seg_w + t, CEIL, t))
+	_box(s_walls, Vector3(0, (2.3 + CEIL) * 0.5, -HALF - t * 0.5), Vector3(2 * dw, CEIL - 2.3, t))
 
-	# --- ceiling + beams ---
-	s = _st(ceil_m)
-	_box(s, Vector3(0, CEIL + 0.05, 0), Vector3(2 * HALF + 0.4, 0.1, 2 * HALF + 0.4))
+	# --- ceiling + beams (the beams are wood) ---
+	_box(s_ceil, Vector3(0, CEIL + 0.05, 0), Vector3(2 * HALF + 0.4, 0.1, 2 * HALF + 0.4))
 	for bx in [-4.5, 0.0, 4.5]:
-		_box(s, Vector3(bx, CEIL - 0.15, 0), Vector3(0.25, 0.3, 2 * HALF))
-	var ceil_mesh := _bake_mesh("ceiling", [s])
+		_box(s_wood, Vector3(bx, CEIL - 0.15, 0), Vector3(0.25, 0.3, 2 * HALF))
 
-	# --- wood: bar counter + back shelf + wainscot + tables + door + door frame ---
-	s = _st(wood_m)
-	var sw := _st(wainscot_m)
+	# --- wood: counter top, shelves, table tops, door frame, trim; panelling: wainscot, counter front, back bar, door ---
 	var counter_z0 := 0.5
 	var counter_len := 4.0
 	var cz := counter_z0 + counter_len * 0.5
-	_box(s, Vector3(COUNTER_BODY_X, 0.5, cz), Vector3(0.6, 1.0, counter_len))  # body
-	_box(s, Vector3(COUNTER_TOP_X, 1.04, cz), Vector3(0.8, 0.08, counter_len + 0.2))  # top
-	_box(s, Vector3(BACKBAR_X, 0.5, cz), Vector3(0.4, 1.0, counter_len))       # back-bar cabinet
-	_box(s, Vector3(BACKBAR_X, 1.55, cz), Vector3(0.4, 0.06, counter_len))     # shelf low
-	_box(s, Vector3(BACKBAR_X, 2.05, cz), Vector3(0.4, 0.06, counter_len))     # shelf high
-	_box(s, Vector3(6.9, 1.6, cz), Vector3(0.2, 3.2, counter_len))             # back-bar panel
+	_box(s_wain, Vector3(COUNTER_BODY_X, 0.5, cz), Vector3(0.6, 1.0, counter_len))                     # body, panelled front
+	_box(s_wood, Vector3(COUNTER_TOP_X, 1.04, cz), Vector3(0.8, 0.08, counter_len + 0.2))              # top
+	_tube(s_prop, Vector3(4.77, 0.2, counter_z0), Vector3(4.77, 0.2, counter_z0 + counter_len), 0.03, 10, BRASS)   # foot rail
+	for fz in [counter_z0 + 0.1, cz, counter_z0 + counter_len - 0.1]:
+		_box(s_prop, Vector3(4.82, 0.2, fz), Vector3(0.1, 0.05, 0.05), 0.0, BRASS)                       # rail brackets
+	_box(s_wain, Vector3(BACKBAR_X, 0.5, cz), Vector3(0.4, 1.0, counter_len))                          # back-bar cabinet
+	_box(s_wood, Vector3(BACKBAR_X, 1.55, cz), Vector3(0.4, 0.06, counter_len))                        # shelf low
+	_box(s_wood, Vector3(BACKBAR_X, 2.05, cz), Vector3(0.4, 0.06, counter_len))                        # shelf high
+	_box(s_wain, Vector3(6.9, 1.6, cz), Vector3(0.2, 3.2, counter_len))                                # back-bar panel
 	for wz in [-HALF + 0.03, HALF - 0.03]:
-		_box(sw, Vector3(0, 0.55, wz), Vector3(2 * HALF, 1.1, 0.06))           # wainscot N/S
-	_box(sw, Vector3(-HALF + 0.03, 0.55, 0), Vector3(0.06, 1.1, 2 * HALF))
-	for tp in [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4), Vector3(-2.8, 0.0, 5.6)]:
-		_cyl(s, tp + Vector3(0, 0.98, 0), 0.5, 0.06, 18)                       # round table top
-	_box(s, Vector3(0, 1.15, -HALF + 0.05), Vector3(2 * dw - 0.1, 2.3, 0.08))  # door slab (closed)
-	_box(s, Vector3(0, 2.36, -HALF + 0.06), Vector3(2 * dw + 0.3, 0.12, 0.1))  # door frame head
-	var wood_mesh := _bake_mesh("wood", [s, sw])
+		_box(s_wain, Vector3(0, 0.55, wz), Vector3(2 * HALF, 1.1, 0.06))                               # wainscot N/S
+	_box(s_wain, Vector3(-HALF + 0.03, 0.55, 0), Vector3(0.06, 1.1, 2 * HALF))
+	_trim(s_wood, dw)
+	for tp in TABLES:
+		_round_table(s_wood, s_prop, tp)
+	_box(s_wain, Vector3(0, 1.15, -HALF + 0.05), Vector3(2 * dw - 0.1, 2.3, 0.08))                      # door slab (closed), panelled
+	_box(s_wood, Vector3(0, 2.36, -HALF + 0.06), Vector3(2 * dw + 0.3, 0.12, 0.1))                      # door frame head
+	for sx in [-1.0, 1.0]:
+		_box(s_wood, Vector3(sx * (dw + 0.05), 1.18, -HALF + 0.06), Vector3(0.1, 2.36, 0.1))            # door frame posts
+	_cyl(s_prop, Vector3(0.65, 1.1, -HALF + 0.12), 0.025, 0.12, 8, BRASS)                              # door handle
 
-	# --- seats: bar stools at the counter, one at the origin (kick_stool), round-table stools ---
-	s = _st(seat_m)
+	# --- props: jukebox body, TV frame, fuse box, lamp, back-bar mounts (metal, painted by vertex colour) ---
 	var stools: Array[Vector3] = [Vector3(0, 0, 0)]
 	for z in [1.0, 2.0, 3.0, 4.0]:
 		stools.append(Vector3(STOOL_X, 0, z))
-	for tp in [Vector3(-5.2, 0, 2.6), Vector3(-5.2, 0, 4.4), Vector3(-2.8, 0, 5.6)]:
+	for tp in TABLES:
 		stools.append(tp + Vector3(0.75, 0, 0))
 		stools.append(tp + Vector3(-0.75, 0, 0))
-	for p in stools:
-		_cyl(s, p + Vector3(0, 0.75, 0), 0.22, 0.09, 14)
-	var seat_mesh := _bake_mesh("seats", [s])
-
-	# --- props: stool posts, table posts, jukebox body, TV frame, fuse box, lamp shade, bottles ---
-	s = _st(prop_m)
-	for p in stools:
-		_cyl(s, p + Vector3(0, 0.375, 0), 0.05, 0.75, 8)
-		_cyl(s, p + Vector3(0, 0.02, 0), 0.24, 0.04, 12)
-	for tp in [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4), Vector3(-2.8, 0.0, 5.6)]:
-		_cyl(s, tp + Vector3(0, 0.48, 0), 0.06, 0.96, 8)
-		_cyl(s, tp + Vector3(0, 0.02, 0), 0.32, 0.04, 12)
-	_box(s, Vector3(6.55, 0.95, 5.8), Vector3(0.75, 1.9, 1.1))                 # jukebox body
-	_box(s, Vector3(0, 2.1, HALF - 0.06), Vector3(2.5, 1.5, 0.12))             # TV frame (south wall)
-	_box(s, Vector3(-HALF + 0.08, 1.4, 5.8), Vector3(0.16, 0.5, 0.35))        # fuse box (flick_lights)
-	_cyl(s, Vector3(0, 3.05, -3.5), 0.55, 0.22, 18)                            # lamp shade over the table
-	_box(s, Vector3(0, 3.3, -3.5), Vector3(0.04, 0.6, 0.04))                   # lamp rod
-	for i in 14:
-		_box(s, Vector3(6.75, 1.55 + 0.06 + 0.14, counter_z0 + 0.3 + i * 0.27), Vector3(0.09, 0.28, 0.09))
-		if i % 2 == 0:
-			_box(s, Vector3(6.75, 2.05 + 0.06 + 0.12, counter_z0 + 0.3 + i * 0.27), Vector3(0.08, 0.24, 0.08))
-	var prop_mesh := _bake_mesh("props", [s])
-
-	# --- neon (two surfaces) ---
-	var sp := _st(pink_m)
-	var sc := _st(cyan_m)
-	_box(sp, Vector3(-HALF + 0.08, 2.4, 1.5), Vector3(0.05, 0.07, 2.2))       # west wall sign, bars
-	_box(sp, Vector3(-HALF + 0.08, 2.15, 1.5), Vector3(0.05, 0.07, 1.6))
-	_box(sp, Vector3(-HALF + 0.08, 1.9, 1.5), Vector3(0.05, 0.07, 2.2))
-	_box(sc, Vector3(-3.0, 3.0, -HALF + 0.08), Vector3(2.4, 0.07, 0.05))      # north wall sign over the door side
-	_box(sc, Vector3(-3.0, 2.7, -HALF + 0.08), Vector3(2.4, 0.07, 0.05))
-	_box(sc, Vector3(3.0, 2.85, -HALF + 0.08), Vector3(0.07, 0.6, 0.05))
-	_box(sp, Vector3(3.0, 2.85, -HALF + 0.08), Vector3(1.6, 0.07, 0.05))
-	var neon_mesh := _bake_mesh("neon", [sp, sc])
+	_box(s_prop, Vector3(6.55, 0.95, 5.8), Vector3(0.75, 1.9, 1.1), 0.0, DARK)                          # jukebox body
+	_box(s_prop, Vector3(6.2, 1.9, 5.8), Vector3(0.12, 0.1, 1.1), 0.0, BRASS)                           # jukebox crown
+	_box(s_prop, Vector3(0, 2.1, HALF - 0.06), Vector3(2.5, 1.5, 0.12), 0.0, DARK)                      # TV frame (south wall)
+	_box(s_prop, Vector3(-HALF + 0.08, 1.4, 5.8), Vector3(0.16, 0.5, 0.35), 0.0, DARK)                  # fuse box (flick_lights)
+	_lamp(s_prop)
+	_neon(s_pink, s_cyan, s_prop)
 
 	# --- screens (two surfaces): TV and jukebox glass ---
-	var stv := _st(tv_m)
-	var sj := _st(juke_m)
-	_box(stv, Vector3(0, 2.1, HALF - 0.14), Vector3(2.3, 1.3, 0.04))
-	_box(sj, Vector3(6.17, 1.35, 5.8), Vector3(0.05, 0.9, 0.8))
-	var screen_mesh := _bake_mesh("screens", [stv, sj])
+	_box(s_tv, Vector3(0, 2.1, HALF - 0.14), Vector3(2.3, 1.3, 0.04))
+	_box(s_juke, Vector3(6.17, 1.35, 5.8), Vector3(0.05, 0.9, 0.8))
 
-	# --- decor: props + posters, one mesh, one material (adhoc-1010a C10/C18) ---
-	var decor := _build_decor()
+	# --- decor: CC0 props into the room's own surfaces + one atlas surface for flat colours and posters ---
+	var decor := _build_decor({&"wood": s_wood, &"seat": s_seat, &"prop": s_prop}, stools)
+
+	var floor_mesh := _bake_mesh("floor", [s_floor])
+	var walls_mesh := _bake_mesh("walls", [s_walls])
+	var ceil_mesh := _bake_mesh("ceiling", [s_ceil])
+	var wood_mesh := _bake_mesh("wood", [s_wood, s_wain])
+	var seat_mesh := _bake_mesh("seats", [s_seat])
+	var prop_mesh := _bake_mesh("props", [s_prop])
+	var neon_mesh := _bake_mesh("neon", [s_pink, s_cyan])
+	var screen_mesh := _bake_mesh("screens", [s_tv, s_juke])
+	var decor_st: SurfaceTool = decor.st
+	decor.mesh = _bake_mesh("decor", [decor_st])
 
 	# --- scene ---
 	var root_n := Node3D.new()
@@ -223,6 +330,57 @@ func _run() -> void:
 	quit()
 
 
+# ---------------------------------------------------------------------------------------------------------------------
+# Shell details
+# ---------------------------------------------------------------------------------------------------------------------
+
+## Baseboard on the three panelled walls and a chair rail on top of the wainscot, both broken at the door; the chair rail also
+## stops short of the mirror's stretch of the west wall (z -5.9..-1.7) and the blackboard's wall has no panelling.
+func _trim(s_wood: SurfaceTool, dw: float) -> void:
+	var door_gap := dw + 0.2
+	for z in [-HALF + 0.07, HALF - 0.07]:
+		var xs: Array = [[-HALF, HALF]] if z > 0.0 else [[-HALF, -door_gap], [door_gap, HALF]]
+		for r: Array in xs:
+			var len: float = r[1] - r[0]
+			var cx: float = (r[0] + r[1]) * 0.5
+			_box(s_wood, Vector3(cx, 0.07, z), Vector3(len, 0.14, 0.04))                  # baseboard
+			_box(s_wood, Vector3(cx, 1.12, z + signf(-z) * 0.02), Vector3(len, 0.05, 0.1))  # chair rail
+	_box(s_wood, Vector3(-HALF + 0.07, 0.07, 0), Vector3(0.04, 0.14, 2 * HALF))             # west baseboard
+	_box(s_wood, Vector3(-HALF + 0.09, 1.12, (-1.7 + HALF) * 0.5), Vector3(0.1, 0.05, HALF + 1.7 - 0.0))  # west chair rail, z -1.7..7
+
+
+## A bar-height round table: a rounded wood top at y 0.95-1.01 (DecorPlan.TABLE_TOP_Y) on a metal pedestal.
+func _round_table(s_wood: SurfaceTool, s_prop: SurfaceTool, c: Vector3) -> void:
+	_lathe(s_wood, c, [Vector2(0.0, 0.95), Vector2(0.44, 0.95), Vector2(0.5, 0.97), Vector2(0.5, 0.995), Vector2(0.47, 1.01), Vector2(0.0, 1.01)], 24)
+	_lathe(s_prop, c, [Vector2(0.34, 0.0), Vector2(0.34, 0.03), Vector2(0.12, 0.09), Vector2(0.06, 0.16), Vector2(0.06, 0.95)], 14, DARK)
+	_cyl(s_prop, c + Vector3(0, 0.955, 0), 0.14, 0.03, 12, BRASS)                              # collar under the top
+
+
+## The pool-hall lamp over the table: green cone shade with a cream lining, rod to the ceiling. The light itself is a node.
+func _lamp(s_prop: SurfaceTool) -> void:
+	var c := Vector3(0, 0, -3.5)
+	_lathe(s_prop, c, [Vector2(0.55, 2.95), Vector2(0.14, 3.22)], 20, Color(0.05, 0.22, 0.13))
+	_lathe(s_prop, c, [Vector2(0.14, 3.22), Vector2(0.13, 3.19), Vector2(0.545, 2.93), Vector2(0.55, 2.95)], 20, Color(0.75, 0.62, 0.42))
+	_box(s_prop, Vector3(0, 3.41, -3.5), Vector3(0.04, 0.38, 0.04), 0.0, DARK)                  # rod
+	_cyl(s_prop, Vector3(0, 3.22, -3.5), 0.07, 0.06, 10, BRASS)                                  # cap
+
+
+## Neon as real tubes on dark backing plates, sized to DecorPlan.wall_keep_clear's sign rects.
+func _neon(sp: SurfaceTool, sc: SurfaceTool, s_prop: SurfaceTool) -> void:
+	var plate := Color(0.03, 0.03, 0.035)
+	var wx := -HALF + 0.08
+	_box(s_prop, Vector3(-HALF + 0.04, 2.15, 1.5), Vector3(0.04, 0.78, 2.5), 0.0, plate)
+	for bar: Array in [[2.4, 2.2], [2.15, 1.6], [1.9, 2.2]]:                                      # west wall: three bars
+		_tube(sp, Vector3(wx, bar[0], 1.5 - bar[1] * 0.5), Vector3(wx, bar[0], 1.5 + bar[1] * 0.5), 0.032)
+	var nz := -HALF + 0.08
+	_box(s_prop, Vector3(-3.0, 2.85, -HALF + 0.04), Vector3(2.55, 0.48, 0.04), 0.0, plate)
+	_box(s_prop, Vector3(3.0, 2.85, -HALF + 0.04), Vector3(1.75, 0.68, 0.04), 0.0, plate)
+	for y in [3.0, 2.7]:                                                                         # north wall: cyan pair over the door side
+		_tube(sc, Vector3(-4.2, y, nz), Vector3(-1.8, y, nz), 0.032)
+	_tube(sc, Vector3(3.0, 2.55, nz), Vector3(3.0, 3.15, nz), 0.032)
+	_tube(sp, Vector3(2.2, 2.85, nz), Vector3(3.8, 2.85, nz), 0.032)
+
+
 func _add(parent: Node, n: Node, nm: String) -> Node:
 	n.name = nm
 	parent.add_child(n)
@@ -256,7 +414,7 @@ func _build_collision(root_n: Node3D, cz0: float, clen: float, stools: Array[Vec
 	_shape(body, Vector3(6.55, 0.95, 5.8), Vector3(0.75, 1.9, 1.1))                    # jukebox
 	for p in stools:
 		_shape(body, p + Vector3(0, 0.4, 0), Vector3(0.44, 0.8, 0.44))
-	for tp in [Vector3(-5.2, 0.0, 2.6), Vector3(-5.2, 0.0, 4.4), Vector3(-2.8, 0.0, 5.6)]:
+	for tp in TABLES:
 		_shape(body, tp + Vector3(0, 0.5, 0), Vector3(1.0, 1.0, 1.0))
 	for b: AABB in decor_boxes:
 		_shape(body, b.get_center(), b.size)
@@ -330,33 +488,35 @@ func _build_env(root_n: Node3D) -> void:
 
 
 # ---------------------------------------------------------------------------------------------------------------------
-# Decor (DecorPlan): props from CC0 glb + posters, merged into one static mesh with the poster atlas as its only material.
+# Decor (DecorPlan): CC0 props routed per triangle into the room's surfaces, flat colours + posters in one atlas surface.
 # ---------------------------------------------------------------------------------------------------------------------
 
-## -> {mesh: ArrayMesh, items: Array[Dictionary], boxes: Array[AABB], tris: int}. Aborts the run on a keep-clear violation.
-func _build_decor() -> Dictionary:
+## -> {st: SurfaceTool (the atlas surface, baked by the caller), items, boxes: Array[AABB], tris}. `tools` = class -> surface
+## tool of the room's own wood / seat / prop surface. Aborts the run on a keep-clear violation.
+func _build_decor(tools: Dictionary, stools: Array[Vector3]) -> Dictionary:
 	var mat := StandardMaterial3D.new()
-	mat.resource_name = "decor"
 	mat.albedo_texture = load(DecorPlan.ATLAS_PATH)
 	mat.vertex_color_use_as_albedo = true
 	mat.vertex_color_is_srgb = true
-	mat.roughness = 0.9
-	mat.metallic_specular = 0.0
+	mat.roughness = 0.75
+	mat.metallic_specular = 0.2
 	mat.texture_filter = BaseMaterial3D.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS_ANISOTROPIC
-	ResourceSaver.save(mat, DIR + "materials/decor.tres")
-	mat.take_over_path(DIR + "materials/decor.tres")
-	var st := SurfaceTool.new()
-	st.begin(Mesh.PRIMITIVE_TRIANGLES)
-	st.set_material(mat)
+	_save_mat("decor", mat)
+	var st := _st(mat)
+	tools[&"decor"] = st
 	var items: Array[Dictionary] = []
 	var boxes: Array[AABB] = []
 	var tris := 0
 	var models := {}
-	for it: Array in DecorPlan.ITEMS:
+	var list: Array = DecorPlan.ITEMS.duplicate()
+	list.append_array(DecorPlan.bar_items())
+	for i in stools.size():  # bar stools: Kenney stoolBar, red cushion -> seat, frame -> metal; scale to the old 0.8 m seat height
+		list.append([StringName("stool_%d" % i), &"furniture", "stoolBar", stools[i], float(i * 47 % 360), &"top", 0.91])
+	for it: Array in list:
 		var key: String = "%s/%s" % [it[1], it[2]]
 		if not models.has(key):
 			models[key] = _load_model(it[1], it[2])
-		var info := _place(st, models[key], it)
+		var info := _place(tools, models[key], it)
 		tris += info.tris
 		items.append(info)
 		if it[5] == &"floor":
@@ -370,7 +530,7 @@ func _build_decor() -> Dictionary:
 	if not bad.is_empty():
 		printerr("DECOR KEEP-CLEAR VIOLATIONS:\n  ", "\n  ".join(bad))
 		quit(1)
-	return {mesh = _bake_mesh("decor", [st]), items = items, boxes = boxes, tris = tris}
+	return {st = st, mesh = null, items = items, boxes = boxes, tris = tris}
 
 
 func _add_decor(root_n: Node3D, decor: Dictionary) -> void:
@@ -384,7 +544,7 @@ func _add_decor(root_n: Node3D, decor: Dictionary) -> void:
 	print("decor: %d items, %d tris, %d colliders" % [decor.items.size(), decor.tris, decor.boxes.size()])
 
 
-## One glb -> {surfaces: [{verts, normals, indices, colors}], min: Vector3, max: Vector3} in model space.
+## One glb -> {surfaces: [{verts, normals, indices, colors}], min: Vector3, max: Vector3} in model space (colors = the model's own).
 func _load_model(pack: StringName, model: String) -> Dictionary:
 	var path := ProjectSettings.globalize_path("res://assets/third_party/%s/models/%s.glb" % [DecorPlan.PACKS[pack].dir, model])
 	var doc := GLTFDocument.new()
@@ -420,7 +580,7 @@ func _load_model(pack: StringName, model: String) -> Dictionary:
 				if img != null:
 					var uv := src_uv[k]
 					c = img.get_pixel(clampi(int(fposmod(uv.x, 1.0) * img.get_width()), 0, img.get_width() - 1), clampi(int(fposmod(uv.y, 1.0) * img.get_height()), 0, img.get_height() - 1)) * c
-				colors.append(c * DecorPlan.PROP_TINT)
+				colors.append(c)
 				out.min = out.min.min(v)
 				out.max = out.max.max(v)
 			var idx: PackedInt32Array = a[Mesh.ARRAY_INDEX] if a[Mesh.ARRAY_INDEX] != null else PackedInt32Array(range(src_v.size()))
@@ -429,9 +589,10 @@ func _load_model(pack: StringName, model: String) -> Dictionary:
 	return out
 
 
-## Adds one DecorPlan item to `st`; returns {id, model, kind, rect (xz footprint), height, tris}.
-func _place(st: SurfaceTool, model: Dictionary, it: Array) -> Dictionary:
+## Adds one DecorPlan item, each triangle to the surface of its material class; returns {id, model, kind, rect (xz footprint), height, tris}.
+func _place(tools: Dictionary, model: Dictionary, it: Array) -> Dictionary:
 	var scale: float = DecorPlan.PACKS[it[1]].scale * (it[6] if it.size() > 6 else 1.0)
+	var forced: StringName = it[7] if it.size() > 7 else &""
 	var pos: Vector3 = it[3]
 	var rot := Basis(Vector3.UP, deg_to_rad(it[4]))
 	var lo: Vector3 = model.min
@@ -446,12 +607,22 @@ func _place(st: SurfaceTool, model: Dictionary, it: Array) -> Dictionary:
 		rmax = rmax.max(Vector2(w.x, w.z))
 	for sf: Dictionary in model.surfaces:
 		var v: PackedVector3Array = sf.verts
-		for i in sf.indices:
-			var p := pos + rot * ((v[i] - centre) * scale)
-			st.set_color(sf.colors[i])
-			st.set_uv(DecorPlan.WHITE_UV)
-			st.set_normal(rot * sf.normals[i])
-			st.add_vertex(p)
+		var cols: PackedColorArray = sf.colors
+		for t in range(0, sf.indices.size(), 3):
+			var tri: Array = [sf.indices[t], sf.indices[t + 1], sf.indices[t + 2]]
+			var avg: Color = (cols[tri[0]] + cols[tri[1]] + cols[tri[2]]) / 3.0
+			var cls: StringName = forced if forced != &"" else DecorPlan.classify(avg)
+			var st: SurfaceTool = tools[cls]
+			var tile: float = _tiles.get(st, 0.0)
+			var keep: float = DecorPlan.CLASS_KEEP[cls]
+			for i: int in tri:
+				var p := pos + rot * ((v[i] - centre) * scale)
+				var n: Vector3 = rot * sf.normals[i]
+				var c: Color = cols[i] * DecorPlan.PROP_TINT if keep >= 1.0 else Color.WHITE.lerp(cols[i], keep)
+				st.set_color(c)
+				st.set_uv(DecorPlan.WHITE_UV if tile <= 0.0 else _uv(p, n, tile))
+				st.set_normal(n)
+				st.add_vertex(p)
 		tris += sf.indices.size() / 3
 	return {id = it[0], model = it[2], kind = it[5], rect = Rect2(rmin, rmax - rmin), height = (hi.y - lo.y) * scale, tris = tris}
 

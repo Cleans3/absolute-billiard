@@ -6,7 +6,7 @@ extends Node3D
 ## dark lightmapped walls; baked surfaces ignore runtime energy, so this only tames the dynamic side.
 const DYNAMIC_LIGHT_SCALE := 0.25  # [tune]
 
-var _mats := {}  # material resource_name -> StandardMaterial3D, filled on the first apply
+var _mats := {}  # material resource_name -> BaseMaterial3D (PBR sets are ORMMaterial3D), filled on the first apply
 
 
 func _ready() -> void:
@@ -17,7 +17,8 @@ func _ready() -> void:
 
 ## Recolours the room from a BarSkin (06 P18). The materials are shared resources, so this sets them in place once per
 ## call: no per-frame work, no per-instance copies. Albedo/emission only, the lightmap bake is kept (its bounce
-## colours and the neon glow on the walls stay the classic ones). The felt belongs to the Table: `Table.set_felt_color`.
+## colours and the neon glow on the walls stay the classic ones). `albedo_color` is the skin colour verbatim: the PBR textures
+## are detail maps (mean luminance ~0.7, tools/make_textures.py) that multiply it. The felt belongs to the Table: `Table.set_felt_color`.
 func apply_skin(skin: BarSkin) -> void:
 	_albedo(&"wall", skin.wall_color)
 	_albedo(&"wainscot", skin.wainscot_color)
@@ -32,10 +33,10 @@ func _albedo(id: StringName, color: Color) -> void:
 	_material(id).albedo_color = color
 
 
-func _material(id: StringName) -> StandardMaterial3D:
+func _material(id: StringName) -> BaseMaterial3D:
 	if _mats.is_empty():
 		for mi: MeshInstance3D in $Geometry.get_children():
 			for i in mi.mesh.get_surface_count():
-				var m := mi.mesh.surface_get_material(i) as StandardMaterial3D
+				var m := mi.mesh.surface_get_material(i) as BaseMaterial3D
 				_mats[StringName(m.resource_name)] = m
 	return _mats[id]

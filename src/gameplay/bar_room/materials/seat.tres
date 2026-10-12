@@ -1,6 +1,16 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/seat/albedo.webp" id="1_6jn5l"]
+[ext_resource type="Texture2D" path="res://assets/textures/seat/normal.png" id="2_6hw4k"]
+[ext_resource type="Texture2D" path="res://assets/textures/seat/orm.webp" id="3_0gtyi"]
 
 [resource]
 resource_name = "seat"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
 albedo_color = Color(0.42, 0.09, 0.08, 1)
-roughness = 0.5
+albedo_texture = ExtResource("1_6jn5l")
+orm_texture = ExtResource("3_0gtyi")
+normal_enabled = true
+normal_texture = ExtResource("2_6hw4k")
+ao_enabled = true

@@ -1,6 +1,16 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/wood/albedo.webp" id="1_5br7q"]
+[ext_resource type="Texture2D" path="res://assets/textures/wood/normal.png" id="2_e8wkh"]
+[ext_resource type="Texture2D" path="res://assets/textures/wood/orm.webp" id="3_7o8ee"]
 
 [resource]
 resource_name = "wood"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
 albedo_color = Color(0.24, 0.13, 0.06, 1)
-roughness = 0.6
+albedo_texture = ExtResource("1_5br7q")
+orm_texture = ExtResource("3_7o8ee")
+normal_enabled = true
+normal_texture = ExtResource("2_e8wkh")
+ao_enabled = true

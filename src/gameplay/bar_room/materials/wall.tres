@@ -1,6 +1,16 @@
-[gd_resource type="StandardMaterial3D" format=3]
+[gd_resource type="ORMMaterial3D" format=3]
+
+[ext_resource type="Texture2D" path="res://assets/textures/wall/albedo.webp" id="1_0otwe"]
+[ext_resource type="Texture2D" path="res://assets/textures/wall/normal.png" id="2_8tbwm"]
+[ext_resource type="Texture2D" path="res://assets/textures/wall/orm.webp" id="3_pkuwc"]
 
 [resource]
 resource_name = "wall"
+vertex_color_use_as_albedo = true
+vertex_color_is_srgb = true
 albedo_color = Color(0.3, 0.17, 0.15, 1)
-roughness = 0.92
+albedo_texture = ExtResource("1_0otwe")
+orm_texture = ExtResource("3_pkuwc")
+normal_enabled = true
+normal_texture = ExtResource("2_8tbwm")
+ao_enabled = true
