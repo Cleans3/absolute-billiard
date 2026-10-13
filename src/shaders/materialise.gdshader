@@ -17,7 +17,8 @@ void vertex() {
 
 void fragment() {
 	float front = progress * 1.5 - 0.25;  // the band starts below the object and ends above it
-	float band = exp(-pow((v_h - front) * 6.0, 2.0));
+	float d = (v_h - front) * 6.0;
+	float band = exp(-d * d);
 	float lines = 0.5 + 0.5 * step(0.5, fract(v_h * scan_lines - TIME * 2.0));
 	float fres = pow(1.0 - clamp(dot(normalize(NORMAL), normalize(VIEW)), 0.0, 1.0), 2.0);
 	float shell = (1.0 - progress) * (fres * 1.2 + lines * 0.25);
