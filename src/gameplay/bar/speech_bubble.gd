@@ -23,6 +23,7 @@ uniform float radius = 0.10;
 uniform vec4 fill : source_color = vec4(1.0, 0.97, 0.86, 1.0);
 uniform vec4 edge : source_color = vec4(0.16, 0.09, 0.04, 1.0);
 uniform float alpha = 1.0;
+uniform float back_m = 0.02;            // the quad sits this far behind the label along the view ray (neither writes depth; a coarse buffer must not tie them)
 varying vec2 p;
 void vertex() {
 	p = vec2(UV.x - 0.5, 0.5 - UV.y) * size_m;
@@ -30,6 +31,7 @@ void vertex() {
 	MODELVIEW_MATRIX = MODELVIEW_MATRIX * mat4(
 		vec4(length(MODEL_MATRIX[0].xyz), 0.0, 0.0, 0.0), vec4(0.0, length(MODEL_MATRIX[1].xyz), 0.0, 0.0),
 		vec4(0.0, 0.0, length(MODEL_MATRIX[2].xyz), 0.0), vec4(0.0, 0.0, 0.0, 1.0));
+	MODELVIEW_MATRIX[3].z -= back_m;
 }
 void fragment() {
 	vec2 half_body = vec2(size_m.x * 0.5, (size_m.y - tail_m) * 0.5);
