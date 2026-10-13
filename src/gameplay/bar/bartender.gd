@@ -1,9 +1,10 @@
 class_name Bartender
 extends Node3D
 ## The NPC behind the counter (06 P17 — the menu itself is the counter props'). The `Humanoid` body in its barkeep
-## quirk (06 P24); idle life: breathing (Humanoid), the head follows the nearest player within LOOK_RANGE_M, and every
-## few seconds the right hand wipes the counter. He also talks unprompted (`BartenderChat`): a speech bubble, gibberish
-## blips and an arm gesture per line. Faces -Z like every Humanoid: place him with his back to the wall.
+## quirk (06 P24), wearing a real face on the head bone (`BarkeepFace`, 06 P48); idle life: breathing (Humanoid), the head
+## follows the nearest player within LOOK_RANGE_M, and every few seconds the right hand wipes the counter. He also talks
+## unprompted (`BartenderChat`): a speech bubble, gibberish blips and an arm gesture per line. Faces -Z like every Humanoid:
+## place him with his back to the wall.
 
 const LOOK_RANGE_M := 4.0
 const WIPE_EVERY := Vector2(6.0, 12.0)  ## seconds between wipes, min / max
@@ -33,6 +34,7 @@ func _ready() -> void:
 	if skin != null:
 		_humanoid.apply_skin(skin)
 	_humanoid.set_quirk(Humanoid.QUIRK_BARKEEP)
+	BarkeepFace.attach(_humanoid)  # the real face (06 P48); the modelled one stops being painted
 	chat.said.connect(_on_said)
 	chat.bind(owner if owner != null else get_tree().current_scene)
 

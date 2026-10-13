@@ -8,5 +8,5 @@ id = &"bartender"
 display_name = "Bartender"
 body_color = Color(0.9490, 0.9294, 0.8941, 1)
 accent_color = Color(0.1373, 0.1373, 0.1686, 1)
-skin_color = Color(0.8510, 0.6549, 0.4902, 1)
+skin_color = Color(1, 0.8627, 0.6235, 1)
 hat = &"none"
