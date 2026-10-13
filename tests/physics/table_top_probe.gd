@@ -83,9 +83,9 @@ func _scan(table: Table, label: String) -> void:
 						ok = hit.all >= y - 0.001
 					&"field":
 						ok = hit.cloth >= y - 0.001
-				counts[kind] += 1
+				counts[String(kind)] += 1
 				if not ok:
-					misses[kind] += 1
+					misses[String(kind)] += 1
 					if shown < 8:
 						shown += 1
 						printerr("  miss %s at (%.3f, %.3f): topmost %.3f (all) %.3f (wood+cloth), cloth plane %.3f, rail top %.3f" % [kind, x, z, hit.all, hit.cover, y, rail_top])
