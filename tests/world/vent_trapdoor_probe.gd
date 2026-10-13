@@ -187,10 +187,17 @@ func _trapdoor(room: Node) -> void:
 	for seat: Array in Bar.SEATS:
 		if grown.has_point(Vector2(seat[1].x, seat[1].z)):
 			in_the_way.append(String(seat[0]))
-	for s in 4:  # the spawn row: seat 0.. of the crew
-		var at: Vector3 = PlayerSpawner.SPAWN_ROW + Vector3(PlayerSpawner.SEAT_SPACING * s, 0.0, 0.0)
-		if grown.has_point(Vector2(at.x, at.z)):
-			in_the_way.append("spawn seat %d" % s)
+	# the spawn row: seat 0.. of the crew. Read from the source, not through PlayerSpawner: that script names the NetManager autoload, which a
+	# `-s` probe's compile does not know.
+	var spawner := FileAccess.get_file_as_string("res://src/gameplay/player/player_spawner.gd")
+	var row := RegEx.create_from_string("const SPAWN_ROW := Vector3\\(([-0-9.]+), ([-0-9.]+), ([-0-9.]+)\\)").search(spawner)
+	var gap := RegEx.create_from_string("const SEAT_SPACING := ([0-9.]+)").search(spawner)
+	_check(row != null and gap != null, "the spawn row and the seat spacing can be read from player_spawner.gd")
+	if row != null and gap != null:
+		for s in 4:
+			var at := Vector3(float(row.get_string(1)) + float(gap.get_string(1)) * s, 0.0, float(row.get_string(3)))
+			if grown.has_point(Vector2(at.x, at.z)):
+				in_the_way.append("spawn seat %d" % s)
 	_check(in_the_way.is_empty(), "no prop, seat or spawn within 0.4 m of the hole: %s" % [in_the_way])
 
 	var door := Trapdoor.new()

@@ -24,7 +24,7 @@ const START_UP := 0.25         ## the saucer waits this far under the ceiling sl
 var kind := &""
 var elapsed := 0.0
 var _balls: Array[Ball] = []
-var _last_p := PackedFloat32Array()
+var _last_p := PackedFloat64Array()  # 64-bit: a float32 would round 0.9999999999 to 1.0 and the `==` below would skip the ball's last update
 var _ufo: Ufo
 var _pit: TablePit
 
@@ -125,7 +125,7 @@ func _seek_setup(t: float) -> void:
 		vent.set_openness(StagingPlan.vent_openness(t))
 	for i in n:
 		var p := StagingPlan.ball_progress(i, n, t)
-		if is_equal_approx(p, _last_p[i]):
+		if p == _last_p[i]:  # exact on purpose: a tolerance would leave a ball at 0.99999 with its glow on
 			continue
 		_last_p[i] = p
 		_balls[i].visible = p > 0.0

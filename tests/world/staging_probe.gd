@@ -13,7 +13,7 @@ extends SceneTree
 ## Prints STAGING OK, or the failing checks and STAGING FAIL (exit 1).
 
 const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")
-const NIGHT_5 := preload("res://src/resources/nights/night_5.tres")
+const NIGHT_3 := preload("res://src/resources/nights/night_3.tres")
 const SEED := 20261013
 
 var fails := 0
@@ -190,9 +190,11 @@ func _racks() -> void:
 	wild.object_ball_count = 12
 	var ids: Array[StringName] = [&"red_basic", &"blue_mid", &"gold_prize", &"black_penalty", &"stone_ball", &"bomb_ball", &"split_ball", &"joker_ball"]
 	wild.unlocked_ball_types = ids
+	var finale: NightConfig = NIGHT_3.duplicate()  # the Campaign's last Night plays its finale racks as the authored ones (GameLoop._start_round)
+	finale.authored_racks = NIGHT_3.finale_racks
 	var cases := [
 		["authored Night 1 triangle", NIGHT_1, 1, 11, []],
-		["authored finale rack (Night 5)", NIGHT_5, 1, 11, []],
+		["authored finale rack (Night 3)", finale, 1, 11, []],
 		["Poisson rack with every gimmick ball", wild, 0, 13, [&"bomb_ball", &"split_ball", &"joker_ball", &"stone_ball"]],
 		["Poisson rack, Night 1 config", NIGHT_1, 0, 11, []],
 	]
