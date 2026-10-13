@@ -67,7 +67,32 @@ func _scene() -> void:
 	var stream: StreamManager = level.get_node("StreamManager")
 	var pocket_id: StringName = table.pockets.keys()[0]
 	var target := table.to_global(table.get_pocket(pocket_id).position) + Vector3.UP * CameraRigs.POCKET_LIFT
-	_check(cams.rigs.size() == 2 and cams.rigs[0].camera_id == &"cam_1", "two rigs to start")
+	_check(cams.rigs.size() == 1 and cams.rigs[0].camera_id == &"cam_1" and EconomyManager.BASE_RIGS == 1, "one tripod to start (06 P33 U5)")
+	_check(cams.rigs[0].global_position.is_equal_approx(CameraRigs.SPOTS[0][0]) and CameraRigs.SPOTS.size() == EconomyManager.MAX_RIGS, "the base tripod stands at spot 1; every rig up to MAX_RIGS has a spot")
+	# the fixed ceiling camera: a prop and a picture, outside the rigs, so the scorer never sees it
+	var pod := cams.ceiling
+	_check(pod != null and not cams.rigs.has(pod), "the ceiling camera exists and is not a rig")
+	_check(_near(pod.global_position.x, table.global_position.x) and _near(pod.global_position.y, CeilingCam.EYE_Y) and _near(pod.global_position.z, table.global_position.z + CeilingCam.OFFSET_Z),
+		"it hangs over the table's centre line, %s m toward the TV, at the beam: %s" % [CeilingCam.OFFSET_Z, pod.global_position])
+	_check(pod.look_basis().z.is_equal_approx(Vector3.UP) and pod.look_basis().y.is_equal_approx(Vector3.FORWARD), "straight down, the picture's top toward -Z")
+	_check(pod.get_node("Model") is MeshInstance3D and (pod.get_node("Model") as MeshInstance3D).mesh.get_surface_count() == 3, "a 3-draw-call pod, visible on the ceiling")
+	# its fov holds the table's four outer rail corners with a margin, in the 3:2 half-picture and the 3:1 wide one
+	for aspect in [StreamTv.HALF_ASPECT, StreamTv.WIDE_ASPECT]:
+		var fov := pod.fit_fov(aspect)
+		var half := tan(deg_to_rad(fov) * 0.5)  # the picture's half height at 1 m of depth; its half width is `half * aspect`
+		var spec := table.spec
+		var need := 0.0  # the tightest corner, as a share of the picture's half extent (<= 1 inside, > 1 cut off)
+		for sx in [-1.0, 1.0]:
+			for sz in [-1.0, 1.0]:
+				var corner := table.global_position + Vector3(sx * (spec.length_m * 0.5 + spec.rail_width_m), spec.bed_height_m + spec.rail_height_m, sz * (spec.width_m * 0.5 + spec.rail_width_m))
+				var rel := corner - pod.eye()
+				need = maxf(need, maxf(absf(rel.x) / (-rel.y * half * aspect), absf(rel.z) / (-rel.y * half)))  # looking down: right = +x, up = -z
+		_check(need <= 1.0 and need > 0.9, "aspect %.2f: the four outer rail corners are inside the ceiling picture with a margin (fov %.1f, tightest corner %.3f of the half extent)" % [aspect, fov, need])
+		_check(fov > 40.0 and fov < 120.0, "aspect %.2f: a sane fov (%.1f)" % [aspect, fov])
+	# a second rig for the rest of this probe: one spare tripod
+	eco.owned[&"spare_tripod"] = 1
+	eco.owned_changed.emit()
+	_check(cams.rigs.size() == 2 and cams.rigs[1].camera_id == &"cam_2" and cams.rigs[1].global_position.is_equal_approx(CameraRigs.SPOTS[1][0]), "one spare tripod: cam_2 at spot 2")
 	# a rig one 'ideal' distance from the pocket, looking straight at it
 	var rig := cams.rigs[0]
 	var dir := Vector3(1, 0, 0)
@@ -117,6 +142,12 @@ func _scene() -> void:
 	var expect := roundi(100 * mult * stream.viewer_scalar() * EconomyManager.POINT_TO_CASH_RATE)
 	_check(reward == expect and reward > roundi(100 * stream.viewer_scalar() * 0.3), "award_shot_reward uses Camera_Mult: %d vs %d" % [reward, expect])
 	_check(eco.award_shot_reward(100, [] as Array[StringName], &"") == roundi(100 * stream.viewer_scalar() * 0.3), "no pocket → Camera_Mult 1.0")
+	# the ceiling camera is never scored: every tripod out of range at tier 3, and the mult is still 1.0 with the pod looking straight at the pocket
+	for r in cams.rigs:
+		r.global_position = Vector3(0, 0, 40)
+	await _frames(2)
+	mult = cams.camera_mult(pocket_id)
+	_check(_near(mult, 1.0) and cams.last_quality == 0.0 and String(cams.last_rig).begins_with("cam_"), "the ceiling camera adds no Camera_Mult (x%s, q=%s, winner %s)" % [mult, cams.last_quality, cams.last_rig])
 	# rigs move: grab (no spawner → reach not checked), then place
 	cams.spawner = null
 	var world: WorldInteractions = level.get_node("WorldInteractions")
@@ -125,7 +156,11 @@ func _scene() -> void:
 	world.camera_move_requested.emit(1, 1, {&"place_at": Vector3(2, 0, 2)})
 	_check(cams.rigs[0].held_by == 0 and cams.rigs[0].global_position.is_equal_approx(Vector3(2, 0, 2)), "place")
 	# spare tripods add rigs
-	eco.owned[&"spare_tripod"] = 2
+	eco.owned[&"spare_tripod"] = 3
 	eco.owned_changed.emit()
-	_check(cams.rigs.size() == 4 and cams.rigs[3].tier == 3, "4 rigs after two spare tripods")
+	_check(cams.rigs.size() == 4 and cams.rigs[3].tier == 3, "4 rigs after three spare tripods (1 base + 3 = MAX_RIGS)")
+	_check(cams.ceiling.get_parent() == cams and cams.get_children().filter(func(n: Node) -> bool: return n is CameraRig).size() == 4, "...and still one ceiling camera, not a fifth rig")
+	eco.owned[&"spare_tripod"] = 9
+	eco.owned_changed.emit()
+	_check(cams.rigs.size() == EconomyManager.MAX_RIGS, "MAX_RIGS caps the tripods")
 	DirAccess.remove_absolute("user://test_camera_%d" % OS.get_process_id())

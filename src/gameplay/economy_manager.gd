@@ -14,7 +14,7 @@ signal cue_spec_changed(spec: CueSpec)
 
 const POINT_TO_CASH_RATE := 0.3
 const BUYOUT_MULT := 1.5  # final Night's demand replaces its quota (02 §3.4)
-const BASE_RIGS := 2
+const BASE_RIGS := 1  # one scored tripod; the fixed ceiling camera is not a rig (CeilingCam, never scored)
 const MAX_RIGS := 4
 const FINE_STEP := 5
 const FINE_MIN := 10  # PROVISIONAL (02 §3.8); the rate is NightConfig.fine_rate

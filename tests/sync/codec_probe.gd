@@ -33,6 +33,16 @@ func _init() -> void:
 		assert(q.pos.is_equal_approx(out.pos) and q.lin.is_equal_approx(out.lin) and q.ang.is_equal_approx(out.ang), "quantize != decode")
 	print("codec: max pos err %.4f mm, %d B for 40 events" % [worst * 1000.0, buf.size()])
 	assert(worst <= 0.0001, "position error > 0.1 mm")
+	# the speed ceiling (TableSpec.max_ball_speed_mps, 24 m/s) and the spin it can carry (a rolling ball: v / R = 420 rad/s) fit the ranges
+	var fast := BallMotion.State.new()
+	fast.pos = origin
+	fast.lin = Vector3(24.0, -3.0, -24.0)
+	fast.ang = Vector3(420.0, -700.0, -420.0)
+	var fbuf := PackedByteArray()
+	BallEventCodec.begin(fbuf, 1, 0)
+	assert(BallEventCodec.append(fbuf, 0, 0, 0, fast, origin))
+	BallEventCodec.read_state(fbuf, 0, origin, out)
+	assert(out.lin.distance_to(fast.lin) < 0.001 and out.ang.distance_to(fast.ang) < 0.03, "24 m/s / 700 rad/s round trip: %s %s" % [out.lin, out.ang])
 	for i in 215:
 		assert(BallEventCodec.append(buf, 1, 0, 0, src[0], origin))
 	assert(not BallEventCodec.append(buf, 1, 0, 0, src[0], origin), "frame must refuse the 256th event")

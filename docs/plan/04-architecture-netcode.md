@@ -27,7 +27,8 @@ Checked against 4.7's renderer comparison: Mobile has **no** SDFGI, VoxelGI, SSI
 | Want | Technique |
 |---|---|
 | Dark room, warm pools of light | `LightmapGI` bake. All bar geometry static; ambience lights `bake_mode = STATIC` so they cost nothing at runtime. |
-| Neon, jukebox, TV, bottle shelf, pocket rims | Emissive materials. Emission feeds the lightmap bake, so a neon sign lights the wall around it for free. |
+| Neon, jukebox, bottle shelf, pocket rims | Emissive materials. Emission feeds the lightmap bake, so a neon sign lights the wall around it for free. |
+| The wall TV | Not baked: `MainLevel/Tv`, two `SubViewport` feeds drawn alternately, only while on screen, sized and paced by quality tier (07 §2, adhoc-1013c W4). Its glow on the wall is the baked `BakedTV` omni. |
 | The one light that must move | Table lamp: single `SpotLight3D`, `bake_mode = DYNAMIC`, shadows on, tight range. Budget is **one shadow-casting light** `[tune]`. |
 | Wet bar top, chrome, cue tips | Baked `ReflectionProbe` per room zone (bar, table, booth) instead of SSR. Mobile allows 8 per mesh, so three zones is comfortable. |
 | Haze | `WorldEnvironment` depth fog only (`fog_enabled`, low `fog_density`, warm `fog_light_color`). The hand-placed fog-plane quads are gone (06 P13): they sat at eye height and smeared the table. |
@@ -76,7 +77,7 @@ Balls move piecewise: ballistic between contacts, discontinuous at them. So the 
 
 Events are **hand-packed** into a `PackedByteArray`, not pushed through `MultiplayerSynchronizer` — the synchroniser samples state on a timer, which is the snapshot model we just rejected. `MultiplayerSpawner` *is* used, but only for `PlayerSlot`s (§4).
 
-**Codec** (`BallEventCodec`, implemented). Frame = `shot_id u16 | base_tick u32 | count u8` then `count` × 21-byte events: `id_flags u8 | tick_offset u16 | pos 3×s16 | lin 3×s16 | ang 3×s16`. `id_flags` = ball id (6 bits, < 64) | flag << 6 (`NONE`, `POCKETED`, `RETIRED`, `RESTORED`). Fixed point, not f16 (f16 cannot hold 0.1 mm over a 5 m table): pos 0.1 mm about the Table origin (±3.27 m, error ≤ 0.05 mm), lin 0.5 mm/s (±16.3 m/s), ang 0.02 rad/s (±655 rad/s). `tick_offset` counts `LIVE_TICK` ticks from `base_tick` (= `Engine.get_physics_frames()` at the strike); `0xFFFF` = "apply now" for lifecycle events between shots. A frame holds ≤ 255 events; a 40-contact break is ~190 events ≈ 4 KB, well inside the 07 §3 budget (≤ 200 events/shot).
+**Codec** (`BallEventCodec`, implemented). Frame = `shot_id u16 | base_tick u32 | count u8` then `count` × 21-byte events: `id_flags u8 | tick_offset u16 | pos 3×s16 | lin 3×s16 | ang 3×s16`. `id_flags` = ball id (6 bits, < 64) | flag << 6 (`NONE`, `POCKETED`, `RETIRED`, `RESTORED`). Fixed point, not f16 (f16 cannot hold 0.1 mm over a 5 m table): pos 0.1 mm about the Table origin (±3.27 m, error ≤ 0.05 mm), lin 1 mm/s (±32.7 m/s; it was 0.5 mm/s / ±16.3 until the cue cap went to 20 m/s, adhoc-1013c W2), ang 1/32 rad/s (±1023 rad/s; was 0.02 / ±655). `tick_offset` counts `LIVE_TICK` ticks from `base_tick` (= `Engine.get_physics_frames()` at the strike); `0xFFFF` = "apply now" for lifecycle events between shots. A frame holds ≤ 255 events; a 40-contact break is ~190 events ≈ 4 KB, well inside the 07 §3 budget (≤ 200 events/shot).
 
 **What is sent.** The host keeps, per ball, the state a client will have reconstructed (the last *sent, quantized* state advanced by `BallMotion.advance` each tick). It emits an event when a contact flags the ball (both balls), or when that prediction drifts > `DIVERGE_M` (2 mm [tune]) from Jolt, or when Jolt says rest but the prediction is still moving. So the 5 mm client-vs-host gate holds **by construction**, not because the model is exact; determinism is never needed. Events are coalesced per tick and flushed at 30 Hz (reliable, ch1). A 2 Hz **heartbeat** (unreliable ch2, full state) runs only while a Shot is live and is *corrective*: a client adopts a heartbeat state only when it is > 6 mm off (lost packet, late join), otherwise the host's prediction bookkeeping would no longer match what clients render. The net is silent at rest (R3).
 
@@ -189,7 +190,11 @@ MainLevel.tscn
  ├── Table                     — PhysicsSim.gd lives here, plus Ball instances
  ├── PlayerSpawner             — MultiplayerSpawner, spawn_path=PlayerSlots
  │    └── PlayerSlots/         — one PlayerSlot per peer (Player module: black box)
- ├── Bar / Cameras / Props     — free-roam interaction targets
+ ├── Bar / Cameras / Props     — free-roam interaction targets (Cameras also owns the fixed ceiling camera, never scored)
+ ├── Tv                        — StreamTv: the wall TV, dynamic, two live camera feeds (tripod 1 + ceiling), `set_feeds_on(on)` (07 §2)
+ ├── Vent                      — the ceiling vent over the table's east rail (dynamic, louvres): `open()` / `close()` / `finished` / `mouth_transform()` / `is_open` (01 "Round staging", 06 P33 D14)
+ ├── Trapdoor                  — the hole in the floor (3 × 3 m at (0, 3.8)) and its two dynamic panels, a dark shaft below: `open()` / `close()` / `finished` / `pit()` (the failure cutscene's seam, 06 P33 A10)
+ ├── Staging                   — RoundStaging: plays the Round's set-up (saucer out of the Vent, beam, balls materialise) and clean-up (the bed opens, the balls fall away) on every peer from `StagingPlan`; RoundDirector owns the `staging` flag
  └── UILayer
 ```
 "New campaign" is a scene reload, so no session node needs a reset path.
@@ -247,6 +252,8 @@ MainLevel.tscn
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_knock(peer_id, impulse, seconds)` — the host's `PlayerSpawner.knock`: thrown drink, bomb blast, stumble tick (08 §2.7) | PlayerSpawner | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_knock(impulse, seconds)` — the owner's own knock (a hard landing); the sender must be the slot's peer | PlayerSlot | any→A | `any_peer` | `call_remote` | `reliable` | 3 |
+
+**The Round's set-up and clean-up (01 "Round staging", 06 P33 U15/U16) add no rpc.** Every peer plays the same schedule from its own clock, started by what it already receives: the host when it has placed the rack, a client when `push_rack` arrives, and the clean-up from `round_state`'s Intermission transition (`GameLoop.round_ended`). `RoundDirector.staging` is per peer; a client that asks for a strike while the host is still staging gets `shot_rejected(&"staging")`.
 
 `update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it); a client that receives `reason == &"scratch"` also emits `fined(reason, -delta)` (06 P16), so the fine banner needs no RPC of its own. The balance may be negative. `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) plus a `PackedInt32Array` of holder peer ids (0 = free) at 4 Hz, only while a rig moved or changed hands, plus a few repeats at rest; the Player derives `CARRY` from the holders (08 §5). `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 

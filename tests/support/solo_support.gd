@@ -9,8 +9,11 @@ extends RefCounted
 ## The Night's first Intermission also pours the crew one house Drink (docs/plan/02 §3.10), which takes a slot and a Reward
 ## term; a probe that is not about Drinks reads past it too (it ends here as a Round would end it). `keep_pour` leaves it
 ## for the probes that test the pour.
+## The Round's set-up / clean-up pictures (docs/plan/01 §3, 06 P33 A4) are skipped (`RoundDirector.skip_staging`): a probe that presses Solo wants
+## the rack on the table the moment GO LIVE is pressed. `keep_staging` leaves them on for the probes that test them.
 
-static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false) -> void:
+static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false, keep_staging := false) -> void:
+	RoundDirector.skip_staging = not keep_staging
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < sec * 1000.0:
 		var scene := tree.current_scene

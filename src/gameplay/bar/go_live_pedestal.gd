@@ -23,16 +23,20 @@ func _ready() -> void:
 	if game_loop != null:
 		game_loop.ready_changed.connect(_refresh)
 		game_loop.phase_changed.connect(func(_p: int) -> void: _refresh())
+		game_loop.staging_changed.connect(func(_on: bool) -> void: _refresh())
 	_refresh()
 
 
 func _refresh() -> void:
-	var live := game_loop != null and game_loop.phase == GameLoop.Phase.INTERMISSION
+	var clearing := game_loop != null and game_loop.phase == GameLoop.Phase.INTERMISSION and game_loop.is_staging()  # the last Round's clean-up
+	var live := game_loop != null and game_loop.phase == GameLoop.Phase.INTERMISSION and not clearing
 	var me := multiplayer.get_unique_id() if multiplayer.multiplayer_peer != null else 1
 	var mine := live and game_loop.ready_peers.has(me)
 	var total := 0 if not live else game_loop.ready_peers.size() + game_loop.waiting_peers.size()
 	_set_glow(READY_COLOR if mine else (IDLE_COLOR if live else OFF_COLOR))
-	if not live:
+	if clearing:
+		_status.text = "Table clearing"
+	elif not live:
 		_status.text = "Opens between Rounds"
 	else:
 		var lines := PackedStringArray(["Ready %d/%d" % [game_loop.ready_peers.size(), total]])
@@ -43,7 +47,9 @@ func _refresh() -> void:
 		_status.text = "\n".join(lines)
 	if prop == null:
 		return
-	if not live:
+	if clearing:
+		prop.prompt = "GO LIVE (the table is clearing)"
+	elif not live:
 		prop.prompt = "GO LIVE (opens between Rounds)"
 	elif mine:
 		prop.prompt = "Ready %d/%d · press to cancel" % [game_loop.ready_peers.size(), total]

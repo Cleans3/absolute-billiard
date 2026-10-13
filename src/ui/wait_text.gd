@@ -6,6 +6,7 @@ extends RefCounted
 const SHOT := {
 	no_cue_ball = "No cue ball on the table",
 	no_round = "No Round is live yet: press GO LIVE at the table",
+	staging = "The table is being set up: one moment",
 	bad_power = "Pull the power slider back first",
 	bad_aim = "Aim at the table first",
 	call_pocket = "Call a pocket first (1-6)",
@@ -16,6 +17,7 @@ const INTERACTION := {
 	bad_payload = "That order isn't valid",
 	intermission_only = "That is only served between Rounds",
 	not_intermission = "GO LIVE only works between Rounds",
+	staging = "The table is being cleared: one moment",
 	not_ringing = "The phone isn't ringing",
 	already_answered = "Somebody already picked up",
 	hostile_off = "Hostile moves are off in this lobby",

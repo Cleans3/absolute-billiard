@@ -22,6 +22,8 @@ const STAT_PERIOD := 0.25      # wobble / call-pocket stats re-read this often, 
 const BACK_M := 1.2            # camera distance behind the cue ball along the aim line [tune]
 const LOOK_AHEAD_M := 0.5      # the camera looks at the point this far past the ball
 const CUE_GAP_M := 0.005
+const CUE_LEN_M := 1.45        # the stick's length: CueMesh's height in CueController.tscn, and the puppet's stick (cue_stance_probe checks they agree)
+const BRIDGE_M := 0.36         # the bridge hand rests this far behind the tip while the cue is at rest
 const PULLBACK_RADII := 4.0    # cue pulls back this many ball radii at full power
 const POCKET_ACTIONS: Array[StringName] = [
 	&"call_pocket_1", &"call_pocket_2", &"call_pocket_3", &"call_pocket_4", &"call_pocket_5", &"call_pocket_6",
@@ -43,10 +45,17 @@ var table: Table                # pocket ids for call-pocket, optional
 var controls: TouchControls     # optional: headless probes and puppets have none
 var player: Node                # Player: pinned to the aim line while active
 var ball: Ball
+## The aim guide (01 §3): this shooter's own, drawn from the live intent while CUE is active. Puppet cues have none.
+var guide: ShotGuide
 
 var _t := 0.0
 var _stat_wait := 0.0
 var _wobble_deg := 0.0
+var _spin_radius := 0.35        # CueSpec.spin_offset_radius as the shooter's stats resolve it (what Ball.strike offsets the tip by)
+var _guide_intent := ShotIntent.new()
+var _tip := Vector3.ZERO        # the posed stick: tip, the unit direction from the tip to the butt, and the bridge hand's distance from the tip
+var _butt := Vector3.BACK
+var _bridge_s := BRIDGE_M
 
 @onready var cue_mesh: MeshInstance3D = $CueMesh
 @onready var _cue_len: float = (cue_mesh.mesh as CylinderMesh).height
@@ -54,7 +63,10 @@ var _wobble_deg := 0.0
 
 func _ready() -> void:
 	cue_mesh.top_level = true
+	cue_mesh.layers |= Humanoid.MIRROR_LAYER  # the mirror's window pass draws the stick
 	cue_mesh.hide()
+	guide = ShotGuide.new()
+	add_child(guide)
 	set_process(false)
 	set_process_unhandled_input(false)
 
@@ -83,6 +95,8 @@ func end() -> void:
 	charging = false
 	power = 0.0
 	cue_mesh.hide()
+	if guide != null:
+		guide.clear()
 	set_process(false)
 	set_process_unhandled_input(false)
 	if controls != null:
@@ -93,6 +107,7 @@ func end() -> void:
 func refresh_stats() -> void:
 	_wobble_deg = maxf(0.0, _stat(&"cue_aim_wobble_deg", 0.0) - cue_spec.wobble_reduction)
 	call_required = _stat(&"rule_call_pocket", 0.0) > 0.0
+	_spin_radius = _stat(&"cue_spin_radius_mult", cue_spec.spin_offset_radius)
 	_stat_wait = STAT_PERIOD
 
 
@@ -222,19 +237,45 @@ func _process(delta: float) -> void:
 	if e != 0.0 and not UIRouter.blocking():
 		set_elevation(elevation_deg + e * elevation_rate_deg * delta)
 	_pose_cue()
+	_update_guide()
 	if player != null:
 		player.call(&"pin_to_cue", ball.global_position, aim_yaw)
+		player.call(&"pose_body", _tip, _butt, _cue_len, _bridge_s)  # the body holds the stick as posed above
 	_push_ui()
 
 
-## Cue in world space along the (swayed) aim, tip at the ball, butt up by the elevation.
+## Cue in world space along the (swayed) aim, butt up by the elevation the strike will really use, tip on the spot the spin
+## offset names: the same `right * side + up * follow` x radius x spin radius as `Ball.plan_strike`, so what the cue shows is
+## what the ball gets (08 §2.2). Puppets' cues have no spin to show (it is not on the wire).
 func _pose_cue() -> void:
 	var yaw := swayed_yaw()
 	var aim3 := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var right := aim3.cross(Vector3.UP)
-	var d := aim3.rotated(right, -deg_to_rad(elevation_deg))
-	var tip := ball.global_position - d * (ball.radius + CUE_GAP_M + power * ball.radius * PULLBACK_RADII)
+	var d := aim3.rotated(right, -deg_to_rad(Ball.effective_elevation(elevation_deg, spin, cue_spec)))
+	var up_c := right.cross(d).normalized()  # "top of the ball" as the cue sees it
+	var strike_at := ball.global_position + (right * spin.x + up_c * spin.y) * ball.radius * _spin_radius
+	var pull := power * ball.radius * PULLBACK_RADII
+	var tip := strike_at - d * (ball.radius + CUE_GAP_M + pull)
 	cue_mesh.global_transform = Transform3D(Basis(right, d, right.cross(d)), tip - d * (_cue_len * 0.5))
+	_tip = tip
+	_butt = -d
+	_bridge_s = BRIDGE_M + pull  # the bridge hand stays put while the stick slides back through it
+
+
+## The aim guide follows the live intent: the swayed yaw, the charged power (a fixed preview before any is charged), spin and
+## elevation. Rebuilt by `ShotGuide` only when one of them changed.
+func _update_guide() -> void:
+	if guide == null:
+		return
+	var swayed := swayed_yaw()
+	var elev := Ball.effective_elevation(elevation_deg, spin, cue_spec)
+	var preview := power < ShotGuide.PREVIEW_BELOW
+	_guide_intent.aim_dir = Vector2(-sin(swayed), -cos(swayed))
+	_guide_intent.power = (ShotGuide.PREVIEW_POWER_JUMP if elev >= Ball.JUMP_MIN_ELEVATION_DEG else ShotGuide.PREVIEW_POWER) if preview else power
+	_guide_intent.spin_offset = spin
+	_guide_intent.elevation_deg = elevation_deg
+	_guide_intent.shooter_id = multiplayer.get_unique_id()
+	guide.update(ball, _guide_intent, cue_spec, table, preview)
 
 
 func _push_ui() -> void:

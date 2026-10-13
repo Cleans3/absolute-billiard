@@ -43,6 +43,10 @@ func _run() -> void:
 	q.ladder.tier = 1
 	q._apply_tier()
 	assert(is_equal_approx(root.scaling_3d_scale, 0.85) and root.msaa_3d == Viewport.MSAA_DISABLED, "tier 1 = 0.85 scale, MSAA off")
+	assert(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_FXAA, "tier 1 swaps MSAA for FXAA (adhoc-1013c U4)")
+	q.ladder.tier = 0
+	q._apply_tier()
+	assert(root.screen_space_aa == Viewport.SCREEN_SPACE_AA_DISABLED and root.msaa_3d == Viewport.MSAA_2X, "tier 0 = MSAA 2x, no FXAA")
 	Engine.max_fps = 0
 	print("QUALITY OK")
 	quit()

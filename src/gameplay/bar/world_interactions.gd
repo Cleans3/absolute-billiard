@@ -112,6 +112,8 @@ func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: i
 		if kind == &"go_live":
 			if game_loop == null or game_loop.phase != GameLoop.Phase.INTERMISSION:
 				return &"not_intermission"
+			if game_loop.is_staging():  # the last Round's clean-up is still playing (06 P33 A4)
+				return &"staging"
 			return _reach(peer_id, kind, target_id)
 		if kind == &"answer_phone":  # 09 §3.2: ringing, and not yet answered this Night, is StoryDirector's to say
 			if game_loop == null or game_loop.phase != GameLoop.Phase.INTERMISSION:

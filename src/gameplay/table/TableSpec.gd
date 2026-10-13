@@ -39,9 +39,9 @@ const BASE_BOUNCE := 1.0
 
 ## Feel values: every one is a LIVE field (applies without a rebuild or re-rack, see LIVE_FIELDS) unless noted.
 @export_range(0.0, 1.0, 0.005) var cushion_restitution := 0.86       # e0: soft hits
-@export_range(0.0, 1.0, 0.005) var cushion_restitution_min := 0.26   # e at cushion_hard_speed_mps and above
+@export_range(0.0, 1.0, 0.005) var cushion_restitution_min := 0.38   # e at cushion_hard_speed_mps and above (0.26 before the 20 m/s break: a 15 m/s ball left the rail at 4 m/s)
 @export_range(0.0, 15.0, 0.1) var cushion_soft_speed_mps := 3.0     # normal speed below which e = e0
-@export_range(0.5, 20.0, 0.1) var cushion_hard_speed_mps := 7.5     # normal speed at which e = e_min
+@export_range(0.5, 40.0, 0.1) var cushion_hard_speed_mps := 14.0    # normal speed at which e = e_min (7.5 when the cue topped out at 10 m/s)
 @export_range(0.0, 1.0, 0.005) var cushion_friction := 0.18
 @export_range(0.0, 1.0, 0.005) var cloth_friction := 0.20
 @export_range(0.0, 0.5, 0.005) var ball_friction := 0.06             # ball–ball Coulomb μ (BallCollisions)
@@ -72,13 +72,14 @@ const BASE_BOUNCE := 1.0
 @export var jaw_restitution := 0.55
 ## Object balls get CCD only above the speed where one physics step covers this many ball radii (07 §1.2).
 @export_range(0.1, 2.0, 0.05) var ccd_step_radii := 0.8
-## scale-invariant ceiling matching CueSpec.power_cap_speed_mps (01 §3 default 10.0) — thin static
-## colliders (jaw facings, cushions) are floored against this ÷ PhysicsSim.LIVE_TICK so a
-## full-power shot can never cross one in a single physics step, at any scale (loop-1 T4.8: CCD
-## alone does not stop a bad contact when the swept collider is smaller than the step — Jolt's own
-## ghost-collision mitigation only applies within one body, not at the seam between two separate
-## StaticBody3D, which is exactly where cushion meets facing). Geometry: needs Table.rebuild().
-@export var max_ball_speed_mps := 10.0
+## The fastest any ball may move, scale-invariant: Ball.strike never launches faster and Ball._integrate_forces clips anything
+## that would be (a heavy cue ball into a light one). CueSpec.power_cap_speed_mps (01 §3 default 20.0) × 1.2 for the cue upgrades.
+## Thin static colliders (jaw facings, cushions, cup walls) are floored against this ÷ PhysicsSim.LIVE_TICK, so no ball can cross
+## one in a single physics step, at any scale (loop-1 T4.8: CCD alone does not stop a bad contact when the swept collider is
+## smaller than the step — Jolt's own ghost-collision mitigation only applies within one body, not at the seam between two
+## separate StaticBody3D, which is exactly where cushion meets facing). 24 m/s at 120 Hz = 200 mm per step, a 200 mm collider.
+## Geometry: needs Table.rebuild().
+@export var max_ball_speed_mps := 24.0
 
 ## Fields `Table.apply_physics()` re-applies to the live bodies, balls and BallMotion without a rebuild or re-rack. The
 ## order is the wire order of `live_values()` (04 §5 `shot_started` stats); append, never reorder.

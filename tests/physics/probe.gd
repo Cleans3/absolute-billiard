@@ -42,8 +42,8 @@ func _run() -> void:
 	_kill(b)
 
 	var soft := await _rail_angle(2.0)
-	var hard := await _rail_angle(9.0)
-	print("cushion 45° in: soft %.1f m/s -> %.1f° out, hard %.1f m/s -> %.1f° out" % [2.0, soft, 9.0, hard])
+	var hard := await _rail_angle(20.0)  # a full-power break (cushion_hard_speed_mps is 14 along the normal, 20 / sqrt 2 = 14.1 here)
+	print("cushion 45° in: soft %.1f m/s -> %.1f° out, hard %.1f m/s -> %.1f° out" % [2.0, soft, 20.0, hard])
 	assert(hard < soft - 10.0, "hard hit must rebound flatter")
 
 	var draw := await _spin_shot(-0.9)
@@ -158,7 +158,7 @@ func _straight_in_pot() -> void:
 	_kill(b)
 
 
-## T1.4: 8 m/s into a corner facing, 20° off the direct pocket line — must never tunnel, leave
+## T1.4: 20 m/s (a full-power break) into a corner facing, 20° off the direct pocket line — must never tunnel, leave
 ## the table or produce NaN; either it pots anyway or it rattles and ends up at rest on the cloth.
 func _jaw_hit() -> void:
 	var pocket := table.get_pocket(&"corner_nw")
@@ -167,7 +167,7 @@ func _jaw_hit() -> void:
 	var b := _ball(RED_T, start)
 	await physics_frame
 	print("probe: jaw hit")
-	var v0 := 8.0
+	var v0 := 20.0
 	b.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
 	b.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
 	b.linear_velocity = Vector3(dir.x, 0, dir.y) * v0
@@ -331,7 +331,7 @@ func _seam_pots() -> void:
 	await physics_frame
 
 
-## Loop 1 (gamma H, plan.md T4.8): a ball into a side jaw at 9 m/s (near the cue power cap) must
+## Loop 1 (gamma H, plan.md T4.8): a ball into a side jaw at 22 m/s (near the 24 m/s speed ceiling) must
 ## stay on the table at every scale — pocketed or rattled back, either is fine, but it must never
 ## tunnel a facing/cushion or launch clean over the rail. Rebuilds the shared `table` at scale 1.0
 ## (regulation-accurate ball size/spin is exactly what exposed it: same absolute cue speed, but a
@@ -348,12 +348,12 @@ func _side_jaw_scale1() -> void:
 	var yy := s.bed_height_m + r + s.clearance_margin_m
 	var h := _ball(RED_T, table.global_position + Vector3(-sm - 6.0 * r, yy, hw - 6.0 * r))
 	await physics_frame
-	print("probe: side jaw 9 m/s at scale 1.0")
+	print("probe: side jaw 22 m/s at scale 1.0")
 	var hdir := (Vector3(-sm, 0, hw) - Vector3(-sm - 6.0 * r, 0, hw - 6.0 * r)).normalized()
 	h.freeze = false  # what Ball.strike does: a frozen body drops a set velocity,
 	h.is_resting = false  # and PhysicsSim refreezes the rack while nothing counts as awake
-	h.linear_velocity = hdir * 9.0
-	h.angular_velocity = Vector3(hdir.z, 0, -hdir.x) * (9.0 / h.radius)
+	h.linear_velocity = hdir * 22.0
+	h.angular_velocity = Vector3(hdir.z, 0, -hdir.x) * (22.0 / h.radius)
 	table.sim._on_struck(h, ShotIntent.new())
 	var timer := create_timer(8.0)
 	while table.sim.awake > 0 and timer.time_left > 0.0 and not h.is_pocketed:
@@ -361,9 +361,9 @@ func _side_jaw_scale1() -> void:
 	var hp := h.global_position - table.global_position
 	var outside := absf(hp.x) > hl + s.rail_width_m or absf(hp.z) > hw + s.rail_width_m
 	var below := not h.is_pocketed and hp.y < s.bed_height_m
-	print("probe: side jaw 9 m/s pocketed=%s pos=%s outside=%s below=%s" % [h.is_pocketed, hp, outside, below])
-	assert(not outside, "a 9 m/s side-jaw hit must never leave the table")
-	assert(not below, "a 9 m/s side-jaw hit must never fall through the table uncaught")
+	print("probe: side jaw 22 m/s pocketed=%s pos=%s outside=%s below=%s" % [h.is_pocketed, hp, outside, below])
+	assert(not outside, "a 22 m/s side-jaw hit must never leave the table")
+	assert(not below, "a 22 m/s side-jaw hit must never fall through the table uncaught")
 	_kill(h)
 	await physics_frame
 	table.spec.scale = 2.0
@@ -373,7 +373,8 @@ func _side_jaw_scale1() -> void:
 
 
 ## T1.7: full-power straight shot from the head spot must clear the table, rebound off the foot
-## rail and come back at least half the table length before resting.
+## rail and come back at least half the table length (the return from the farthest point reached; at 20 m/s the
+## ball keeps bouncing between the rails, so where it finally rests says nothing).
 func _rail_return() -> void:
 	var head := Vector3(table.spec.kitchen_line_x, y, 0)
 	var b := _ball(CUE_T, head)
@@ -386,13 +387,15 @@ func _rail_return() -> void:
 	b.strike(intent, cs)
 	var hl := table.spec.length_m * 0.5
 	var peak_x := head.x
+	var back := 0.0
 	var timer := create_timer(12.0)
 	while (table.sim.awake > 0 or not b.is_resting) and timer.time_left > 0.0:
-		peak_x = maxf(peak_x, b.global_position.x)
+		var x := b.global_position.x
+		peak_x = maxf(peak_x, x)
+		back = maxf(back, peak_x - x)
 		await physics_frame
-	var back := peak_x - b.global_position.x
 	print("probe: rail return peak_x=%.2f final_x=%.2f back=%.2f (need >= %.2f)" % [peak_x, b.global_position.x, back, table.spec.length_m * 0.5])
-	assert(peak_x > hl - 3.0 * table.spec.ball_radius_m, "full-power shot must reach the foot rail")  # sampled once a tick: 8 cm at 10 m/s
+	assert(peak_x > hl - 5.0 * table.spec.ball_radius_m, "full-power shot must reach the foot rail")  # sampled once a tick: 17 cm at 20 m/s
 	assert(back >= table.spec.length_m * 0.5, "full-power shot must return at least half the table")
 	_kill(b)
 	await _rest()

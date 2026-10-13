@@ -15,12 +15,14 @@ const IDLE_AFTER_MS := 2000
 const IDLE_FPS := 30
 const BACKGROUND_FPS := 10
 const BATTERY_FPS := 30
-## [scale, msaa, fps cap, trails] per tier (07 §7.4). Tier 2 also wants a 120 Hz live tick:
+## [scale, msaa, screen-space AA, fps cap, trails] per tier (07 §7.4). Tiers 1-2 drop MSAA to save fill, which leaves every edge
+## bare (the phone's black-with-white-outline edges, adhoc-1013c U4): FXAA stands in there, a one-pass post filter
+## (Mobile supports FXAA and SMAA, Godot 4.7 docs "3D antialiasing"). Tier 2 also wants a 120 Hz live tick:
 ## PhysicsSim.LIVE_TICK is 120 today, so `tick_cap()` is a no-op until that constant is raised.
 const TIERS: Array[Dictionary] = [
-	{scale = 1.0, msaa = Viewport.MSAA_2X, fps = 60, trails = true},
-	{scale = 0.85, msaa = Viewport.MSAA_DISABLED, fps = 60, trails = true},
-	{scale = 0.85, msaa = Viewport.MSAA_DISABLED, fps = 30, trails = false},
+	{scale = 1.0, msaa = Viewport.MSAA_2X, aa = Viewport.SCREEN_SPACE_AA_DISABLED, fps = 60, trails = true},
+	{scale = 0.85, msaa = Viewport.MSAA_DISABLED, aa = Viewport.SCREEN_SPACE_AA_FXAA, fps = 60, trails = true},
+	{scale = 0.85, msaa = Viewport.MSAA_DISABLED, aa = Viewport.SCREEN_SPACE_AA_FXAA, fps = 30, trails = false},
 ]
 const TICK_CAP_TIER2 := 120
 
@@ -158,6 +160,7 @@ func _apply_tier() -> void:
 	var vp := get_viewport()
 	vp.scaling_3d_scale = t.scale
 	vp.msaa_3d = t.msaa
+	vp.screen_space_aa = t.aa
 
 
 func _reset_window() -> void:

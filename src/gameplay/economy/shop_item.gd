@@ -11,4 +11,4 @@ extends Resource
 @export var min_night := 1
 @export var one_per_night := false
 @export var persistent := false  # survives a wipe into the next run (§3.7)
-@export var max_owned := 1  # 0 = repeatable (drinks); spare_tripod stacks to the rig cap
+@export var max_owned := 1  # 0 = repeatable (drinks); spare_tripod stacks to the rig cap (1 base + 3 = MAX_RIGS)

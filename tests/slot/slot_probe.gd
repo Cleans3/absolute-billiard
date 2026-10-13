@@ -143,6 +143,7 @@ func _contract() -> void:
 	_check(tris < 6000, "triangle budget: %d (the drums are instanced: counted once per use)" % tris)
 
 	player.global_position = Vector3(-4.6, 0.05, 1.5)
+	player.rotation.y = PI / 2.0  # facing the machine (-X): a prompt needs facing beyond 0.6 m (06 P33 U8)
 	player.velocity = Vector3.ZERO
 	await _until(func() -> bool: return player.prompt == "Play the slots", "the slot prompt in reach", 5.0)
 	player.interact()

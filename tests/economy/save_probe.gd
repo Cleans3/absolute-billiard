@@ -157,7 +157,7 @@ func _checkpoint_and_resume() -> void:
 	loop.resume_from(p)
 	_check(eco.cash == cash and eco.count_of(&"tier2_rack") == 1 and eco.count_of(&"heavy_shaft") == 1, "resume restores Cash + Shop")
 	_check(loop.phase == GameLoop.Phase.INTERMISSION and loop.round_index == 1 and stream.viewers == viewers, "resume lands in the Intermission before Round 2")
-	_check(eco.build_cue_spec().power_cap_speed_mps > 11.0, "…with the cue upgrade live")
+	_check(eco.build_cue_spec().power_cap_speed_mps > CueSpec.new().power_cap_speed_mps * 1.1, "…with the cue upgrade live")
 	# a passed Night 1 checkpoints as 'Night 2, not started'
 	loop.round_index = 3
 	eco.cash = 9999
