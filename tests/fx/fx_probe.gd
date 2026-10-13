@@ -53,6 +53,7 @@ func _run() -> void:
 	_combo_rules()
 	_tap_synthetic()
 	await _real_break()
+	await _real_rail_strike()
 	await _real_combo()
 	await _fake_events()
 	await _tiers()
@@ -152,6 +153,41 @@ func _tap_synthetic() -> void:
 	t.process(_frame([{id = 7, off = 2, pos = corner + Vector3(-0.6, 0, -0.6), lin = Vector3(5, 0, 3)}]), 0)
 	h = t.process(_frame([{id = 7, off = 18, pos = corner, lin = Vector3(-4.5, 0, 3)}]), 0)
 	_check(h.is_empty(), "a jaw bounce at a pocket is no RAIL hit (got %d)" % h.size())
+	# the strike is the cue ball's first move of the Shot, wherever it rests: 1.5 radii off a cushion it is a KICK, not a rail hit
+	var lx := table.spec.length_m * 0.5
+	var near := Vector3(lx - 1.5 * r, y, 0.4)
+	h = _new_tap().process(_frame([{id = 0, off = 2, pos = near, lin = Vector3(-4, 0, 0)}]), 0)
+	_check(h.size() == 1 and h[0].kind == FxHitTap.Kind.KICK and absf(h[0].strength - 4.0) < 0.05, "cue 1.5 radii off a cushion, struck away: one KICK, no rail hit (got %d)" % h.size())
+	# ...struck into it: the KICK, then the RAIL a few ticks later, in one frame
+	h = _new_tap().process(_frame([
+		{id = 0, off = 2, pos = near, lin = Vector3(4, 0, 0)},
+		{id = 0, off = 6, pos = Vector3(lx - r - 0.01, y, 0.4), lin = Vector3(-3.4, 0, 0)},
+	]), 0)
+	_check(h.size() == 2 and h[0].kind == FxHitTap.Kind.KICK and h[1].kind == FxHitTap.Kind.RAIL, "cue struck into a cushion 1.5 radii off: KICK then RAIL (got %d hits)" % h.size())
+	if h.size() == 2:
+		_check(h[1].strength > 3.5 and h[1].normal.x < -0.9, "...the rail hit has the approach speed and points off the cushion (%.2f)" % h[1].strength)
+	# a cue ball resting in a pocket's jaw zone, struck: still a KICK (the jaw filter is for bounces, not strikes)
+	var jaw := Vector3(lx - r - 0.03, y, table.spec.width_m * 0.5 - r - 0.03)
+	h = _new_tap().process(_frame([{id = 0, off = 2, pos = jaw, lin = Vector3(-3, 0, -2)}]), 0)
+	_check(h.size() == 1 and h[0].kind == FxHitTap.Kind.KICK, "cue struck from a pocket's jaw zone is a KICK (got %d)" % h.size())
+	# a cue ball struck while touching a ball that starts on the same tick: still the strike (the pair has no closing speed)
+	h = _new_tap().process(_frame([
+		{id = 0, off = 2, pos = Vector3(0, y, 0), lin = Vector3(3, 0, 0)},
+		{id = 1, off = 2, pos = Vector3(2.0 * r, y, 0), lin = Vector3(2.9, 0, 0)},
+	]), 0)
+	_check(h.size() == 1 and h[0].kind == FxHitTap.Kind.KICK, "cue struck while touching a ball: one KICK (got %d)" % h.size())
+	# but later in the Shot a ball that hits the resting cue ball is a ball-ball hit, not a second strike
+	var t2 := _new_tap()
+	t2.process(_frame([{id = 0, off = 2, pos = Vector3(0, y, 0), lin = Vector3(3, 0, 0)}]), 0)
+	t2.process(_frame([{id = 0, off = 40, pos = Vector3(0.2, y, 0), lin = Vector3.ZERO}]), 0)
+	h = t2.process(_frame([
+		{id = 5, off = 90, pos = Vector3(-0.5, y, 0), lin = Vector3(2, 0, 0)},
+	]), 0)
+	h = t2.process(_frame([
+		{id = 5, off = 100, pos = Vector3(0.2 - 2.0 * r, y, 0), lin = Vector3(0.1, 0, 0)},
+		{id = 0, off = 100, pos = Vector3(0.2, y, 0), lin = Vector3(1.9, 0, 0)},
+	]), 0)
+	_check(h.size() == 1 and h[0].kind == FxHitTap.Kind.BALL, "a ball hitting the resting cue ball later in the Shot is a BALL hit (got %d)" % h.size())
 	# a re-send that merely corrects a coasting ball is not an impact
 	t.process(_frame([{id = 3, off = 2, pos = Vector3(0, y, 0.5), lin = Vector3(2, 0, 0)}]), 0)
 	h = t.process(_frame([{id = 3, off = 12, pos = Vector3(0.28, y, 0.5), lin = Vector3(1.85, 0, 0)}]), 0)
@@ -212,7 +248,7 @@ func _real_break() -> void:
 	var shots := 0
 	var start := cue.global_position
 	for k in 5:
-		if k > 0:  # a cue ball resting within 4 radii of a cushion reads as a rail hit, not a strike (FxHitTap._solo): shoot each one from the open
+		if k > 0:  # every shot starts from the break spot, so the five differ only in their target
 			cue.restore(start)
 			await physics_frame
 			while sim.awake > 0 or director.shot_in_progress:
@@ -259,6 +295,51 @@ func _real_break() -> void:
 	_check(got.kick == shots, "one cue strike per shot in the stream (got %d for %d)" % [got.kick, shots])
 	_check(int(_kinds.get(&"kick", 0)) - int(before.get(&"kick", 0)) == shots, "the host path pops each strike once")
 	_check(int(_kinds.get(&"ball", 0)) > int(before.get(&"ball", 0)), "the host path popped ball hits")
+	sim.capture = false
+
+
+## The cue ball rests 1.5 radii off the end cushion (the settle puts it there often): the host's own stream must still read
+## its strike as a KICK, struck away or into the cushion.
+func _real_rail_strike() -> void:
+	print("probe: real strike from beside a cushion")
+	director.start_round(NightConfig.new(), 1, SEED)
+	for i in 60:
+		await physics_frame
+	var sim := table.sim
+	var cue: Ball = null
+	for b in director.get_balls():
+		if b.is_cue_ball:
+			cue = b
+		else:
+			b.is_pocketed = false
+			b.retire()  # parked: the cue ball has the cloth to itself
+			b.global_position = _world(Vector2.ZERO, b)
+	sim.capture = true
+	var frames: Array[PackedByteArray] = []
+	sim.frame_flushed.connect(func(f: PackedByteArray) -> void: frames.append(f.duplicate()))
+	var spot := Vector2(table.spec.length_m * 0.5 - 1.5 * r, 0.0)
+	for dir in [Vector2.LEFT, Vector2.RIGHT]:
+		cue.restore(_world(spot, cue))
+		for i in 200:
+			await physics_frame
+		var intent := ShotIntent.new()
+		intent.aim_dir = dir
+		intent.power = 0.4
+		frames.clear()
+		sim.request_shot(intent)
+		await sim.all_resting
+		for i in 40:
+			await physics_frame
+		var tap := _new_tap(cue.net_id)
+		tap.params_for = fx.tap.params_for
+		var hits: Array[Dictionary] = []
+		for f in frames:
+			hits.append_array(tap.process(f, 0))
+		var kinds := hits.map(func(h: Dictionary) -> int: return h.kind)
+		print("fx_probe: strike %s from beside the cushion -> hit kinds %s" % [str(dir), str(kinds)])
+		_check(not hits.is_empty() and hits[0].kind == FxHitTap.Kind.KICK, "the first hit of a shot from beside the cushion is the strike (%s)" % str(kinds))
+		_check(kinds.count(FxHitTap.Kind.KICK) == 1, "one strike, not two (%s)" % str(kinds))
+		_check(dir == Vector2.LEFT or kinds.has(FxHitTap.Kind.RAIL), "struck into the cushion it also rebounds: a RAIL hit follows (%s)" % str(kinds))
 	sim.capture = false
 
 

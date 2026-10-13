@@ -4,7 +4,8 @@ extends RefCounted
 ## Presentation-only contact classifier (docs/plan/10 §2). A client has no contacts, only the host's event stream
 ## (04 §2.4), so this rebuilds them: an event whose velocity jumps against what the previous event predicts is an impact;
 ## a neighbour with an event on the same tick makes it ball-ball, a cushion nearby makes it a rail, else it is a kick
-## (cue strike, nudge, blast). Pure: no nodes, no signals. ImpactFx schedules what comes out on the playback clock.
+## (cue strike, nudge, blast). The cue ball's first move of a Shot is its strike: a kick wherever it rests, even against a
+## cushion. Pure: no nodes, no signals. ImpactFx schedules what comes out on the playback clock.
 
 enum Kind { BALL, RAIL, KICK }
 
@@ -62,14 +63,18 @@ func process(frame: PackedByteArray, now_tick: int) -> Array[Dictionary]:
 			_gone.erase(id)
 		var tick := now_tick if off == BallReplica.NOW else base + off
 		var pre := _predict(id, tick)
+		var first := not _state.has(id)  # nothing seen of it since the Shot started
 		_remember(id, tick, post)
 		if not life and not _gone.has(id):
-			evs.append({id = id, tick = tick, post = post, pre = pre})
+			evs.append({id = id, tick = tick, post = post, pre = pre, first = first})
 	var out: Array[Dictionary] = []
 	var paired := {}
 	for e in evs:
 		var dv: Vector3 = e.post.lin - e.pre
 		dv.y = 0.0
+		if e.first and e.id == strike_id and dv.length() >= MIN_DV:  # asked before any neighbour or cushion: it leaves rest from where it stands
+			out.append(_kick(e, dv))
+			continue
 		var partner := _partner(evs, e)
 		if partner.is_empty():
 			var solo := _solo(e, dv) if dv.length() >= MIN_DV else {}
@@ -108,7 +113,11 @@ func _solo(e: Dictionary, dv: Vector3) -> Dictionary:
 		return {kind = Kind.RAIL, tick = e.tick, pos = e.post.pos - n * radius, normal = n, strength = approach}
 	if e.id != strike_id:
 		return {}
-	return {kind = Kind.KICK, tick = e.tick, pos = e.post.pos, normal = n, strength = dv.length()}
+	return _kick(e, dv)
+
+
+func _kick(e: Dictionary, dv: Vector3) -> Dictionary:
+	return {kind = Kind.KICK, tick = e.tick, pos = e.post.pos, normal = dv.normalized(), strength = dv.length()}
 
 
 ## Another ball with an event on the same tick and close enough to be touching, or {}.
