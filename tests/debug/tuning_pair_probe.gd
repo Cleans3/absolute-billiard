@@ -1,11 +1,12 @@
 extends SceneTree
 ## Two-peer tuning probe (run through tests/net/pair.sh): the host edits physics numbers through DebugSession, and they
-## reach the client before the next strike (the `shot_started` stats), again when changed mid-Shot (`motion_stats`), and
-## the client's reconstruction of the shot, modelled from those numbers, ends within 5 mm of the host's.
+## reach the client before the next strike (`motion_stats` between Shots, 06 P49; the `shot_started` stats carry them too),
+## again when changed mid-Shot (`motion_stats`), and the client's reconstruction of the shot, modelled from those numbers,
+## ends within 1 mm of the host's (the host's rest frame, 06 P49; it was 5 mm and failed one run in three on racked balls).
 ##   tests/net/pair.sh tests/debug/tuning_pair_probe.gd
 ## Prints `TUNEPAIR HOST OK` / `TUNEPAIR CLIENT OK`.
 
-const GATE_M := 0.005
+const GATE_M := 0.001
 const BEFORE := {&"rolling_resistance": 0.012, &"ball_linear_damp": 0.05, &"ball_restitution": 0.9}
 const MID_SHOT := 0.03
 
@@ -92,6 +93,7 @@ func _host() -> void:
 	await physics_frame
 	await physics_frame
 	assert(_close(table.spec.rolling_resistance, 0.012), "the host applied the edit")
+	await _until(func() -> bool: return FileAccess.file_exists(_file("client_has_edit")), "the edit reaching the client between Shots")
 	assert(session.fire(session.aim_at_nearest(), 0.8), "the host's shot goes")  # shot_started_net fires inside this call
 	await create_timer(0.25).timeout
 	session.set_field(&"rolling_resistance", MID_SHOT)  # while the balls roll
@@ -107,7 +109,12 @@ func _host() -> void:
 
 func _client() -> void:
 	await _until(func() -> bool: return table.sim.get_balls().size() > 5, "client balls registered")
-	assert(not _close(table.spec.rolling_resistance, 0.012), "this client has the default numbers before the shot")
+	assert(not _close(table.spec.rolling_resistance, 0.012), "this client has the default numbers before the edit")
+	await _until(func() -> bool: return _close(table.spec.rolling_resistance, 0.012), "the host's edit, sent at rest")
+	assert(_started == 0, "the edit reached this client before any strike")
+	var h := FileAccess.open(_file("client_has_edit"), FileAccess.WRITE)
+	h.store_string("1")
+	h.close()
 	await _until(func() -> bool: return _started == 1, "shot_started_net")
 	var s := table.spec
 	assert(_close(s.rolling_resistance, 0.012) or _close(s.rolling_resistance, MID_SHOT), "the shot-start stats carried the host's rolling resistance (%f)" % s.rolling_resistance)

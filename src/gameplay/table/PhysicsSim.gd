@@ -18,6 +18,10 @@ signal nudged(direction: Vector2, strength: float, source_peer_id: int)
 ## Host: a frame of ball events / heartbeat was flushed (also emitted with no peers when `capture`).
 signal frame_flushed(frame: PackedByteArray)
 signal heartbeat_flushed(frame: PackedByteArray)
+## Host: an authoritative rest frame (every ball still in play at rest, 06 P49) was sent; also emitted with no peers when `capture`.
+signal rest_flushed(frame: PackedByteArray)
+## Client: the table digest disagreed with the host's twice (06 P49); RoundDirector asks for the full state.
+signal desync_detected
 ## Client: the app returned from the background; the stream was ignored meanwhile, so ask the host for full state.
 signal blind_ended
 ## Client: a contact-event frame arrived from the host, before it is replayed (presentation listeners: ImpactFx).
@@ -31,12 +35,17 @@ const DIVERGE_M := 0.002  # host re-sends a ball once its model drifts this far 
 const FLUSH_HZ := 30
 const HEARTBEAT_HZ := 2
 const HEARTBEAT_SNAP_M := 0.006  # client adopts a heartbeat state only when this far off
+const REST_BEAT_SEC := 1.0  # host: the at-rest heartbeat (the table digest) goes out this often while nothing moves (06 P49)
+const RECHECK_SEC := 0.6  # client: a digest that disagrees is looked at once more after this, then it is a desync
 const INTERP_DELAY_SEC := 0.1  # client renders this far behind the host (04 §2.4)
 const MOVING_SQ := 0.0001  # (m/s)²: a ball slower than this at the start of a step cannot start an impact
 const PHANTOM_DV := 0.03  # m/s: Jolt must have changed some impacted ball's velocity by this much, else there was none
 
 ## Installed by EffectManager: (stat: StringName, peer_id: int, base: float) -> float. Default = base.
 var stat_source: Callable
+## Installed by RoundDirector: (at_tick: float) -> int, the digest of the table as it stands at rest (0 = none).
+## Host: its own state now. Client: its own state at host tick `at_tick` (NAN = what it shows now).
+var check_source: Callable
 ## Installed by RoundDirector: (peer_id: int, intent: ShotIntent) -> StringName, `&""` = ok else reason.
 var shot_validator: Callable
 
@@ -70,6 +79,12 @@ var _snap_r := PackedFloat32Array()
 var _snap_moving := PackedInt32Array()  # ids of the balls that were moving: only they can start an impact
 var _scratch := BallMotion.State.new()
 var _hb_state := BallMotion.State.new()
+var _check_epoch := 0  # client: bumped by every newer host digest / shot start / snapshot, so an old pending look is dropped
+var desyncs := 0  # client: how many times the digest stayed wrong after the second look
+var net_rest_bytes := 0
+## Probes only: the next N event frames / rest frames this client receives are dropped on the floor.
+var debug_drop_events := 0
+var debug_drop_rest := 0
 var _flush_every := maxi(1, LIVE_TICK / FLUSH_HZ)
 var _hb_every := LIVE_TICK / HEARTBEAT_HZ
 var _emitted_events := 0
@@ -125,19 +140,20 @@ func set_tilt_direction(dir: Vector2) -> void:
 	_sync_motion_params()
 
 
-## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and — while a
-## Shot is live — to clients at this tick, so both sides predict from the same model (04 §2.4).
+## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and to clients (at this tick
+## mid-Shot, just past the last Shot's stream otherwise), so both sides predict from the same model (04 §2.4) and a client
+## is never left on the numbers of the last Shot start (06 P49).
 func _sync_motion_params() -> void:
 	for b in _balls:
 		BallMotion.apply_spec(b.motion, b.spec)
 		b.motion.friction_mult = cloth_friction_mult
 		b.motion.tilt = tilt_direction * tilt_accel(b.spec)
-	if _shot_live and _is_host() and not multiplayer.get_peers().is_empty():
-		_motion_stats_rpc.rpc(Engine.get_physics_frames(), _motion_stats())
+	if _is_host() and not _balls.is_empty() and not multiplayer.get_peers().is_empty():  # no balls = no Round yet: the clients' level may not be up
+		_motion_stats_rpc.rpc(Engine.get_physics_frames() if _shot_live else after_shot_tick(), motion_stats())
 
 
 ## 4 stats, then TableSpec.live_values() (04 §5): a client models from the host's feel numbers, live edits included.
-func _motion_stats() -> PackedFloat32Array:
+func motion_stats() -> PackedFloat32Array:
 	var out := PackedFloat32Array([cloth_friction_mult, table_tilt_deg, tilt_direction.x, tilt_direction.y])
 	out.append_array(_spec().live_values())
 	return out
@@ -201,6 +217,11 @@ func _ready() -> void:
 	set_physics_process(false)
 	set_process(false)
 	_frame.resize(BallEventCodec.HEADER_SIZE)
+	var beat := Timer.new()  # host: the at-rest heartbeat; a client's tick does nothing
+	beat.wait_time = REST_BEAT_SEC
+	beat.timeout.connect(_on_rest_beat)
+	add_child(beat)
+	beat.start()
 
 
 func _exit_tree() -> void:
@@ -279,7 +300,10 @@ func _recount() -> void:
 			if b.is_inside_tree():
 				b.contact_monitor = false
 				b.freeze = true  # ~40 us/tick each otherwise (07 §1: table at rest ~ 0); thawed on the next strike/restore
+		var was_live := _shot_live
 		_end_shot_stream()
+		if not was_live:
+			_send_rest(_last_end_off + 1)  # a rack, a respawn or a stray settled outside a Shot: the clients get its true rest (06 P49)
 		Engine.physics_ticks_per_second = REST_TICK  # only ever changed at rest (07 §7.2)
 		all_resting.emit()
 
@@ -388,7 +412,7 @@ func _begin_shot_stream(shooter_id: int) -> void:
 	_dirty.fill(0)
 	BallEventCodec.begin(_frame, shot_id, _base_tick)
 	set_physics_process(true)  # the host's impact resolver runs every live tick; the stream below only with listeners
-	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, _motion_stats(), pocket_time())
+	_shot_started_rpc.rpc(shot_id, shooter_id, _base_tick, motion_stats(), pocket_time())
 
 
 @rpc("authority", "call_local", "reliable", 1)
@@ -422,7 +446,8 @@ func _physics_process(delta: float) -> void:
 			continue
 		var id := b.net_id
 		var pred := _pred[id]
-		BallMotion.advance(pred, dt, b.motion)
+		if not BallMotion.is_at_rest(pred):
+			BallMotion.advance(pred, dt, b.motion)  # a state with no motion is a ball the clients hold where it is (BallReplica.sample)
 		var rest := b.is_resting
 		var send := _dirty[id] != 0 \
 			or pred.pos.distance_squared_to(b.global_position) > DIVERGE_M * DIVERGE_M \
@@ -565,24 +590,54 @@ func _send_heartbeat(off: int) -> void:
 		_scratch.ang = Vector3.ZERO if b.is_resting else b.angular_velocity
 		BallEventCodec.append(_hb, b.net_id, BallEventCodec.Flag.NONE, off, _scratch, origin())
 	if not multiplayer.get_peers().is_empty():
-		_push_heartbeat_rpc.rpc(_base_tick + off, _hb)
+		_push_heartbeat_rpc.rpc(_base_tick + off, _hb, 0)
 	heartbeat_flushed.emit(_hb)
+
+
+## Host: the at-rest heartbeat (06 P49), once a second while nothing moves and a Round has a table: just the table digest,
+## unreliable. A client whose own digest differs asks for the full state; one that missed this beat gets the next.
+func _on_rest_beat() -> void:
+	if not _is_host() or _shot_live or awake > 0 or _balls.is_empty() or multiplayer.get_peers().is_empty():
+		return
+	var c := _check()
+	if c != 0:
+		_push_heartbeat_rpc.rpc(Engine.get_physics_frames(), PackedByteArray(), c)
+
+
+func _check(at_tick := NAN) -> int:
+	return check_source.call(at_tick) if check_source.is_valid() else 0
+
+
+## Host: the authoritative rest state of EVERY ball still in play (06 P49), at tick offset `off`: position (height too) and
+## zero motion, whatever the stream sent or skipped, plus the table digest to compare against. Reliable and ordered after the
+## stream. Sent where a Shot ends and where the table settles again outside one (a rack, a respawn).
+func _send_rest(off: int) -> void:
+	if not _is_host() or not _peers_listening():
+		return
+	var f := PackedByteArray()
+	BallEventCodec.begin(f, shot_id, _base_tick)
+	for b in _balls:
+		if b.retired or not b.is_inside_tree():
+			continue
+		_scratch.pos = b.global_position
+		_scratch.lin = Vector3.ZERO
+		_scratch.ang = Vector3.ZERO
+		BallEventCodec.append(f, b.net_id, BallEventCodec.Flag.NONE, off, _scratch, origin())
+	_count_frame(f, false)
+	if not multiplayer.get_peers().is_empty():
+		_push_rest_rpc.rpc(shot_id, _check(), f)
+	rest_flushed.emit(f)
 
 
 func _end_shot_stream() -> void:
 	if not _is_host() or not _shot_live:
 		return
 	var off := Engine.get_physics_frames() - _base_tick
-	for b in _balls:
-		if b.retired or b.freeze or not b.is_inside_tree():
-			continue
-		var pred := _pred[b.net_id]
-		if pred.pos.distance_squared_to(b.global_position) > DIVERGE_M * DIVERGE_M or not BallMotion.is_at_rest(pred):
-			_emit_event(b, BallEventCodec.Flag.NONE, off)
 	_flush()
 	_last_end_off = off
 	_shot_live = false
 	set_physics_process(false)
+	_send_rest(off)  # every ball's true rest state, whatever the 2 mm and rest gates say (the stream's own last events would not: PhysicsSim froze them all just before)
 
 
 ## Contacts are the events the client must not miss (04 §2.4): both balls re-sent next tick, post-solve.
@@ -610,17 +665,71 @@ func _on_net_flag(ball: Ball, flag: int) -> void:
 
 @rpc("authority", "call_remote", "reliable", 1)
 func _push_events_rpc(_id: int, _base: int, frame: PackedByteArray) -> void:
+	if debug_drop_events > 0:
+		debug_drop_events -= 1
+		return
 	if not _blind:
 		apply_frame(frame)
 
 
+## Client: the host's rest frame (06 P49). Every ball it lists is shown there from its tick on, a jump over 1 mm blended in
+## over 100 ms, and at that tick the client's own digest of the table is held against the host's.
+@rpc("authority", "call_remote", "reliable", 1)
+func _push_rest_rpc(_id: int, check: int, frame: PackedByteArray) -> void:
+	if _blind:
+		return
+	if debug_drop_rest > 0:
+		debug_drop_rest -= 1
+		return
+	_count_frame(frame, false)
+	var o := origin()
+	var now := playback_tick_f()
+	var base := BallEventCodec.base_tick(frame)
+	var end_tick := base
+	for i in BallEventCodec.count(frame):
+		var tick := base + BallEventCodec.tick_offset(frame, i)
+		end_tick = maxi(end_tick, tick)
+		var id := BallEventCodec.ball_id(frame, i)
+		var b := _by_id[id] if id < _by_id.size() else null
+		if b == null:
+			continue  # not spawned here (yet); its own spawn anchors it
+		BallEventCodec.read_state(frame, i, o, _hb_state)
+		_replica.insert_blended(id, tick, _hb_state, now, b.motion)  # also a ball this client still has retired: the host says it is back
+	_last_event_tick = maxi(_last_event_tick, end_tick)
+	if check != 0:
+		_check_epoch += 1
+		at_playback(end_tick, _verify.bind(check, _check_epoch, float(end_tick)))
+
+
+## Client: is this table what the host says it is? A look that disagrees is repeated once, a little later, with the same host
+## digest (a pocket Effect that ends a beat earlier on the host, a rack ball whose spawn is still queued), unless something
+## newer has arrived since (`_check_epoch`). Still different the second time = a desync.
+func _verify(host_check: int, epoch: int, at_tick: float, second := false) -> void:
+	if epoch != _check_epoch or not check_source.is_valid():
+		return
+	var mine := _check(at_tick)
+	if mine == host_check:
+		return
+	if second or mine == 0:  # no Round at all here (a late join): no second look needed
+		desyncs += 1
+		desync_detected.emit()
+		return
+	get_tree().create_timer(RECHECK_SEC).timeout.connect(_verify.bind(host_check, epoch, at_tick, true))
+
+
 @rpc("authority", "call_remote", "unreliable_ordered", 2)
-func _push_heartbeat_rpc(tick: int, frame: PackedByteArray) -> void:
+func _push_heartbeat_rpc(tick: int, frame: PackedByteArray, check: int) -> void:
 	# Corrective only: the host's predictions assume the clients follow the event stream, so a
 	# heartbeat state is adopted just when the client is provably off (lost packet, late join).
 	if _blind:
 		return
+	if check != 0:  # at rest (06 P49): only the digest; judged when this client has nothing left to play
+		if tick >= _client_base and _waiting.is_empty() and playback_tick_f() > _last_event_tick:
+			_check_epoch += 1
+			_verify(check, _check_epoch, NAN)
+		return
 	var o := origin()
+	var now := playback_tick_f()
 	for i in BallEventCodec.count(frame):
 		var id := BallEventCodec.ball_id(frame, i)
 		var b := _by_id[id] if id < _by_id.size() else null
@@ -628,7 +737,7 @@ func _push_heartbeat_rpc(tick: int, frame: PackedByteArray) -> void:
 			continue
 		BallEventCodec.read_state(frame, i, o, _hb_state)
 		if not _replica.sample(id, tick, b.motion, _scratch) or _scratch.pos.distance_to(_hb_state.pos) > HEARTBEAT_SNAP_M:
-			_replica.insert(id, tick, _hb_state)
+			_replica.insert_blended(id, tick, _hb_state, now, b.motion)
 
 
 # ---------------------------------------------------------------- pocket clock
@@ -677,13 +786,50 @@ func snapshot_frame() -> PackedByteArray:
 	return f
 
 
-## Client: replace every ball's history with the snapshot and put the playback clock on it.
-## Balls must already exist (RoundDirector respawned them from the rack blob).
-func apply_snapshot(frame: PackedByteArray, host_pocket_t: float) -> void:
+## The balls and the motion numbers into `h` (06 P49), balls by net_id: type, lifecycle, and for one on the cloth its position
+## in 1 mm cells of the 0.1 mm wire value. Host: Jolt now. Client: the replica at host tick `at_tick` (NAN = what it plays now),
+## never the drawn position, which carries a blend. Equal wire values land in equal cells; a ball off by 1 mm or more never does.
+func add_digest(h: TableHash, at_tick := NAN) -> void:
+	var o := origin()
+	var t := playback_tick_f() if is_nan(at_tick) else at_tick
+	for b in _by_id:
+		if b == null or not b.is_inside_tree():
+			continue
+		h.add_int(b.net_id)
+		h.add_str(String(b.ball_type.id))
+		h.add_int((1 if b.retired else 0) | (2 if b.is_pocketed else 0))
+		if b.retired or b.is_pocketed:
+			continue  # hidden, or settling on a cup floor the client models a little differently
+		var p := b.global_position
+		if not _is_host() and _replica.sample(b.net_id, t, b.motion, _scratch):
+			p = _scratch.pos
+		var q := (p - o) * BallEventCodec.POS_SCALE
+		h.add_int(floori(roundi(q.x) / 10.0))
+		h.add_int(floori(roundi(q.y) / 10.0))
+		h.add_int(floori(roundi(q.z) / 10.0))
+	for v in motion_stats():
+		h.add_float(v)
+
+
+## Client: replace every ball's history with the snapshot and put the playback clock on it, `stats` (motion_stats) with it.
+## Balls must already exist (RoundDirector respawned them from the rack blob, or kept the ones it had: `blend`, then a ball
+## that is off by more than 1 mm slides to its place over 100 ms instead of jumping).
+func apply_snapshot(frame: PackedByteArray, host_pocket_t: float, blend := false, stats := PackedFloat32Array()) -> void:
 	_waiting.clear()
+	_check_epoch += 1
+	if not stats.is_empty():
+		_apply_motion_stats(stats)
 	var tick := BallEventCodec.base_tick(frame)
+	var shown := {}  # id -> where the ball is drawn right now, for the blend
+	if blend:
+		var now := playback_tick_f()
+		for b in _balls:
+			if _replica.sample(b.net_id, now, b.motion, _scratch):
+				shown[b.net_id] = _scratch.pos + _replica.blend_offset(b.net_id, now)
+	_replica.clear_blends()
 	_client_base = tick
 	_t0_usec = Time.get_ticks_usec() - int(INTERP_DELAY_SEC * 1e6)  # playback = `tick` right now
+	_last_event_tick = tick
 	sync_pocket_clock(host_pocket_t)
 	for i in BallEventCodec.count(frame):
 		var id := BallEventCodec.ball_id(frame, i)
@@ -693,9 +839,18 @@ func apply_snapshot(frame: PackedByteArray, host_pocket_t: float) -> void:
 		BallEventCodec.read_state(frame, i, origin(), _scratch)
 		_replica.anchor(id, tick, _scratch)
 		var flag := BallEventCodec.flag(frame, i)
-		if flag != BallEventCodec.Flag.NONE:
+		if flag == BallEventCodec.Flag.NONE and (b.retired or b.is_pocketed):
+			_apply_flag(b, BallEventCodec.Flag.RESTORED)  # a kept ball the host has back in play
+		elif flag == BallEventCodec.Flag.POCKETED and b.retired:
+			_apply_flag(b, BallEventCodec.Flag.RESTORED)
 			_apply_flag(b, flag)
-		b.global_position = _scratch.pos
+		elif flag != BallEventCodec.Flag.NONE and not (flag == BallEventCodec.Flag.RETIRED and b.retired) and not (flag == BallEventCodec.Flag.POCKETED and b.is_pocketed):
+			_apply_flag(b, flag)
+		if shown.has(id) and not b.retired:
+			var err: Vector3 = shown[id] - _scratch.pos
+			if err.length() > BallReplica.BLEND_MIN_M:
+				_replica.set_blend(id, float(tick), err)
+		b.global_position = _scratch.pos + _replica.blend_offset(id, float(tick))
 	_blind = false
 
 
@@ -724,11 +879,15 @@ func at_playback(tick: int, fn: Callable) -> void:
 	_waiting.insert(i, [tick, fn])
 
 
-func _count_frame(frame: PackedByteArray) -> void:
-	net_events += BallEventCodec.count(frame)
+## `contacts` false = a rest frame: its bytes count, its events are not contact events (the 07 §3 budget, NetGraph).
+func _count_frame(frame: PackedByteArray, contacts := true) -> void:
 	net_bytes += frame.size()
-	net_events_shot += BallEventCodec.count(frame)
 	net_bytes_shot += frame.size()
+	if contacts:
+		net_events += BallEventCodec.count(frame)
+		net_events_shot += BallEventCodec.count(frame)
+	else:
+		net_rest_bytes += frame.size()
 
 
 ## Client: how far past the playback clock the newest received event lies.
@@ -747,12 +906,13 @@ func apply_frame(frame: PackedByteArray) -> void:
 func _rebase_client(base_tick: int) -> void:
 	net_events_shot = 0
 	net_bytes_shot = 0
-	var now := playback_tick_f()
-	for b in _balls:  # freeze every ball where it is on screen; the shot's events anchor from there
-		if _replica.sample(b.net_id, now, b.motion, _scratch):
+	_check_epoch += 1
+	for b in _balls:  # every ball starts the Shot where its last event leaves it at the start tick: the host's rest, if the rest frame came
+		if _replica.sample(b.net_id, float(base_tick), b.motion, _scratch):
 			_scratch.lin = Vector3.ZERO
 			_scratch.ang = Vector3.ZERO
 			_replica.anchor(b.net_id, base_tick, _scratch)
+	_replica.clear_blends()
 	_client_base = base_tick
 	_t0_usec = Time.get_ticks_usec()  # playback = base − delay right now: the rest state, until events arrive
 
@@ -772,6 +932,7 @@ func _on_replica_flag(id: int, flag: int, tick: int) -> void:
 
 
 func _apply_flag(b: Ball, flag: int) -> void:
+	_replica.clear_blend(b.net_id)  # a lifecycle change is a teleport, never a slide
 	b.net_apply_flag(flag)
 	ball_flag_applied.emit(b, flag)
 
@@ -785,7 +946,7 @@ func _process(delta: float) -> void:
 		if b.retired:
 			continue
 		if _replica.sample(b.net_id, t, b.motion, _scratch):
-			b.global_position = _scratch.pos
+			b.global_position = _scratch.pos + _replica.blend_offset(b.net_id, t)
 			var w := _scratch.ang.length()
 			if w > 0.0:
 				b.global_basis = Basis(_scratch.ang / w, w * delta) * b.global_basis

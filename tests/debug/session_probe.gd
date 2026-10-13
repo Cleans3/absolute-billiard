@@ -76,7 +76,7 @@ func _tuning() -> void:
 	_check(session.tuning_text().contains("rolling_resistance = 0.05"), "the changed numbers are listed for pasting")
 	_check(not session.is_default(&"rolling_resistance"), "and flagged as changed")
 
-	var wire := table.sim._motion_stats()
+	var wire := table.sim.motion_stats()
 	var client := TableSpec.new()
 	client.apply_live_values(wire.slice(4))
 	_check(client.rolling_resistance == spec.rolling_resistance and client.ball_linear_damp == spec.ball_linear_damp and not client.ball_cascade_enabled, "the shot-start stats carry every live number: a client models from the host's")
