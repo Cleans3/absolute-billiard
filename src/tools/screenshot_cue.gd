@@ -54,7 +54,7 @@ func _run() -> void:
 	# 1. a cut on an object ball, english and some draw: the guide's ghost ring, the object ball's line, the cue ball past the contact
 	_balls(Vector3(-1.2, y, 0.25), [Vector3(0.3, y, 0.0), Vector3(1.4, y, -0.35)])
 	await _settle()
-	_aim(Vector3(-1.2, y, 0.25), Vector2(1.0, -0.09), 0.62, Vector2(0.45, -0.25), 0.0)
+	_aim(Vector3(-1.2, y, 0.25), Vector2(1.0, -0.127), 0.62, Vector2(0.45, -0.25), 0.0)
 	await _shoot("guide_flat")
 	# 2. a 60 degree stroke at a ball that blocks the line: the arc, in the air colour, and its landing ring beyond the ball
 	ctrl.end()
