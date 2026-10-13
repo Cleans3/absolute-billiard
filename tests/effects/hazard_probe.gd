@@ -357,7 +357,7 @@ func _pins() -> void:
 ## One full-power shot of the Round's cue ball from `from`, under a real RoundDirector (it owns the shot ceiling); returns
 ## {ended, sec, stilled, hits, gain}: `stilled` = the ceiling had to end it, `gain` = the most the ball's speed ever rose above its
 ## speed at the first pin hit (a pin must not lift it).
-func _hostile_shot(label: String, cue: Ball, director: RoundDirector, from: Vector2, aim: Vector2, backstop := false) -> Dictionary:
+func _hostile_shot(label: String, cue: Ball, director: RoundDirector, from: Vector2, aim: Vector2, backstop := false, rolling_at := 0.0, preset_hits := 0) -> Dictionary:
 	cue.restore(table.to_global(Vector3(from.x, table.cloth_y() + cue.radius, from.y)))
 	for i in 90:
 		await physics_frame
@@ -368,6 +368,11 @@ func _hostile_shot(label: String, cue: Ball, director: RoundDirector, from: Vect
 	director.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: ended.append(true), CONNECT_ONE_SHOT)
 	var t0 := Time.get_ticks_usec()
 	cue.strike(intent, preload("res://src/resources/cues/demo_cue.tres"))
+	if rolling_at > 0.0:  # the shot opens with the strike; then the ball is set rolling true along the aim, so a ping-pong on the axis stays on it
+		await physics_frame
+		cue.linear_velocity = Vector3(aim.x, 0.0, aim.y).normalized() * rolling_at
+		cue.angular_velocity = Vector3(cue.linear_velocity.z, 0.0, -cue.linear_velocity.x) / cue.radius
+		cue.pin_hits = preset_hits
 	var frames := 0
 	var v_hit := 0.0
 	var gain := 0.0
@@ -413,20 +418,18 @@ func _hostile() -> void:
 	var h := gap_mm / 2
 	# two pins at the closest the roll allows, the ball in the corridor between them, shot along it
 	_install(HazardModel.PINBALL, PackedInt32Array([0, -h, 0, h, 1800, 700, -1800, -700]))
-	var a: Dictionary = await _hostile_shot("two pins %.2f m apart, shot along the corridor" % (gap_mm / 1000.0), cue, director, Vector2.ZERO, Vector2(0.0, 1.0))
+	var a: Dictionary = await _hostile_shot("two pins %.2f m apart, shot along the corridor" % (gap_mm / 1000.0), cue, director, Vector2.ZERO, Vector2(0.0, 1.0), false, 20.0)
 	_check(a.ended and a.sec <= ceiling + 1.5, "a full-power shot between two pins ends inside the shot ceiling (%.1f s <= %.0f s)" % [a.sec, ceiling])
-	_check(a.hits >= 4 and a.gain <= 0.002, "... it really ricocheted (%d pin hits) and never gained speed (%+.3f %%)" % [a.hits, a.gain * 100.0])
-	var elastic_ok := true
-	var capped_ok: bool = a.ratios.size() >= HazardModel.PIN_ELASTIC_HITS  # (the first hit is too quick to read a speed before it)
+	_check(a.hits >= 3 and a.gain <= 0.002, "... it really ricocheted (%d pin hits; a pin between two others amplifies every offset, so it leaves the corridor soon) and never gained speed (%+.3f %%)" % [a.hits, a.gain * 100.0])
+	var elastic_ok: bool = a.ratios.size() >= 2
 	for i in a.ratios.size():
-		if i < HazardModel.PIN_ELASTIC_HITS - 1:
-			elastic_ok = elastic_ok and a.ratios[i] > 0.985 and a.ratios[i] < 1.0005
-		else:  # the normal speed x 0.9; the ricochet is no longer head-on, so the whole speed lies between that and 1
-			capped_ok = capped_ok and a.ratios[i] > HazardModel.PIN_CAP_E - 0.02 and a.ratios[i] < 0.99
+		elastic_ok = elastic_ok and a.ratios[i] > 0.985 and a.ratios[i] < 1.0005
 	print("hazard: speed after / before each hit: %s" % [a.ratios.map(func(x: float) -> String: return "%.3f" % x)])
-	_check(elastic_ok, "the first %d hits of a ball return its speed (e 1)" % HazardModel.PIN_ELASTIC_HITS)
-	_check(capped_ok, "from hit %d the pin is a plain e %.1f obstacle" % [HazardModel.PIN_ELASTIC_HITS + 1, HazardModel.PIN_CAP_E])
-	var bs: Dictionary = await _hostile_shot("the ceiling as a backstop", cue, director, Vector2.ZERO, Vector2(0.0, 1.0), true)
+	_check(elastic_ok, "the hits of a ball return its speed (e 1): %s" % [a.ratios])
+	# the cap: a ball that has already had PIN_ELASTIC_HITS hits this shot meets the pin as a plain e 0.9 obstacle (head-on: the whole speed x 0.9)
+	var cap: Dictionary = await _hostile_shot("the 9th hit of a ball", cue, director, Vector2.ZERO, Vector2(0.0, 1.0), false, 20.0, HazardModel.PIN_ELASTIC_HITS)
+	_check(cap.ratios.size() >= 1 and cap.ratios[0] > HazardModel.PIN_CAP_E - 0.02 and cap.ratios[0] < HazardModel.PIN_CAP_E + 0.02, "from hit %d the pin is a plain e %.1f obstacle: %s" % [HazardModel.PIN_ELASTIC_HITS + 1, HazardModel.PIN_CAP_E, cap.ratios])
+	var bs: Dictionary = await _hostile_shot("the ceiling as a backstop", cue, director, Vector2.ZERO, Vector2(0.0, 1.0), true, 20.0)
 	_check(bs.ended and bs.sec <= 0.6, "the shot ceiling stills a ricochet in pins at once (%.2f s)" % bs.sec)
 	var c: Dictionary = await _hostile_shot("... slightly off the axis", cue, director, Vector2.ZERO, Vector2(0.05, 1.0).normalized())
 	_check(c.ended and c.sec <= ceiling + 1.5 and c.gain <= 0.002, "off the axis too (%.1f s)" % c.sec)
