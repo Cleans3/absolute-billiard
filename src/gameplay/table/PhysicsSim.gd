@@ -55,6 +55,10 @@ var cloth_friction_mult := 1.0
 var cushion_restitution_mult := 1.0
 var table_tilt_deg := 0.0
 var tilt_direction := Vector2.ZERO
+## The live Pinball / Vacation geometry (EffectManager.begin_event on every peer, from the apply_event payload); null = none.
+## Ball._integrate_forces and every BallMotion.Params read this one object.
+var hazard: HazardModel
+var _pins: Node3D  # the host's pin colliders
 
 ## Host emits frames for peers; set true by tools (SimDiff) that want them with no peers connected.
 var capture := false
@@ -140,6 +144,48 @@ func set_tilt_direction(dir: Vector2) -> void:
 	_sync_motion_params()
 
 
+## Installs (or, with null / a model with nothing for the physics, removes) the hazard geometry: the model into every ball's
+## BallMotion.Params, and on the host the pins as static colliders. Pins: Jolt combines friction by the MIN of the two sides
+## (so 0 here = no friction) and sums the bounces (the ball carries 1, the pin 0 = e 1); `Ball._pin_rebound` makes it exact.
+func set_hazard(h: HazardModel) -> void:
+	hazard = h if h != null and h.active() else null
+	if _pins != null:
+		_pins.queue_free()
+		_pins = null
+	if hazard != null and not hazard.pins.is_empty() and _is_host():
+		_pins = _build_pins(hazard)
+		add_child(_pins)
+		_pins.global_transform = hazard.xf
+	_sync_motion_params()
+
+
+func _build_pins(h: HazardModel) -> Node3D:
+	var root := Node3D.new()
+	root.name = "Pins"
+	root.top_level = true
+	var pm := PhysicsMaterial.new()
+	pm.friction = 0.0
+	pm.bounce = 0.0
+	var height := HazardModel.PIN_H_RADII * h.ball_r
+	for i in h.pins_local.size():
+		var body := StaticBody3D.new()
+		body.name = "Pin_%d" % i
+		body.collision_layer = TableBuilder.LAYER_TABLE
+		body.collision_mask = 0
+		body.physics_material_override = pm
+		body.set_meta(&"pin", true)
+		body.set_meta(&"jaw", true)  # Ball._touching_wall: a vertical wall never adds vertical speed on first touch
+		var shape := CollisionShape3D.new()
+		var cyl := CylinderShape3D.new()
+		cyl.radius = h.pin_r
+		cyl.height = height
+		shape.shape = cyl
+		body.add_child(shape)
+		body.position = Vector3(h.pins_local[i].x, h.cloth_y + height * 0.5, h.pins_local[i].y)
+		root.add_child(body)
+	return root
+
+
 ## Prediction-relevant stats (cloth friction, tilt) into every ball's BallMotion.Params, and to clients (at this tick
 ## mid-Shot, just past the last Shot's stream otherwise), so both sides predict from the same model (04 §2.4) and a client
 ## is never left on the numbers of the last Shot start (06 P49).
@@ -148,6 +194,7 @@ func _sync_motion_params() -> void:
 		BallMotion.apply_spec(b.motion, b.spec)
 		b.motion.friction_mult = cloth_friction_mult
 		b.motion.tilt = tilt_direction * tilt_accel(b.spec)
+		b.motion.hazard = hazard
 	if _is_host() and not _balls.is_empty() and not multiplayer.get_peers().is_empty():  # no balls = no Round yet: the clients' level may not be up
 		_motion_stats_rpc.rpc(Engine.get_physics_frames() if _shot_live else after_shot_tick(), motion_stats())
 
@@ -249,6 +296,7 @@ func register(ball: Ball) -> void:
 	ball.motion = BallMotion.make_params(ball.spec, ball.radius)
 	ball.motion.friction_mult = cloth_friction_mult
 	ball.motion.tilt = tilt_direction * tilt_accel(ball.spec)
+	ball.motion.hazard = hazard
 	while _by_id.size() <= ball.net_id:
 		_by_id.append(null)
 		_pred.append(BallMotion.State.new())

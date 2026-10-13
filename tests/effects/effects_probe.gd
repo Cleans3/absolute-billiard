@@ -127,13 +127,14 @@ func _fx(id: StringName, target: Effect.Target, mods: Array[StatMod], dur := -1.
 
 func _catalog() -> void:
 	_check(FxCatalog.DRINKS.size() == 26, "26 drinks")
-	_check(FxCatalog.EVENTS.size() == 8, "8 events")
+	_check(FxCatalog.EVENTS.size() == 14, "14 events")
 	_check(FxCatalog.INTERACTIONS.size() == 9, "9 world interactions")
 	for id in [&"beer", &"whiskey_shot", &"energy_drink", &"tequila_line", &"ice_water", &"house_special",
 			&"flaming_shot", &"neighbours_round", &"bar_nuts", &"static_shot", &"moonshine"]:
 		_check(FxCatalog.drink(id) != null, "drink %s present" % id)
-	for id in [&"tilted_table", &"glass_cushions", &"bouncer", &"crowd_roar", &"moving_pockets",
-			&"ball_swap_chaos", &"lights_out", &"pocket_jackpot"]:
+	for id in [&"sunken_ship", &"glass_cushions", &"bouncer", &"crowd_roar", &"moving_pockets",
+			&"ball_swap_chaos", &"lights_out", &"pocket_jackpot", &"vacation", &"pinball", &"double_ball",
+			&"ice_rink", &"shaky_hands", &"lead_ball"]:
 		_check(FxCatalog.event(id) != null, "event %s present" % id)
 	for id in [&"bump_table", &"throw_drink", &"move_camera", &"kick_stool", &"jukebox", &"flick_lights",
 			&"lean_on_rail", &"heckle", &"chalk_the_cue"]:
@@ -367,7 +368,7 @@ func _vote() -> void:
 	_add(sch)
 	var offers: Array = []
 	sch.event_offer_ready.connect(func(ri: int, tier: int, ids: Array[StringName]) -> void: offers.append([ri, tier, ids]))
-	# Night 1, tier 1: bouncer needs Night 2, so exactly the three others
+	# Night 1, tier 1: bouncer needs Night 2, so three of the others
 	var ids := sch.offer(2, 1, 1)
 	_check(ids.size() == 3 and not ids.has(&"bouncer"), "3 eligible tier-1 Events on Night 1")
 	_check(offers.size() == 1 and offers[0][2] == ids, "event_offer_ready fired with the offer")
@@ -422,9 +423,9 @@ func _vote() -> void:
 	sch.begin_round(2)
 	_check(sch._offer.is_empty(), "begin_round settles an open vote")
 	r.loop.round_ended.emit(&"timer", 0)
-	# tier 2: Night 1's Round 3 offers the one Event that is open to it (Pocket Jackpot), every other waits for Night 2+
+	# tier 2: Night 1's Round 3 offers three of the Events open to it (Pocket Jackpot, Pinball, Double Ball, Lead Ball); the rest wait for Night 2+
 	var tier2 := sch.offer(3, 2, 1)
-	_check(tier2.size() == 1 and tier2[0] == &"pocket_jackpot", "Night 1's tier-2 pool is the Pocket Jackpot")
+	_check(tier2.size() == 3 and tier2.all(func(id: StringName) -> bool: return [&"pocket_jackpot", &"pinball", &"double_ball", &"lead_ball"].has(id)), "Night 1's tier-2 pool: %s" % [tier2])
 	sch.apply_event(&"pocket_jackpot", 3, &"side_s")
 	_check(sch.active_pocket == &"side_s", "a jackpot Round remembers its pocket (every peer's FX marks it)")
 	r.loop.round_ended.emit(&"timer", 0)

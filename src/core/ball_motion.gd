@@ -18,10 +18,17 @@ const JUMP_E := 0.45
 const LAND_E := 0.4
 const MIN_HOP_VY := 0.30  # above AIR_VY: a rebound is always in the air
 const JUMP_VY_MAX := 3.0
+const DROP_TOL := 0.012  # m under the cloth plane before a ball counts as dropping into a hole (a ball creeping for seconds sinks 3 mm into the bed in Jolt)
 const DAMP_EPS := 1e-6  # below this the rolling closed form divides by ~0: use the damp-free one
 const MAX_PHASES := 600
+const ROLL_INERTIA := 1.4  # 1 + I / (m r^2) of a solid sphere
+## m/s: a tilt pulls a ball only above it (Ball and this model alike). Below ~0.1 m/s the rolling drag (settle ramp) beats a 4 degree pull, so a
+## ball there is slowing down anyway; letting the pull act on it leaves an unstable balance at that speed in which Jolt's slip and the model's
+## none disagree by 40 %, and a ball creeping along it for seconds is a divergence event every ~0.1 s (adhoc-1014a G: x2 events per break).
+const TILT_MIN_SPEED := 0.12
 const SETTLE_SLIP := 0.05  # m/s of contact-point slip at which the settle drag is gone (a sliding ball is driven by cloth friction, not the nap)
 const SLIDE_STEP := 1.0 / 60.0  # slide drag is first-order per step; short steps keep long dt honest
+const TILT_STEP := 1.0 / 120.0  # the tilt is folded in per step too: the host's own tick (PhysicsSim.LIVE_TICK), so its per-tick prediction and a client's long advance() integrate alike
 
 
 class State extends RefCounted:
@@ -54,6 +61,7 @@ class Params extends RefCounted:
 	var spin_stop := 0.0  # rad/s²: constant loss of spin about the table normal, on top of the exponential
 	var friction_mult := 1.0
 	var tilt := Vector2.ZERO  # m/s² along the table plane (x, z) on moving balls; = g·sin(table_tilt_deg)·dir
+	var hazard: HazardModel  # Pinball pins / Vacation shoreline (PhysicsSim.set_hazard); null = a plain table. Sunken Ship is `tilt` alone.
 
 
 static func make_params(spec: TableSpec, radius: float) -> Params:
@@ -96,18 +104,31 @@ static func advance(s: State, dt: float, p: Params) -> void:
 	var phases := 0
 	while t > 0.0 and phases < MAX_PHASES:
 		phases += 1
-		if s.pos.y < p.floor_y - AIR_TOL and p.cup_floor_y > -INF:
-			t = _drop(s, t, p)  # under the cloth plane = over a hole: falling to the cup floor, which stops it
+		if p.cup_floor_y > -INF and (s.pos.y < p.floor_y - DROP_TOL or (s.pos.y < p.floor_y - AIR_TOL and s.lin.y < -AIR_VY)):
+			t = _drop(s, t, p)  # under the cloth plane = over a hole: falling to the cup floor, which stops it (a ball only sunk into the bed, not falling, is not)
 		elif s.pos.y > p.floor_y + AIR_TOL or absf(s.lin.y) > AIR_VY:  # up off the cloth, or still coming down on it (a touch-down lands inside the tolerance band)
 			t = _fly(s, t, p)
+		elif p.hazard != null:
+			if _rested(s, p):
+				break
+			t = _ground_hz(s, t, p)
 		elif p.tilt == Vector2.ZERO:
 			t = _ground(s, t, p)
 		else:  # tilt is folded in per short step: first-order, like the slide drag
-			var step := minf(t, SLIDE_STEP)
+			if _rested(s, p):
+				break
+			var step := minf(t, TILT_STEP)
 			t -= step - _ground(s, step, p)
 	if s.lin.length() < p.rest_speed and s.ang.length() < p.rest_ang and not is_airborne(s.pos.y, p.floor_y):  # the top of a hop is not a rest
 		s.lin = Vector3.ZERO
 		s.ang = Vector3.ZERO
+
+
+## The host rests a ball below `rest_speed` / `rest_ang` at the top of a tick, before any force, so a tilt never moves it again (a ball
+## a tilted table's drag and pull have just stopped stays stopped, not creeping on downhill). The model checks it per step, not only at
+## the end of `advance`, wherever a tilt could otherwise carry on.
+static func _rested(s: State, p: Params) -> bool:
+	return s.lin.length_squared() < p.rest_speed * p.rest_speed and s.ang.length_squared() < p.rest_ang * p.rest_ang
 
 
 ## Drag multiplier on a rolling ball: 1 from `settle_speed` up, (1 + boost) at standstill, linear between (Ball applies the
@@ -189,13 +210,14 @@ static func _fly(s: State, t: float, p: Params, floor_y := NAN) -> float:
 	return t - t_land
 
 
-## On the cloth: slide until slip stops, then roll to a stop. Returns leftover time.
-static func _ground(s: State, t: float, p: Params) -> float:
+## On the cloth: slide until slip stops, then roll to a stop. Returns leftover time. `zone` scales the rolling drag only (Vacation's
+## water / sand, `HazardModel.zone_mult`): the Coulomb slide below is the bed's material and stays global.
+static func _ground(s: State, t: float, p: Params, zone := 1.0) -> float:
 	var g := p.gravity
 	var r := p.radius
-	var a_roll := g * p.roll_mu * p.friction_mult
+	var a_roll := g * p.roll_mu * p.friction_mult * zone
 	# spin about the normal: exponential (Ball: -spin·m·r·μ·decay / I) plus the constant pivot loss
-	var k := p.roll_mu * p.friction_mult * p.spin_decay / (0.4 * r) + p.ang_damp
+	var k := p.roll_mu * p.friction_mult * zone * p.spin_decay / (0.4 * r) + p.ang_damp
 	var vx := s.lin.x
 	var vz := s.lin.z
 	var ux := vx + r * s.ang.z
@@ -209,8 +231,9 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		var uhz := uz / slip
 		var dhx := vx / speed if speed > 0.001 else 0.0
 		var dhz := vz / speed if speed > 0.001 else 0.0
-		var ax := -mu * uhx - a_roll * dhx - p.damp * vx + p.tilt.x
-		var az := -mu * uhz - a_roll * dhz - p.damp * vz + p.tilt.y
+		var tilt := p.tilt if speed >= TILT_MIN_SPEED else Vector2.ZERO
+		var ax := -mu * uhx - a_roll * dhx - p.damp * vx + tilt.x
+		var az := -mu * uhz - a_roll * dhz - p.damp * vz + tilt.y
 		s.pos += Vector3(vx * t1 + 0.5 * ax * t1 * t1, 0.0, vz * t1 + 0.5 * az * t1 * t1)
 		s.lin.x = vx + ax * t1
 		s.lin.z = vz + az * t1
@@ -232,14 +255,61 @@ static func _ground(s: State, t: float, p: Params) -> float:
 		s.ang.x = s.lin.z / r
 		s.ang.z = -s.lin.x / r
 		t_used = t - run.z
-	if p.tilt != Vector2.ZERO and speed > 0.0:  # host applies tilt to moving balls only
-		s.pos += Vector3(0.5 * p.tilt.x * t_used * t_used, 0.0, 0.5 * p.tilt.y * t_used * t_used)
-		s.lin.x += p.tilt.x * t_used
-		s.lin.z += p.tilt.y * t_used
+	if p.tilt != Vector2.ZERO and speed >= TILT_MIN_SPEED:  # host applies tilt to balls above TILT_MIN_SPEED only
+		# a pull on the centre of a ball that rolls without slipping also has to spin it up: it accelerates at 1 / (1 + 2/5) of the pull
+		# (the drag's own torque is matched in Ball, the tilt's is not; adhoc-1014a G: the model used the whole pull and ran away from Jolt at 4 degrees)
+		var pull := p.tilt / ROLL_INERTIA
+		s.pos += Vector3(0.5 * pull.x * t_used * t_used, 0.0, 0.5 * pull.y * t_used * t_used)
+		s.lin.x += pull.x * t_used
+		s.lin.z += pull.y * t_used
 		s.ang.x = s.lin.z / r
 		s.ang.z = -s.lin.x / r
 	s.ang.y = _spin(s.ang.y, t, k, p.spin_stop)
 	return 0.0
+
+
+const HZ_SLACK_M := 0.002  # a ground stretch is straight to within this (a slide's curve, a step's tilt)
+static var _trial := State.new()  # advance() is single-threaded and never re-entered
+
+
+## `_ground` on a table with pins or a shoreline (`p.hazard`). Far from both it is the plain closed form; within reach of one the
+## stretch is cut to SLIDE_STEP and tried first: if its straight path meets the shoreline the ball is advanced to the crossing (the
+## next stretch then reads the other zone), if it meets a pin the ball is advanced to the contact and bounced (HazardModel.bounce).
+## Returns leftover time. Airborne balls never get here (`advance` sends them to `_fly`: a hop clears the pins).
+static func _ground_hz(s: State, t: float, p: Params) -> float:
+	var h := p.hazard
+	var step := t if p.tilt == Vector2.ZERO else minf(t, TILT_STEP)
+	var zone := h.zone_mult(s.pos, s.lin.x, s.lin.z)
+	var v := Vector2(s.lin.x, s.lin.z)
+	var speed := v.length()
+	if speed < 1e-6:
+		return t - step + _ground(s, step, p, zone)  # still: nothing to meet (a slip that sets it off is the next stretch's)
+	var lateral := 0.5 * p.tilt.length() * step * step + HZ_SLACK_M
+	if h.clear(s.pos, v / speed, speed * step + lateral, lateral, p.radius):
+		return t - step + _ground(s, step, p, zone)
+	step = minf(step, SLIDE_STEP)
+	_trial.copy_from(s)
+	var used := step - _ground(_trial, step, p, zone)
+	var hit := h.first_event(s.pos, _trial.pos, p.radius)
+	if hit.x < 0.0:
+		s.copy_from(_trial)
+		return t - used
+	var tt := used * hit.x
+	_ground(s, tt, p, zone)
+	var n := Vector2(hit.y, hit.z)
+	if hit.w == 0.0:  # the shoreline: put the ball exactly on it
+		var d := h.shore_n.dot(Vector2(s.pos.x, s.pos.z)) - h.shore_c
+		s.pos.x -= n.x * d
+		s.pos.z -= n.y * d
+	else:  # a pin: on its surface, then the bounce
+		var at := h.pins[int(hit.w) - 1]
+		var reach := h.pin_r + p.radius + 1e-6
+		s.pos.x = at.x + n.x * reach
+		s.pos.z = at.y + n.y * reach
+		var out := HazardModel.bounce(s.lin, s.ang, n)
+		s.lin = out[0]
+		s.ang = out[1]
+	return t - tt
 
 
 ## Spin about the table normal: dw/dt = -k·w - stop·sign(w). Reaches zero and stays there.

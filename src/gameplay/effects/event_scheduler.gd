@@ -11,6 +11,7 @@ signal ball_shuffle_requested(count: int)  # Round start and half-time; RoundDir
 
 const OFFER_SIZE := 3
 const VOTE_TIMEOUT_SEC := 20.0  # [tune]
+const HAZARD_SALT := 0x4A5A  # keeps a hazard's roll apart from round_seed's hash of the same three numbers
 
 @export var effects: EffectManager
 @export var game_loop: GameLoop
@@ -77,9 +78,12 @@ func offer(round_index: int, tier: int, night_number: int) -> Array[StringName]:
 	_offer.clear()
 	_votes.clear()
 	var normal: Array[Event] = []
+	var authored := _authored_layout(round_index) != null
 	for e in FxCatalog.EVENTS:
 		if e.tier != tier or e.min_night > night_number or _used.has(e.id):
 			continue
+		if authored and _touches(e, &"object_ball_mult"):
+			continue  # Double Ball would double an authored rack: the Night 1 and finale puzzles stay what they were drawn as
 		if e.scripted_first and not _seen.has(e.id):
 			_chosen = e  # the crew meets it once before it becomes a choice
 			break
@@ -152,7 +156,7 @@ func begin_round(round_index: int) -> float:
 		bonus += _chosen.round_time_add_sec
 		_used[_chosen.id] = true
 		_seen[_chosen.id] = true
-		apply_event.rpc(_chosen.id, round_index, pocket)
+		apply_event.rpc(_chosen.id, round_index, pocket, roll_hazard(_chosen, round_index))
 		if _touches(_chosen, &"ball_type_shuffle_count"):
 			ball_shuffle_requested.emit.call_deferred(_shuffle_count())  # after start_round drops the rack
 			_half_at = (game_loop.current_night().round_time_limit_sec + bonus) * 0.5
@@ -167,7 +171,14 @@ func trigger_now(event_id: StringName, round_index: int) -> bool:
 	var e := FxCatalog.event(event_id)
 	if e == null or _active != null:
 		return false
-	apply_event.rpc(e.id, round_index, _roll_for(e))
+	if e.round_start_only:  # a pin or a doubled rack needs the opening table: the chaos pays out another hazard (the next one in the catalog)
+		var i := FxCatalog.EVENTS.find(e)
+		for k in FxCatalog.EVENTS.size():
+			var alt := FxCatalog.EVENTS[(i + 1 + k) % FxCatalog.EVENTS.size()]
+			if not alt.round_start_only:
+				e = alt
+				break
+	apply_event.rpc(e.id, round_index, _roll_for(e), roll_hazard(e, round_index))
 	if _touches(e, &"ball_type_shuffle_count"):
 		ball_shuffle_requested.emit(_shuffle_count())
 	return true
@@ -179,19 +190,52 @@ func _roll_for(e: Event) -> StringName:
 	if e.opportunity == Event.Opportunity.RANDOM_POCKET:
 		var pockets := _pockets()
 		pocket = pockets[rng.randi() % pockets.size()]
-	if _touches(e, &"table_tilt_deg"):
+	if _touches(e, &"table_tilt_deg") and e.hazard == &"":  # Sunken Ship's direction is its corner's, set when it applies
 		effects.set_tilt_direction(Vector2.from_angle(rng.randf() * TAU))
 	return pocket
 
 
+## Host: the numbers of an Event with geometry (Sunken Ship's corner, Vacation's shoreline, Pinball's pins), a pure function of
+## (campaign seed, Night, Round) and the table; they ride `apply_event`, so no peer rolls anything. Empty for a stat-only Event.
+func roll_hazard(e: Event, round_index: int) -> PackedInt32Array:
+	if e.hazard == &"" or table == null:
+		return PackedInt32Array()
+	var night := game_loop.current_night().night_number if game_loop != null and not game_loop.nights.is_empty() else 0
+	var seed_ := hash([game_loop.campaign_seed if game_loop != null else 0, night, round_index, HAZARD_SALT])
+	return HazardModel.roll(e.hazard, seed_, table.spec, table.layout, _authored_rack(round_index))
+
+
+## This Round's authored rack (Night 1's three, the Campaign finale's three), the one GameLoop hands RackDropper; null for a seeded Round.
+func _authored_layout(round_index: int) -> RackLayout:
+	if game_loop == null or game_loop.nights.is_empty():
+		return null
+	var config := game_loop.current_night()
+	var racks := config.finale_racks if game_loop.is_final_night() and not config.finale_racks.is_empty() else config.authored_racks
+	if round_index < 1 or round_index > racks.size():
+		return null
+	return racks[round_index - 1]
+
+
+## Table-local balls of this Round's authored rack (none for a seeded one): pins stay clear of them.
+func _authored_rack(round_index: int) -> PackedVector2Array:
+	var out := PackedVector2Array()
+	var layout := _authored_layout(round_index)
+	if layout == null or table == null:
+		return out
+	for q in RackDropper.authored(table.spec, layout):
+		out.append(q.pos)
+	return out
+
+
+## `hazard`: the host's HazardModel roll (empty for a stat-only Event), applied identically on every peer.
 @rpc("authority", "call_local", "reliable", 3)
-func apply_event(event_id: StringName, _round_index: int, pocket_id: StringName) -> void:
+func apply_event(event_id: StringName, _round_index: int, pocket_id: StringName, hazard := PackedInt32Array()) -> void:
 	var e := FxCatalog.event(event_id)
 	if e == null:
 		return
 	_active = e
 	active_pocket = pocket_id
-	effects.begin_event(e, pocket_id)
+	effects.begin_event(e, pocket_id, hazard)
 	event_applied.emit(e.id, e.tier, e.reward_mult)
 
 

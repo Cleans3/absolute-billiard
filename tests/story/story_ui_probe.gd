@@ -64,7 +64,7 @@ func _run() -> void:
 	var ids: Array[StringName] = []
 	for e: Event in FxCatalog.EVENTS:
 		ids.append(e.id)
-	_check(ids.size() == 8, "eight hazards")
+	_check(ids.size() == 14, "fourteen hazards (adhoc-1014a G: Sunken Ship replaces Tilted Table, six more)")
 	for start in range(0, ids.size(), 3):
 		var offer: Array[StringName] = ids.slice(start, start + 3)
 		vote._on_offer(1, 1, offer)

@@ -113,9 +113,9 @@ func _refresh_live() -> void:
 	var live := effects.live_events()
 	var events: Array[String] = []
 	for e in live:
-		events.append(e.display_name)
+		events.append(effects.event_title(e))  # Sunken Ship names its corner
 	_write(_hazard, ", ".join(events) if not events.is_empty() else "none")
-	_write(_hazard_story, live[0].story_line if not live.is_empty() else "")
+	_write(_hazard_story, effects.event_story(live[0]) if not live.is_empty() else "")
 	_hazard_icon.visible = not live.is_empty()
 	if not live.is_empty():
 		_hazard_icon.texture = IconCatalog.hazard(live[0])

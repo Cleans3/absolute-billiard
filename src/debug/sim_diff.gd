@@ -173,6 +173,7 @@ func _p(id: int) -> BallMotion.Params:
 		var pp := BallMotion.make_params(b.spec, b.radius)
 		pp.friction_mult = sim.cloth_friction_mult  # the client mirrors these at shot start (04 §5)
 		pp.tilt = b.motion.tilt
+		pp.hazard = b.motion.hazard  # the pins / shoreline are the same object on every peer (EffectManager.begin_event)
 		_params[id] = pp
 	return _params[id]
 

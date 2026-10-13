@@ -32,7 +32,7 @@ const DRINKS: Array[Drink] = [  # grouped by DrinkTier, Common first
 	preload("res://src/resources/drink/quantum_ale.tres"),
 ]
 const EVENTS: Array[Event] = [
-	preload("res://src/resources/event/tilted_table.tres"),
+	preload("res://src/resources/event/sunken_ship.tres"),
 	preload("res://src/resources/event/glass_cushions.tres"),
 	preload("res://src/resources/event/bouncer.tres"),
 	preload("res://src/resources/event/crowd_roar.tres"),
@@ -40,6 +40,12 @@ const EVENTS: Array[Event] = [
 	preload("res://src/resources/event/ball_swap_chaos.tres"),
 	preload("res://src/resources/event/lights_out.tres"),
 	preload("res://src/resources/event/pocket_jackpot.tres"),
+	preload("res://src/resources/event/vacation.tres"),
+	preload("res://src/resources/event/pinball.tres"),
+	preload("res://src/resources/event/double_ball.tres"),
+	preload("res://src/resources/event/ice_rink.tres"),
+	preload("res://src/resources/event/shaky_hands.tres"),
+	preload("res://src/resources/event/lead_ball.tres"),
 ]
 const INTERACTIONS: Array[WorldInteraction] = [
 	preload("res://src/resources/world/bump_table.tres"),

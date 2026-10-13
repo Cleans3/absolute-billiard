@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_ev"]
+
+[resource]
+script = ExtResource("3_ev")
+id = &"vacation"
+display_name = "Vacation"
+story_line = "Moe booked a holiday: a wet side and a dry side."
+reward_mult = 1.3
+hazard = &"vacation"

@@ -237,8 +237,8 @@ MainLevel.tscn
 | `update_viewers(count, hype)` | StreamManager | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `push_rig_poses(poses, holders)` | Cameras | H→A | `authority` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` | EffectManager | H→A | `authority` | `call_local` | `reliable` | 3 |
-| `resync_effects(ids, owners, targets, durations, remaining)` — `_resync_effects_rpc`: sent with `full_state` to one client; adds Effects it lacks and syncs remaining time | EffectManager | H→1 | `authority` | `call_remote` | `reliable` | 3 |
-| `apply_event(event_id, round_index, pocket_id)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
+| `resync_effects(ids, owners, targets, durations, remaining, event_id, event_pocket, event_params)` — `_resync_effects_rpc`: sent with `full_state` to one client; adds Effects it lacks and syncs remaining time; the running hazard comes with its roll (`event_id` `&""` = none) so the client rebuilds its pins / shoreline (adhoc-1014a G) | EffectManager | H→1 | `authority` | `call_remote` | `reliable` | 3 |
+| `apply_event(event_id, round_index, pocket_id, hazard)` — `hazard`: the host's `PackedInt32Array` roll for a hazard with geometry (Sunken Ship's corner index, Vacation's shoreline mm + water side, Pinball's 4 pin positions in mm), empty for a stat-only one; every peer builds its `HazardModel` from it, nothing is rolled on a client (adhoc-1014a G) | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `event_offer(round_index, tier, event_ids)` | EventScheduler | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `submit_event_vote(event_id)` | EventScheduler | C→H | `any_peer` | `call_local` | `reliable` | 3 |
 | `request_world_interaction(kind, target_id, payload)` | MainLevel/WorldInteractions | C→H | `any_peer` | `call_remote` | `reliable` | 3 |

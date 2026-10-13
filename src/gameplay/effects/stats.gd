@@ -11,6 +11,7 @@ const ALL: Array[StringName] = [
 	&"stream_camera_bonus_mult", &"stream_viewer_gain_mult", &"stream_hype_gain_mult",
 	&"round_time_add_sec",
 	&"player_stumble_per_min",
+	&"object_ball_mult",
 ]
 
 ## Value of a stat with no live modifier.
@@ -22,6 +23,7 @@ const BASE := {
 	&"player_view_light_level": 1.0, &"player_view_fog_density": 0.0, &"player_view_shake_amp": 0.0,
 	&"stream_camera_bonus_mult": 1.0, &"stream_viewer_gain_mult": 1.0, &"stream_hype_gain_mult": 1.0,
 	&"round_time_add_sec": 0.0, &"player_stumble_per_min": 0.0,  # PLAYER target: the host knocks that peer down this often (P15)
+	&"object_ball_mult": 1.0,  # TABLE target (Double Ball): the Round's rack holds this many times the object balls, each pot pays 1/this
 }
 
 ## Post-resolution floors, applied only when at least one modifier touched the stat.

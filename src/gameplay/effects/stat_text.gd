@@ -30,6 +30,7 @@ const INFO := {
 	&"stream_hype_gain_mult": ["Hype gains", 1, ""],
 	&"round_time_add_sec": ["Round time", 1, " s"],
 	&"player_stumble_per_min": ["Stumbles", -1, "/min"],
+	&"object_ball_mult": ["Object balls", 0, ""],
 }
 
 

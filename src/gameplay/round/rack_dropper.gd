@@ -11,6 +11,7 @@ const CANDIDATES := 30           # Bridson k
 const SHRINK := 0.95             # spacing multiplier when a sample comes up short
 const MAX_PRIZES := 2            # 01 §2: "one or two per Round"
 const MAX_OBJECT_BALLS := 12     # 07 §1 phone budget; obstacles (stone_ball) count toward it (06 P8)
+const DOUBLE_SEED_SALT := 0xD0B1E  # Double Ball's second rack is seeded apart from the first
 const STONES_PER_RACK := 1       # [tune] when `stone_ball` is in the pool
 const CENTRE_TIE_M := 1e-4       # slots this close in distance to the centroid tie (06 P31)
 
@@ -21,7 +22,51 @@ static func ball_type(id: StringName) -> BallType:
 
 ## Object-ball placements for a Round: [{type: BallType, pos: Vector2}], `count` of them, none
 ## on the head spot (the cue ball's) or in a pocket mouth. Same config + seed → same rack.
-static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int, round_index := 0) -> Array[Dictionary]:
+## Double Ball (adhoc-1014a G): `count_mult` 2 adds as many balls again round the first rack (`object_cap` in all); `extra_blocked`
+## (x, z, radius) discs, Pinball's pins, are kept clear like a pocket.
+static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int, round_index := 0, count_mult := 1.0, extra_blocked: Array[Vector3] = []) -> Array[Dictionary]:
+	var out := _drop_base(spec, layout, config, seed, round_index, extra_blocked)
+	if count_mult > 1.0:
+		out.append_array(_second_rack(spec, layout, config, seed, out, count_mult, extra_blocked))
+	return out
+
+
+## Most object balls a Round may hold at `count_mult` (obstacles included): the phone budget, times the multiplier. 24 at Double Ball.
+static func object_cap(count_mult := 1.0) -> int:
+	return MAX_OBJECT_BALLS * maxi(1, ceili(count_mult))
+
+
+## The balls Double Ball adds: `base` x (count_mult - 1) more, in the formation's next ring (the nearest free Poisson samples to the foot
+## spot), their types composed like a rack of their own. Seeded from the Round, so every respawn of the Round replays it.
+static func _second_rack(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int, base: Array[Dictionary], count_mult: float, extra_blocked: Array[Vector3]) -> Array[Dictionary]:
+	var n := mini(roundi(base.size() * (count_mult - 1.0)), object_cap(count_mult) - base.size())
+	var out: Array[Dictionary] = []
+	if n <= 0:
+		return out
+	var rng := RandomNumberGenerator.new()
+	rng.seed = hash([seed, DOUBLE_SEED_SALT])
+	var fixed: Array[Vector2] = [Vector2(layout.spots.head.x, layout.spots.head.z)]
+	for e in base:
+		fixed.append(e.pos)
+	var blocked := keepouts(spec, layout) + extra_blocked
+	var r := SPACING_RADII * spec.ball_radius_m
+	var floor_r := 2.0 * spec.ball_radius_m + spec.clearance_margin_m
+	var points := poisson(interior(spec), r, rng, fixed, blocked)
+	while points.size() < n and r > floor_r:
+		r = maxf(r * SHRINK, floor_r)
+		points = poisson(interior(spec), r, rng, fixed, blocked)
+	assert(points.size() >= n, "table too small for %d more balls" % n)
+	var foot := Vector2(layout.spots.foot.x, layout.spots.foot.z)
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(foot) < b.distance_squared_to(foot))
+	points.resize(mini(n, points.size()))
+	var types := compose(config, points.size(), rng)
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return _openness(spec, layout, a) > _openness(spec, layout, b))
+	for i in points.size():
+		out.append({type = types[i], pos = points[i]})
+	return out
+
+
+static func _drop_base(spec: TableSpec, layout: TableLayout, config: NightConfig, seed: int, round_index: int, extra_blocked: Array[Vector3]) -> Array[Dictionary]:
 	if round_index >= 1 and round_index <= config.authored_racks.size() and config.authored_racks[round_index - 1] != null:
 		return authored(spec, config.authored_racks[round_index - 1])
 	var rng := RandomNumberGenerator.new()
@@ -30,10 +75,11 @@ static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed
 	var n := rack_size(config)
 	var r := SPACING_RADII * spec.ball_radius_m
 	var floor_r := 2.0 * spec.ball_radius_m + spec.clearance_margin_m
-	var points := poisson(interior(spec), r, rng, [head], keepouts(spec, layout))
+	var blocked := keepouts(spec, layout) + extra_blocked
+	var points := poisson(interior(spec), r, rng, [head], blocked)
 	while points.size() < n and r > floor_r:
 		r = maxf(r * SHRINK, floor_r)
-		points = poisson(interior(spec), r, rng, [head], keepouts(spec, layout))
+		points = poisson(interior(spec), r, rng, [head], blocked)
 	assert(points.size() >= n, "table too small for %d balls" % n)
 	# The rack is a formation: the n samples nearest the foot spot, most open spots first. The table-wide scatter this replaced left
 	# the cue ball one or two balls to hit (adhoc-1013c U12: a full-power break moved 12-20 % of the balls, a formation 85-95 %).
@@ -166,9 +212,9 @@ static func compose(config: NightConfig, n: int, rng: RandomNumberGenerator) -> 
 
 ## Closest clear spot to `near` inside `region`: `near` itself if `others` all sit ≥ the ball
 ## spacing away, else the nearest Bridson sample that does. Seeded, so respawns replay.
-static func place_near(spec: TableSpec, layout: TableLayout, near: Vector2, region: Rect2, others: Array[Vector2], seed: int) -> Vector2:
+static func place_near(spec: TableSpec, layout: TableLayout, near: Vector2, region: Rect2, others: Array[Vector2], seed: int, extra_blocked: Array[Vector3] = []) -> Vector2:
 	var r := SPACING_RADII * spec.ball_radius_m
-	var blocked := keepouts(spec, layout)
+	var blocked := keepouts(spec, layout) + extra_blocked
 	if region.has_point(near) and _clear(near, others, r) and _clear_of_keepouts(near, blocked):
 		return near
 	var rng := RandomNumberGenerator.new()

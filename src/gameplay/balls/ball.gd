@@ -54,6 +54,9 @@ var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim
 var _forced := false  # `_next` is where the model puts the ball after the step Jolt is running (a touch-down, see `_air_step`)
 var _next := BallMotion.State.new()
 var _air := BallMotion.State.new()  # scratch for `_air_step`
+var pin_hits := 0  # Pinball: pin bounces this shot; past HazardModel.PIN_ELASTIC_HITS a pin is a plain e 0.9 obstacle (reset at rest)
+var _pin_served := false  # the pin touching us has had its answer this contact
+var _pre_solve_pos := Vector3.ZERO  # where we were at the start of the step before this one (with `pre_solve_velocity`: Pinball's exact bounce)
 
 @onready var radius: float = spec.ball_radius_m * ball_type.radius_multiplier
 
@@ -318,6 +321,53 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 	state.linear_velocity += n * vn * (e / e0 - 1.0)
 
 
+## Pinball (G, S3): Jolt bounced us off the pin at e 1 with no friction (the pin's material), but through the contact normal it found
+## at the step (a fast glancing ball gets a flatter one than the geometry's). The model and the client use the geometry's, so the
+## answer is made exact here: the velocity BEFORE the step mirrored about the true contact normal, the horizontal spin with it
+## (HazardModel.bounce: the ball keeps rolling). If the post-solve speed says something else also hit (a ball, a rail), Jolt's stands
+## and only the spin follows its normal. Past PIN_ELASTIC_HITS this shot a pin is a plain obstacle: the normal speed is cut to
+## PIN_CAP_E (the client model keeps e 1; its divergence events cover the rest). Read off this step's own contact list
+## (`body_entered` is too late and absent for a fast ball), once per contact, on the first tick the velocity already leaves the
+## pin. A ball in the air is left to Jolt. `prev_p` / `prev_v`: where and how fast we were at the start of the step Jolt just solved.
+func _pin_rebound(state: PhysicsDirectBodyState3D, prev_p: Vector3, prev_v: Vector3) -> void:
+	var pin: Node3D = null
+	for i in state.get_contact_count():
+		var c := state.get_contact_collider_object(i)
+		if c is Node3D and c.has_meta(&"pin"):
+			pin = c
+			break
+	if pin == null:
+		_pin_served = false
+		return
+	var o := state.transform.origin
+	if _pin_served or sim == null or sim.hazard == null or BallMotion.is_airborne(o.y, motion.floor_y):  # a hop is Jolt's: the model flies over a pin (S3)
+		return
+	var away := Vector2(o.x - pin.global_position.x, o.z - pin.global_position.z)
+	if away.length_squared() < 1e-12:
+		return
+	away = away.normalized()
+	var v := state.linear_velocity
+	if v.x * away.x + v.z * away.y <= 0.0:
+		return  # the solver has not answered yet (a fast ball is stopped at the surface a step before it bounces)
+	_pin_served = true
+	pin_hits += 1
+	var pin_xz := Vector2(pin.global_position.x, pin.global_position.z)
+	var n := HazardModel.contact_normal(Vector2(prev_p.x, prev_p.z), Vector2(prev_v.x, prev_v.z), pin_xz, sim.hazard.pin_r + radius)
+	if n == Vector2.ZERO:
+		n = away
+	if pin_hits > HazardModel.PIN_ELASTIC_HITS:
+		var vn := v.x * away.x + v.z * away.y
+		state.linear_velocity = v + Vector3(away.x, 0.0, away.y) * vn * (HazardModel.PIN_CAP_E - 1.0)
+		return
+	var h_prev := Vector2(prev_v.x, prev_v.z).length()
+	if absf(Vector2(v.x, v.z).length() - h_prev) <= 0.03 * h_prev + 0.05:  # only the pin answered: the exact mirror
+		var out := HazardModel.bounce(Vector3(prev_v.x, v.y, prev_v.z), state.angular_velocity, n)
+		state.linear_velocity = out[0]
+		state.angular_velocity = out[1]
+	elif v.x * n.x + v.z * n.y >= HazardModel.PIN_STICK_MPS:
+		state.angular_velocity = HazardModel.mirror_spin(state.angular_velocity, n)
+
+
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	if _forced:
 		_forced = false
@@ -328,10 +378,15 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 			state.linear_velocity = _next.lin
 			state.angular_velocity = _next.ang
 			_last_good_y = _next.lin.y
+	var prev_v := pre_solve_velocity
+	var prev_p := _pre_solve_pos
 	pre_solve_velocity = state.linear_velocity
+	_pre_solve_pos = state.transform.origin
 	if _pending_rail != Vector3.ZERO:
 		_rail_rebound(state, _pending_rail)
 		_pending_rail = Vector3.ZERO
+	if sim != null and sim.hazard != null and not sim.hazard.pins.is_empty():
+		_pin_rebound(state, prev_p, prev_v)
 	var touching_wall := _touching_wall(state)
 	if touching_wall and not _was_touching_wall:
 		# Cushions and jaws are vertical walls — a purely horizontal contact normal — so the instant
@@ -368,6 +423,7 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
 		_set_resting(true)
+		pin_hits = 0
 		_last_good_y = 0.0
 		return
 	_set_resting(false)
@@ -385,8 +441,11 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	var mu := spec.rolling_resistance
 	if sim != null:
 		mu *= sim.cloth_friction_mult
-		if sim.table_tilt_deg != 0.0:
+		var airborne := BallMotion.is_airborne(state.transform.origin.y, motion.floor_y)  # S3: no ground or hazard term in the air (_in_flight already returned for a free flight; this covers a ball over a rail top or another ball)
+		if sim.table_tilt_deg != 0.0 and speed >= BallMotion.TILT_MIN_SPEED and not airborne:
 			state.apply_central_force(Vector3(sim.tilt_direction.x, 0.0, sim.tilt_direction.y) * mass * sim.tilt_accel(spec))
+		if sim.hazard != null and not airborne:
+			mu *= sim.hazard.zone_mult(state.transform.origin, v.x, v.z)  # Vacation: water / sand rolling drag (the Coulomb slide stays the bed's)
 	var g := _g
 	var dir := v / speed
 	# Coulomb-like, opposing travel; a ball that has stopped slipping also settles (drag ramps up as it slows), and

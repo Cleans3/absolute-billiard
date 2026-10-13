@@ -181,7 +181,7 @@ func _pick_event() -> StringName:
 	var running := world.effects.live_events()
 	var pool: Array[StringName] = []
 	for e in FxCatalog.EVENTS:
-		if e.min_night <= loop.current_night().night_number and not running.has(e):
+		if e.min_night <= loop.current_night().night_number and not running.has(e) and not e.round_start_only:  # a pin or a doubled rack needs the Round's opening table
 			pool.append(e.id)
 	return pool[rng.randi() % pool.size()] if not pool.is_empty() else &""
 

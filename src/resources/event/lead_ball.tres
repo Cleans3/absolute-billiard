@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_fx"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_ev"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = &"cue_ball_mass_mult"
+op = 1
+value = 2.2
+
+[sub_resource type="Resource" id="Fx_0"]
+script = ExtResource("1_fx")
+id = &"lead_ball_mass"
+source_kind = 1
+target = 1
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_ev")
+id = &"lead_ball"
+display_name = "Lead Ball"
+story_line = "Gus swapped the cue ball for a bait-shop sinker."
+tier = 2
+effects = Array[ExtResource("1_fx")]([SubResource("Fx_0")])
+reward_mult = 1.2

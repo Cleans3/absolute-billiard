@@ -19,7 +19,7 @@ Resolution order per stat: base → all `ADD` summed → all `MUL` multiplied. O
 | group | stats | applied by |
 |---|---|---|
 | cue | `cue_power_mult`, `cue_spin_radius_mult`, `cue_aim_wobble_deg`, `shot_clock_sec` | host → 01 cue API |
-| ball / table | `cue_ball_mass_mult`, `cloth_friction_mult`, `cushion_restitution_mult`, `table_tilt_deg`, `pocket_radius_mult`, `pocket_oscillation_m`, `ball_type_shuffle_count` | host → `PhysicsSim` (01) |
+| ball / table | `cue_ball_mass_mult`, `cloth_friction_mult`, `cushion_restitution_mult`, `table_tilt_deg`, `pocket_radius_mult`, `pocket_oscillation_m`, `ball_type_shuffle_count`, `object_ball_mult` (base `1`; Double Ball's `MUL 2`, read by `RoundDirector.ball_mult()`: the rack's size and every ball's value, 06 P51) | host → `PhysicsSim` (01) / `RoundDirector` |
 | rule gates (`> 0` = on) | `rule_call_pocket` | host → 01 shot validation |
 
 **Consumers (built, `RoundDirector`, REQ#rules-1).** `rule_call_pocket`: `shot_validator` rejects a request whose `ShotIntent.called_pocket` is not a real pocket (`call_pocket`); a pot elsewhere scores 0, never a foul. `shot_clock_sec`: armed at each Turn for the shooter (`> 0`); at 0 the host records a whiff foul (no strike, the Shot costs its budget slot and 02's foul viewer drop). `pocket_radius_mult`: `Table` rebuilds its jaws and chutes from `TableGeometry.layout(spec, mult)` at Round setup / effect change (deferred past a live Shot). `pocket_oscillation_m`: each chute slides ±m along its rail, `sin(2π·t/6 s + phase(round_seed, pocket_id))` — a pure function, so clients need no packets: chute (capture) and liner (picture) share the clock `PhysicsSim.pocket_time()`, clients drawn at playback time (04 §2.4). `ball_type_shuffle_count`: `EventScheduler.ball_shuffle_requested` re-rolls that many object balls' types in place (seeded from the Round; waits out a live Shot; clients get `_reroll_rpc`). `pocket_jackpot` / `crowd_roar` stay `EffectManager.pot_bonus()` (02 reads it), nothing more in 01.
@@ -77,6 +77,8 @@ There is no `reward_multiplier_contribution`: reward lives on `Drink` and `Event
 | `round_time_add_sec` | `float` | Round length delta, positive or negative — the honest knob the old `energy_drink` faked |
 | `warning_lead_time_sec` | `float` | telegraph before activation, default `3.0 [tune]`; emitted with `event_warning` for a forced `scripted_first` Event (a voted one is telegraphed by the vote itself) |
 | `opportunity`, `opportunity_mult` | `enum {NONE, NEXT_POT, RANDOM_POCKET}`, `float` | the two opportunity Events' targeted payoff (§3.6), read through `EffectManager.pot_bonus()` |
+| `hazard` | `StringName` | `sunken_ship`, `vacation`, `pinball`, or `&""`: the Event has geometry (§3.9): the host rolls its numbers, every peer builds the same `HazardModel` from them |
+| `round_start_only` | `bool` | needs the Round's opening table (pins clear of the rack, a doubled rack): `EventScheduler.trigger_now` (the slot machine's mid-Round chaos) never rolls it, it pays out the next hazard of the catalog instead |
 | `story_line` | `String` | 09 §3.4 flavor ("The Rope sent a 'doorman'…"), shown under the name on the vote card and the blackboard; no mechanical effect |
 
 ### 2.6 `WorldInteraction` (`Resource`)
@@ -170,7 +172,7 @@ Payoff is the other half: a bumped shot that still drops is drama, and the strea
 ### 3.6 Event catalog — hazards that change the task, plus two opportunities
 | id | tier | `reward_mult` | `min_night` | `scripted_first` | `round_time_add_sec` | effect |
 |---|---:|---:|---:|---|---:|---|
-| `tilted_table` | 1 | 1.25 | 1 | no | 0 | `table_tilt_deg ADD 4` — constant drift to one rail; every roll must be re-read |
+| `sunken_ship` | 1 | 1.25 | 1 | no | 0 | `table_tilt_deg ADD 4`, toward a random **corner pocket** chosen per Round (§3.9); replaces `tilted_table` (06 P50) |
 | `glass_cushions` | 1 | 1.30 | 1 | no | 0 | `cushion_restitution_mult MUL 1.35` — banks become the whole game |
 | `bouncer` | 1 | 1.20 | 2 | yes | 0 | one Turn per Round: `shot_clock_sec ADD 6` with duration `-2`, applied at Round start so it dies with the first Shot |
 | `crowd_roar` | 1 | 1.00 | 1 | no | `-15` | **opportunity** — next pot this Round scores ×2; short Round is the price |
@@ -178,6 +180,12 @@ Payoff is the other half: a bumped shot that still drops is drama, and the strea
 | `ball_swap_chaos` | 2 | 1.60 | 3 | no | 0 | `ball_type_shuffle_count ADD 2` at Round start and once at half-time — value memory is worthless |
 | `lights_out` | 2 | 1.80 | 3 | yes | `+20` | `player_view_light_level MUL 0.25`, `player_view_fog_density ADD 0.3` — **shooter's screen only** (crew-wide `VIEW` Effect, shown only on the current shooter's overlay), the stream sees fine |
 | `pocket_jackpot` | 2 | 1.00 | 1 | no | 0 | **opportunity** — one randomly chosen pocket pays ×3 all Round; every shot is now a routing problem |
+| `vacation` | 1 | 1.30 | 1 | no | 0 | geometry (§3.9): half the cloth is water (rolling drag ×0.3), half sand (×2.2), split along the long axis |
+| `pinball` | 2 | 1.50 | 1 | no | 0 | geometry (§3.9), `round_start_only`: 4 pins that return a ball's speed (e 1, no friction) |
+| `double_ball` | 2 | 1.35 | 1 | no | 0 | `object_ball_mult MUL 2`, `round_start_only`: twice the object balls (≤ 24), every pot pays 1 / 2 (06 P51); not offered for a Round with an authored rack (Night 1, the finale) |
+| `ice_rink` | 1 | 1.20 | 1 | no | 0 | `cloth_friction_mult MUL 0.45` |
+| `shaky_hands` | 1 | 1.30 | 1 | no | 0 | `cue_aim_wobble_deg ADD 1.5` (a `CUE` Effect, crew-wide) |
+| `lead_ball` | 2 | 1.20 | 1 | no | 0 | `cue_ball_mass_mult MUL 2.2` (a `CUE` Effect, crew-wide) |
 
 The two opportunity Events carry `reward_mult 1.0` on purpose: the crew trades a smaller global multiplier for a targeted payoff, which is a real decision rather than a strictly-worse option. `power_flicker` is gone (a hazard that *lowers* payout is a punishment with extra steps); fog merged into `lights_out`, sticky/sway merged into `glass_cushions`, gangster-stare merged into `bouncer`.
 
@@ -206,6 +214,17 @@ Effects are the easiest place to lose a phone frame, so they are capped by desig
 - **`visual_hook` budget: 2 concurrent hooks, at most 1 full-screen.** A third request replaces the oldest of the same kind. Hooks are pre-instanced at Round start and pooled — no runtime `load()`, no allocation on the shot path.
 - Table/ball Effects mutate existing `PhysicsSim` scalars only. Nothing here adds a body, a light, or a particle emitter mid-shot; `jukebox` moves an audio-bus parameter, it does not spawn sources. (adhoc-1014a: the jukebox prop also plays the bar's music and *any* press, hype or not, skips the track for everyone, free, 3 s gate: 06 P55, 07 §8. The hype Effect above is unchanged.)
 - `VIEW` effects never round-trip to the host, so a `flick_lights` on a 4G phone costs one RPC and zero physics work.
+
+### 3.9 Hazards with geometry (adhoc-1014a G, 06 P50-P53; the physics is 01 "Hazard models")
+`Sunken Ship`, `Vacation` and `Pinball` each need numbers a stat cannot carry. `EventScheduler.roll_hazard(event, round_index)` (host, at `begin_round` and `trigger_now`) rolls them with `HazardModel.roll` from `hash([campaign_seed, night, round_index, HAZARD_SALT])`, the table's layout and, for Pinball, the Round's authored rack (the pins stay clear of its balls); the result is a `PackedInt32Array` (mm) and rides `apply_event(event_id, round_index, pocket_id, hazard)` — no peer rolls anything — and the resync a returning client gets (`_resync_effects_rpc` carries the Event id and its roll). Every peer then builds the same `HazardModel` (`HazardModel.from_params`), `EffectManager._install_hazard` hands it to `PhysicsSim.set_hazard` (every ball's `BallMotion.Params` read it; the host also gets the pin colliders) and shows it (`HazardView`: no collider, freed with the Round).
+
+| hazard | payload ints | meaning |
+|---|---|---|
+| `sunken_ship` | `[corner]` | index into the layout's corner pockets (nw, ne, sw, se); the tilt direction is the unit vector from the table centre to that pocket's centre, never a literal |
+| `vacation` | `[shore_mm, water_side]` | the shoreline's table-local z in mm (±12 % of the width) and which side (±1) is water |
+| `pinball` | `[x0, z0, … x3, z3]` | four pin centres, table-local mm; ≥ 12 radii apart, ≥ 7 from a rail, clear of every pocket (cup circle ×1.5 + 8 radii), the head spot, the foot spot and an authored rack's balls (10, 10 and 8 radii) |
+**`EffectManager` API.** `hazard_state() -> Dictionary` (`{}` off a hazard; else `id`, `params`, and `corner` / `shore_mm` + `water_side` / `pins` / `object_ball_mult` as the hazard has them; plain ints and strings, hashable and equal on every peer: the sync work's table-state checksum reads it), `hazard_keepouts() -> Array[Vector3]` (table-local discs `RoundDirector` keeps racks, respawns and splitters out of), `event_title(e)` / `event_story(e)` (what the Blackboard prints: Sunken Ship names its corner).
+**Double Ball** is not geometry but a rack: `RackDropper.drop(…, count_mult 2)` adds the second ring (`_second_rack`), at most `object_cap` = 24 object balls; its pins-style keepouts are the same `extra_blocked` discs. **Slot chaos:** `SlotHouse._pick_event` may name any Event; `trigger_now` substitutes the next catalog Event for a `round_start_only` one.
 
 ## 4. Godot implementation sketch
 Per D7 there is no autoload here — these are children of `MainLevel`, so "new campaign" is a scene reload.
@@ -254,7 +273,7 @@ Timers live here, not in `PhysicsSim`: `-2` expires on `RoundDirector.shot_ended
 
 ### To 04 (architecture/netcode)
 - On `MainLevel/WorldInteractions`: `request_world_interaction(kind, target_id, payload)` (any_peer, call_remote) — client to host; host validates §3.4, then `world_interaction_applied` (authority, call_local) or `world_interaction_rejected` (to the requester). `kind` is a `WorldInteraction` id, or `slot_spin` (the bar slot, 02 §3.9: the host rebuilds the payload into the spin's result before the broadcast), or `bar_buy` / `bar_serve` (validated, signalled as `bar_purchase_requested`, nothing charged — the Shop buys), or `go_live` (the GO LIVE pedestal, 02 §3.1: validated for phase Intermission and reach, then `GameLoop.toggle_ready`; no resource, so the 9 interactions the effects probe counts are unchanged). A rejection also carries `wait_sec` for `cooldown`, and `WaitText` words every reason ("Chalk the cue is cooling down: 14 s left").
-- `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` (authority, call_local, ch3): `duration_ms` `0` instant, `-1` Round, `-2` Shot. `apply_event(event_id, round_index, pocket_id)` (authority, call_local): every peer applies the Event's Effects itself, so Events need no `apply_effect` fan-out.
+- `apply_effect(effect_id, owner_peer_id, target_id, duration_ms)` (authority, call_local, ch3): `duration_ms` `0` instant, `-1` Round, `-2` Shot. `apply_event(event_id, round_index, pocket_id, hazard)` (authority, call_local; `hazard` = the host's geometry roll, §3.9): every peer applies the Event's Effects itself, so Events need no `apply_effect` fan-out.
 - `submit_event_vote(event_id)` (any_peer, call_local) and `event_offer(round_index, tier, event_ids)` (authority, call_local). A single-id offer is a forced `scripted_first` Event: an announcement, not a vote.
 - `VIEW`-target Effects are broadcast for presentation but applied locally by the owner — they never enter the physics path, so they need no host tick.
 

@@ -1,0 +1,29 @@
+[gd_resource type="Resource" script_class="Event" format=3]
+
+[ext_resource type="Script" path="res://src/resources/effect/effect.gd" id="1_fx"]
+[ext_resource type="Script" path="res://src/resources/effect/stat_mod.gd" id="2_mod"]
+[ext_resource type="Script" path="res://src/resources/effect/event.gd" id="3_ev"]
+
+[sub_resource type="Resource" id="Mod_0"]
+script = ExtResource("2_mod")
+stat = &"object_ball_mult"
+op = 1
+value = 2.0
+
+[sub_resource type="Resource" id="Fx_0"]
+script = ExtResource("1_fx")
+id = &"double_ball_count"
+source_kind = 1
+target = 2
+stat_modifiers = Array[ExtResource("2_mod")]([SubResource("Mod_0")])
+duration_sec = -1.0
+
+[resource]
+script = ExtResource("3_ev")
+id = &"double_ball"
+display_name = "Double Ball"
+story_line = "Moe's bargain: twice the balls, half the cash a ball."
+tier = 2
+effects = Array[ExtResource("1_fx")]([SubResource("Fx_0")])
+reward_mult = 1.35
+round_start_only = true
