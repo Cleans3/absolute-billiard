@@ -27,7 +27,8 @@ Checked against 4.7's renderer comparison: Mobile has **no** SDFGI, VoxelGI, SSI
 | Want | Technique |
 |---|---|
 | Dark room, warm pools of light | `LightmapGI` bake. All bar geometry static; ambience lights `bake_mode = STATIC` so they cost nothing at runtime. |
-| Neon, jukebox, TV, bottle shelf, pocket rims | Emissive materials. Emission feeds the lightmap bake, so a neon sign lights the wall around it for free. |
+| Neon, jukebox, bottle shelf, pocket rims | Emissive materials. Emission feeds the lightmap bake, so a neon sign lights the wall around it for free. |
+| The wall TV | Not baked: `MainLevel/Tv`, two `SubViewport` feeds drawn alternately, only while on screen, sized and paced by quality tier (07 §2, adhoc-1013c W4). Its glow on the wall is the baked `BakedTV` omni. |
 | The one light that must move | Table lamp: single `SpotLight3D`, `bake_mode = DYNAMIC`, shadows on, tight range. Budget is **one shadow-casting light** `[tune]`. |
 | Wet bar top, chrome, cue tips | Baked `ReflectionProbe` per room zone (bar, table, booth) instead of SSR. Mobile allows 8 per mesh, so three zones is comfortable. |
 | Haze | `WorldEnvironment` depth fog only (`fog_enabled`, low `fog_density`, warm `fog_light_color`). The hand-placed fog-plane quads are gone (06 P13): they sat at eye height and smeared the table. |
@@ -187,7 +188,8 @@ MainLevel.tscn
  ├── Table                     — PhysicsSim.gd lives here, plus Ball instances
  ├── PlayerSpawner             — MultiplayerSpawner, spawn_path=PlayerSlots
  │    └── PlayerSlots/         — one PlayerSlot per peer (Player module: black box)
- ├── Bar / Cameras / Props     — free-roam interaction targets
+ ├── Bar / Cameras / Props     — free-roam interaction targets (Cameras also owns the fixed ceiling camera, never scored)
+ ├── Tv                        — StreamTv: the wall TV, dynamic, two live camera feeds (tripod 1 + ceiling), `set_feeds_on(on)` (07 §2)
  └── UILayer
 ```
 "New campaign" is a scene reload, so no session node needs a reset path.

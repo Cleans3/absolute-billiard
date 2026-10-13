@@ -554,7 +554,7 @@ func _interact() -> void:
 	world.clock = func() -> int: return _fake_ms
 	var cams: CameraRigs = level.get_node("Cameras")
 	var rig := cams.rigs[0]
-	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
+	_stand_at(rig.global_position + Vector3(-0.1, 0.05, 0.4))  # the base tripod stands at the north wall: stand in front of it, in the room
 	await _physics(6)
 	_check(player.prompt == "Grab camera", "camera rig prompts a grab: '%s'" % player.prompt)
 	player.interact()

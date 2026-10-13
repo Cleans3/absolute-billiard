@@ -25,7 +25,10 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 `viewers: int`, `hype: float` `[0,1]`, `total_tips: int`. **No `viewer_multiplier` field** — there is exactly one `Viewer_Scalar`, the formula in §3.2, computed on demand. Nothing else in the project may define a second one.
 
 ### `CameraRig` (`Node3D`)
-`camera_id: StringName`, `tier: int` (1–3), `tier_mult()` = `1.0 / 1.25 / 1.5 [tune]` (a const table on the rig — a separate `CameraSpec` resource would hold nothing else), `held_by: int`. Rigs are physical props: any player can walk up and drag one (P2). No `view_angle_tag` — the angle is wherever the friend left it, and it is scored at pot time (§3.2). Tripod model (06 P14): splayed legs + centre column (dark metal), matte body, lens barrel with a glass front, a red tally light — one merged `ArrayMesh`, 3 surfaces (metal / matte / glass+tally palette) = 3 draw calls, `gi_mode` DYNAMIC (no UV2); the view is scored by math, never rendered (07).
+`camera_id: StringName`, `tier: int` (1–3), `tier_mult()` = `1.0 / 1.25 / 1.5 [tune]` (a const table on the rig — a separate `CameraSpec` resource would hold nothing else), `held_by: int`. Rigs are physical props: any player can walk up and drag one (P2). No `view_angle_tag` — the angle is wherever the friend left it, and it is scored at pot time (§3.2). Tripod model (06 P14): splayed legs + centre column (dark metal), matte body, lens barrel with a glass front, a red tally light — one merged `ArrayMesh`, 3 surfaces (metal / matte / glass+tally palette) = 3 draw calls, `gi_mode` DYNAMIC (no UV2); the view is scored by math and never rendered for scoring (07). **One tripod to start** (`EconomyManager.BASE_RIGS = 1`, `MAX_RIGS` 4, the `spare_tripod` row adds up to three, `CameraRigs.SPOTS` has a floor spot for each; adhoc-1013c U5, 06 P33): the base rig stands at the north wall (`SPOTS[0]`, (0, 0, -6.7) facing the table broadside, the one spot that frames the whole table; the old south-west spot is now spare tripod 1). Rig 1 is also what the left half of the wall TV shows live (`StreamTv`, 07 §2); a carried rig takes its picture with it.
+
+### `CeilingCam` (`Node3D`) — `src/gameplay/camera/ceiling_cam.gd`
+The fixed ceiling camera (adhoc-1013c U5): a small 3-surface pod (plate, body, lens barrel, glass, red tally) under the centre beam, lens straight down at the table, built by `CameraRigs` on every peer (`CameraRigs.ceiling`). **Not a rig and not scored**: it is not in `CameraRigs.rigs`, `CameraScorer` never sees it and it adds no `Camera_Mult` (F2 recalibrates the money; a free scored camera would have moved the economy). It hangs `OFFSET_Z = 0.36` m south of the table's centre because the table lamp's rod and shade hang from the same beam over that point and are never moved; the lamp (shade, cap, rod) is its own mesh on render layer 13 (`LAMP_LAYER`), which only the ceiling feed's cull mask leaves out, so it never blocks the picture. `fit_fov(aspect)` returns the vertical fov that holds the table's four outer rail corners with a 5 % margin (about 89 degrees for the 3:2 half-picture, 111 degrees across); its picture is the right half of the TV.
 
 ### `CueSpec` (`Resource`) — upgrade target, not a player design
 01's fields: `power_cap_speed_mps`, `spin_offset_radius`, `jump_unlocked`, `masse_unlocked`, `wobble_reduction`. `EconomyManager.build_cue_spec()` folds the owned cue items over the defaults (power `×(1+Σ)`, spin `×(1+Σ)`) and sets `PhysicsSim.active_cue`; the Player module decides how a phone gesture drives it.
@@ -41,7 +44,7 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 | `min_night` | `int` | gate |
 | `one_per_night` | `bool` | |
 | `persistent` | `bool` | survives a wipe into the next run (§3.7) |
-| `max_owned` | `int` | copies one run may hold; `1` for upgrades, `2` for `spare_tripod` (2 base + 2 = the 4-rig cap), `0` = repeatable (drinks) |
+| `max_owned` | `int` | copies one run may hold; `1` for upgrades, `3` for `spare_tripod` (1 base + 3 = the 4-rig cap), `0` = repeatable (drinks) |
 
 Non-drink `payload` is an `ItemDelta` (`src/gameplay/economy/item_delta.gd`): cue / ball-pool / ball-value / camera / table-`Effect` / stream deltas, folded over everything owned. The 16 Upgrades rows below are `.tres` under `src/resources/shop/`; each Drink is a `ShopItem` synthesised from the 03 catalog by `ShopCatalog` (price = `Drink.cost_cash`) but only reachable through the Bartender's shelf (§3.6).
 
@@ -111,7 +114,7 @@ Shot_Cash = (Raw_Points × Trick_Mult) × Camera_Mult × Event_Mult × Viewer_Sc
 ```
 - `Raw_Points` — sum of `BallType.base_value` for balls potted this shot, emitted by `PhysicsSim` (01). Penalty balls carry it negative.
 - `Trick_Mult` — the **single highest** trick multiplier detected on this shot (D5, never a sum). Mean over a Night ≈ `1.15 [tune]`.
-- `Camera_Mult` — `(1.0 + (tier_mult - 1.0) × view_quality) × stream_camera_bonus_mult`, where the winning rig is the one with the **best auto-scored view of the pocket the ball dropped into** (P2): `view_quality = clamp(occlusion_clear × distance_falloff × facing_dot, 0, 1)`, best score across all rigs wins. Cameras matter because friends move them, not because a menu says so. Implementation (`camera_scorer.gd`): the ray runs eye → pocket (+15 cm) and **ignores the balls' bodies** (walls, props and players are cover); `distance_falloff` = 1 inside 3 m, linear to 0 at 12 m `[tune]`; `facing_dot` = rig forward · direction to the pocket, floored at 0. The scored pocket is the one the Shot's highest-value ball fell in (`GameLoop` tracks it; a foul scores none → 1.0).
+- `Camera_Mult` — `(1.0 + (tier_mult - 1.0) × view_quality) × stream_camera_bonus_mult`, where the winning rig is the one with the **best auto-scored view of the pocket the ball dropped into** (P2): `view_quality = clamp(occlusion_clear × distance_falloff × facing_dot, 0, 1)`, best score across all rigs wins (the fixed `CeilingCam` is not a rig: it never scores, adhoc-1013c U5). Cameras matter because friends move them, not because a menu says so. Implementation (`camera_scorer.gd`): the ray runs eye → pocket (+15 cm) and **ignores the balls' bodies** (walls, props and players are cover); `distance_falloff` = 1 inside 3 m, linear to 0 at 12 m `[tune]`; `facing_dot` = rig forward · direction to the pocket, floored at 0. The scored pocket is the one the Shot's highest-value ball fell in (`GameLoop` tracks it; a foul scores none → 1.0).
 - `Event_Mult` — 03's `Reward = Drink_Mult × Event_Mult`, caps `2.0 / 3.0`.
 - `Viewer_Scalar` — **the one definition**: `1.0 + (viewers / 500.0) × (0.5 + 0.5 × hype)`.
 - `Point_To_Cash_Rate` — `0.3 [tune]` ($3 per 10 points). This is the single knob that moves every Night's ratio together; tune the curve with §3.4's table, not with this.
@@ -189,7 +192,7 @@ Each card shows the tier-coloured frame, the Drink's **icon** (a glass of its ow
 | `jump_cue` | cue | $500 | `jump_unlocked`, `masse_unlocked` |
 | `custom_tip` | cue | $250 | `wobble_reduction_deg 2.0` (floors at 0, per D6) |
 | `lens_t2` / `lens_t3` | camera | $400 / $800 | rig `tier` 2 / 3 → `tier_mult` 1.25 / 1.5 |
-| `spare_tripod` | camera | $500 | one more `CameraRig` to place (max 4) |
+| `spare_tripod` | camera | $500 | one more `CameraRig` to place (1 base + up to 3 = max 4; the ceiling camera is not a rig) |
 | `magnetic_pockets` | table | $600 | `pocket_radius_mult +0.10` |
 | `stream_overlay` | table | $500 | `base_viewers +150`, tip roll frequency ×1.5 |
 | `fresh_cloth` | table | $350 | `cloth_friction_mult ADD −0.02` |
@@ -267,8 +270,9 @@ src/
 │   ├── stream_manager.gd       # MainLevel child: viewers, hype, tips, Viewer_Scalar
 │   ├── camera/
 │   │   ├── camera_rig.gd       # grabbable tripod Node3D
+│   │   ├── ceiling_cam.gd      # the fixed top-down camera (not scored; feeds the TV)
 │   │   ├── camera_scorer.gd    # pocket-view auto-score (§3.2)
-│   │   └── cameras.gd          # MainLevel/Cameras: rigs, Camera_Mult, movement, 4 Hz poses
+│   │   └── cameras.gd          # MainLevel/Cameras: rigs + the ceiling camera, Camera_Mult, movement, 4 Hz poses
 │   ├── economy/
 │   │   ├── night_config.gd     # Resource (+ endless())
 │   │   ├── shop_item.gd        # Resource
@@ -314,6 +318,6 @@ src/
 |---|---|---|
 | Night loop | 5 Nights, table above, hard fail | endless `×1.6`, gangster variants |
 | Stream | the `Viewer_Scalar` formula + a viewer number on the HUD | chat, emotes, raids, tip personalities |
-| Cameras | 2 grabbable rigs, auto-scored pocket view | 4 rigs, drone cam, replay cuts |
+| Cameras | 1 grabbable rig (+ up to 3 spares) auto-scored for the pocket view, a fixed ceiling camera, both live on the wall TV | drone cam, replay cuts |
 | Shop | the Bartender: random tiered Drinks shelf + fixed Upgrades rows | bartender dialogue, haggling, per-tier stock events |
 | Persistence | `persistent` unlock list in `SaveProfile` | meta-progression tree, run seeds, leaderboards |

@@ -1,11 +1,13 @@
 class_name CameraRig
 extends Node3D
-## A grabbable tripod camera (docs/plan/02 §2). A prop: the view is scored by math, never rendered.
-## Looks along -Z rotated by its yaw, tilted down PITCH; the friend who last placed it chose the angle.
+## A grabbable tripod camera (docs/plan/02 §2). A prop: the view is scored by math; only the first rig is also rendered, live, on
+## the wall TV (StreamTv, 06 P33 U5). Looks along -Z rotated by its yaw, tilted down PITCH; the friend who last placed it chose the angle.
 
 const TIER_MULT: Array[float] = [1.0, 1.25, 1.5]  # tier 1 / 2 / 3 [tune]
 const EYE_HEIGHT := 1.5
 const PITCH := 0.35  # rad down
+const FEED_FOV := 58.0  # vertical degrees of the picture the TV shows (scoring ignores it)
+const LENS_FRONT := 0.36  # the feed camera sits this far along the lens axis: just in front of the glass, so the body never fills it
 const FOOT_RADIUS := 0.55  # tripod splay on the floor
 const HUB_Y := 1.1  # where the three legs meet
 const HEAD_Y := 1.4  # top of the pan plate; the body sits on it
@@ -41,6 +43,12 @@ func eye() -> Vector3:
 func forward() -> Vector3:
 	var yaw := rotation.y
 	return Vector3(-sin(yaw) * cos(PITCH), -sin(PITCH), -cos(yaw) * cos(PITCH))
+
+
+## Where the TV's feed camera stands: the lens, looking along `forward()` (a carried rig follows its holder, so does the picture).
+func feed_transform() -> Transform3D:
+	var f := forward()
+	return Transform3D(Basis.looking_at(f, Vector3.UP), eye() + f * LENS_FRONT)
 
 
 func aim_at(point: Vector3) -> void:

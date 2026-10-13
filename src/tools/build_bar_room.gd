@@ -208,10 +208,6 @@ func _run() -> void:
 	var prop_m := _pbr("prop", Color.WHITE, "metal", true, 0.6)  # white: every metal part carries its own paint in its vertex colour
 	var pink_m := _mat("neon_pink", Color.BLACK, 0.5, 0.0, Color(1.0, 0.15, 0.55), 3.0)
 	var cyan_m := _mat("neon_cyan", Color.BLACK, 0.5, 0.0, Color(0.1, 0.85, 1.0), 3.0)
-	var tv_m := _mat("tv_screen", Color.BLACK, 0.3, 0.0, Color.WHITE, 1.7)
-	tv_m.emission_operator = BaseMaterial3D.EMISSION_OP_MULTIPLY
-	tv_m.emission_texture = load("res://assets/decor/tv_screen.png")
-	_save_mat("tv_screen", tv_m)
 	var juke_m := _mat("jukebox_glass", Color.BLACK, 0.3, 0.0, Color(1.0, 0.6, 0.15), 2.5)
 
 	var s_floor := _st(floor_m, TILE.floor)
@@ -223,7 +219,7 @@ func _run() -> void:
 	var s_prop := _st(prop_m, TILE.metal)
 	var s_pink := _st(pink_m)
 	var s_cyan := _st(cyan_m)
-	var s_tv := _st(tv_m)
+	var s_lamp := _st(prop_m, TILE.metal)   # the table lamp: its own mesh on CeilingCam.LAMP_LAYER, so the ceiling feed can leave it out
 	var s_juke := _st(juke_m)
 
 	# --- floor ---
@@ -270,7 +266,7 @@ func _run() -> void:
 		_box(s_wood, Vector3(sx * (dw + 0.05), 1.18, -HALF + 0.06), Vector3(0.1, 2.36, 0.1))            # door frame posts
 	_cyl(s_prop, Vector3(0.65, 1.1, -HALF + 0.12), 0.025, 0.12, 8, BRASS)                              # door handle
 
-	# --- props: jukebox body, TV frame, fuse box, lamp, back-bar mounts (metal, painted by vertex colour) ---
+	# --- props: jukebox body, fuse box, lamp, back-bar mounts (metal, painted by vertex colour); the TV is a dynamic node, MainLevel/Tv ---
 	var stools: Array[Vector3] = [Vector3(0, 0, 0)]
 	for z in [1.0, 2.0, 3.0, 4.0]:
 		stools.append(Vector3(STOOL_X, 0, z))
@@ -281,17 +277,11 @@ func _run() -> void:
 	_taps(s_prop)
 	for i in stools.size():
 		_stool(s_seat, s_prop, stools[i], float(i * 47 % 360))
-	_box(s_prop, Vector3(0, 2.1, HALF - 0.06), Vector3(2.5, 1.5, 0.12), 0.0, DARK)                      # TV frame (south wall)
 	_box(s_prop, Vector3(-HALF + 0.08, 1.4, 5.8), Vector3(0.16, 0.5, 0.35), 0.0, DARK)                  # fuse box (flick_lights)
-	_lamp(s_prop)
+	_lamp(s_lamp)
 	_neon(s_pink, s_cyan, s_prop)
 
-	# --- screens (two surfaces): TV and jukebox glass ---
-	var tf := _wall_frame(&"S", 0.0, 2.1, 0.16)   # the TV picture: one quad, the whole broadcast still on it
-	var tc: Vector3 = tf.c
-	var tw: Vector3 = (tf.r as Vector3) * 1.15
-	var th := Vector3.UP * 0.65
-	_quad(s_tv, [tc - tw + th, tc + tw + th, tc + tw - th, tc - tw - th], [Vector2(0, 0), Vector2(1, 0), Vector2(1, 1), Vector2(0, 1)], tf.n)
+	# --- screen: the jukebox glass (the TV picture is live, MainLevel/Tv, StreamTv) ---
 	_box(s_juke, Vector3(6.16, 1.14, 5.8), Vector3(0.05, 0.56, 0.8))
 
 	# --- decor: CC0 props into the room's own surfaces + one atlas surface for flat colours and posters ---
@@ -304,7 +294,8 @@ func _run() -> void:
 	var seat_mesh := _bake_mesh("seats", [s_seat])
 	var prop_mesh := _bake_mesh("props", [s_prop])
 	var neon_mesh := _bake_mesh("neon", [s_pink, s_cyan])
-	var screen_mesh := _bake_mesh("screens", [s_tv, s_juke])
+	var screen_mesh := _bake_mesh("screens", [s_juke])
+	var lamp_mesh := _bake_mesh("lamp", [s_lamp])
 	var decor_st: SurfaceTool = decor.st
 	decor.mesh = _bake_mesh("decor", [decor_st])
 
@@ -320,6 +311,15 @@ func _run() -> void:
 		mi.gi_mode = GeometryInstance3D.GI_MODE_STATIC
 		mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF  # 07 §2: props never cast into the one shadow map
 		_add(geo, mi, e[0])
+
+	# The table lamp is not in Geometry: its render layer is CeilingCam.LAMP_LAYER alone (not layer 1), which only the ceiling feed's
+	# cull mask leaves out; every other camera sees it (the player's mask is all layers, the tripod feed adds it, Mirror.tag adds ROOM_LAYER).
+	var lamp_mi := MeshInstance3D.new()
+	lamp_mi.mesh = lamp_mesh
+	lamp_mi.gi_mode = GeometryInstance3D.GI_MODE_STATIC
+	lamp_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	lamp_mi.layers = CeilingCam.LAMP_LAYER
+	_add(root_n, lamp_mi, "Lamp")
 
 	_add_decor(root_n, decor)
 	_build_collision(root_n, counter_z0, counter_len, stools, decor.boxes)
@@ -415,12 +415,13 @@ func _taps(s_prop: SurfaceTool) -> void:
 
 
 ## The pool-hall lamp over the table: green cone shade with a cream lining, rod to the ceiling. The light itself is a node.
-func _lamp(s_prop: SurfaceTool) -> void:
+## Shade, cap and rod go into their own surface (the `Lamp` mesh on CeilingCam.LAMP_LAYER), never moved, so the ceiling camera can cull them.
+func _lamp(s_lamp: SurfaceTool) -> void:
 	var c := Vector3(0, 0, -3.5)
-	_lathe(s_prop, c, [Vector2(0.55, 2.95), Vector2(0.14, 3.22)], 20, Color(0.05, 0.22, 0.13))
-	_lathe(s_prop, c, [Vector2(0.14, 3.22), Vector2(0.13, 3.19), Vector2(0.545, 2.93), Vector2(0.55, 2.95)], 20, Color(0.75, 0.62, 0.42))
-	_box(s_prop, Vector3(0, 3.41, -3.5), Vector3(0.04, 0.38, 0.04), 0.0, DARK)                  # rod
-	_cyl(s_prop, Vector3(0, 3.22, -3.5), 0.07, 0.06, 10, BRASS)                                  # cap
+	_lathe(s_lamp, c, [Vector2(0.55, 2.95), Vector2(0.14, 3.22)], 20, Color(0.05, 0.22, 0.13))
+	_lathe(s_lamp, c, [Vector2(0.14, 3.22), Vector2(0.13, 3.19), Vector2(0.545, 2.93), Vector2(0.55, 2.95)], 20, Color(0.75, 0.62, 0.42))
+	_box(s_lamp, Vector3(0, 3.41, -3.5), Vector3(0.04, 0.38, 0.04), 0.0, DARK)                  # rod
+	_cyl(s_lamp, Vector3(0, 3.22, -3.5), 0.07, 0.06, 10, BRASS)                                  # cap
 
 
 ## Neon as real tubes on dark backing plates, sized to DecorPlan.wall_keep_clear's sign rects.
@@ -491,7 +492,7 @@ func _light(root_n: Node3D, nm: String, pos: Vector3, color: Color, energy: floa
 
 
 func _build_lights(root_n: Node3D) -> void:
-	# 3 realtime lights max, 1 shadowed (07 §2): the table lamp spot + one bar fill. Neon/TV/jukebox are baked.
+	# 3 realtime lights max, 1 shadowed (07 §2): the table lamp spot + one bar fill. Neon/jukebox and the TV's glow (BakedTV: the picture itself is live, StreamTv) are baked.
 	var spot := SpotLight3D.new()
 	spot.position = Vector3(0, 2.95, -3.5)
 	spot.rotation_degrees = Vector3(-90, 0, 0)
@@ -519,7 +520,7 @@ func _build_lights(root_n: Node3D) -> void:
 		rp.box_projection = true
 		rp.update_mode = ReflectionProbe.UPDATE_ONCE  # Godot 4 has no baked-probe asset: captured once at load
 		rp.intensity = 0.6
-		rp.cull_mask = 1
+		rp.cull_mask = 1 | CeilingCam.LAMP_LAYER  # the lamp is on its own layer, still reflected
 		_add(root_n, rp, p[0])
 
 

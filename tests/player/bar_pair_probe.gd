@@ -129,7 +129,7 @@ func _host() -> void:
 	# camera rig: the host carries it, the client cannot take it, then it is placed and the client can
 	world.clock = func() -> int: return _fake_ms
 	var rig := cams.rigs[0]
-	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
+	_stand_at(rig.global_position + Vector3(-0.1, 0.05, 0.4))  # the base tripod stands at the north wall: in front of it, in the room
 	await _until(func() -> bool: return player.prompt == "Grab camera", "host sees the grab prompt", 5.0)
 	player.interact()
 	await _until(func() -> bool: return player.mode == Player.Mode.CARRY and rig.held_by == 1, "host CARRY", 5.0)
@@ -186,7 +186,7 @@ func _client() -> void:
 	_flag("client_tried")
 	await _wait_flag("host_placed")
 	await _until(func() -> bool: return rig.held_by == 0, "mirrored: rig free", 5.0)
-	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
+	_stand_at(rig.global_position + Vector3(-0.1, 0.05, 0.4))  # the base tripod stands at the north wall: in front of it, in the room
 	await _until(func() -> bool: return player.prompt == "Grab camera", "grab prompt on the placed rig", 5.0)
 	# The host judges reach from this peer's streamed pose, and ENet throttles unreliable packets for seconds once the
 	# idle 30 fps downclock raises the round trip: ask again until the host has seen us (a refusal is `too_far`).

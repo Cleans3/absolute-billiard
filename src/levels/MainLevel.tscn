@@ -35,6 +35,7 @@
 [ext_resource type="Script" path="res://src/ui/story_cards.gd" id="story_cards"]
 [ext_resource type="Script" path="res://src/ui/slot_screen.gd" id="slot_screen"]
 [ext_resource type="Script" path="res://src/gameplay/fx/impact_fx.gd" id="impact_fx"]
+[ext_resource type="Script" path="res://src/gameplay/bar/stream_tv.gd" id="stream_tv"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -151,6 +152,11 @@ economy = NodePath("../EconomyManager")
 world = NodePath("../WorldInteractions")
 round_director = NodePath("../RoundDirector")
 spawner = NodePath("../PlayerSpawner")
+
+[node name="Tv" type="Node3D" parent="." node_paths=PackedStringArray("cameras")]
+transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 2.1, 7)
+script = ExtResource("stream_tv")
+cameras = NodePath("../Cameras")
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 

@@ -34,6 +34,7 @@ func _run() -> void:
 	_skins(room)
 	await _felt()
 	await _rig()
+	await _pod()
 	if _fails > 0:
 		printerr("BAR ROOM PROBE FAILED: %d" % _fails)
 		quit(1)
@@ -272,3 +273,26 @@ func _rig() -> void:
 	_check(emissive == 1, "exactly one emissive surface (the tally light)")
 	_check(model.mesh.get_aabb().size.y > 1.4 and model.mesh.get_aabb().size.x > 0.8, "tripod spans the camera eye height and splays")
 	rig.queue_free()
+
+
+## adhoc-1013c W4: the ceiling camera's pod is a 3-surface prop like a tripod (authored materials, one tally light, not STATIC), small, and
+## hangs from the beam: its plate is flush with the beam underside and nothing of it is below the lens.
+func _pod() -> void:
+	var pod := CeilingCam.new()
+	root.add_child(pod)
+	await process_frame
+	var model := pod.get_node("Model") as MeshInstance3D
+	_check(model != null and model.mesh.get_surface_count() == 3, "pod is one mesh, 3 surfaces")
+	_check(model.gi_mode != GeometryInstance3D.GI_MODE_STATIC, "pod gi_mode is not STATIC (no UV2)")
+	var emissive := 0
+	for i in model.mesh.get_surface_count():
+		var m := model.mesh.surface_get_material(i) as StandardMaterial3D
+		_check(m != null, "pod surface %d has an authored material" % i)
+		if m != null and m.emission_enabled:
+			emissive += 1
+	_check(emissive == 1, "exactly one emissive surface on the pod (the tally light)")
+	var box := model.mesh.get_aabb()
+	_check(box.size.x < 0.3 and box.size.z < 0.35 and box.size.y < 0.25, "the pod is small: %s" % box.size)
+	_check(box.position.y >= -0.001 and absf(box.end.y - CeilingCam.HANG) < 0.002, "the lens is the lowest point and the plate sits at the beam (%.3f .. %.3f, hang %.2f)" % [box.position.y, box.end.y, CeilingCam.HANG])
+	_check(absf(CeilingCam.EYE_Y + CeilingCam.HANG - CeilingCam.BEAM_Y) < 1e-6 and CeilingCam.BEAM_Y < DecorPlan.CEIL, "the pod hangs from the centre beam's underside, below the ceiling slab")
+	pod.queue_free()

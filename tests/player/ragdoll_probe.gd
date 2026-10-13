@@ -297,7 +297,7 @@ func _player() -> void:
 	# CARRY is left too (the rig is asked down at the feet through the usual path)
 	var cams: CameraRigs = level.get_node("Cameras")
 	var rig := cams.rigs[0]
-	player.global_position = rig.global_position + Vector3(-0.1, 0.05, -0.4)
+	player.global_position = rig.global_position + Vector3(-0.1, 0.05, 0.4)  # the base tripod stands at the north wall: in front of it, in the room
 	await _wait(0.3)
 	var world: WorldInteractions = level.get_node("WorldInteractions")
 	var fake_ms := [Time.get_ticks_msec()]

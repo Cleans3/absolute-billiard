@@ -161,7 +161,7 @@ static func floor_keep_clear() -> Array[Rect2]:
 ## Wall rects keyed by wall letter; Rect2 position = (along, y), size = (width, height).
 static func wall_keep_clear() -> Dictionary:
 	return {
-		&"S": [Rect2(-1.6, 1.25, 3.2, 1.7)],                # TV
+		&"S": [Rect2(-2.05, 1.3, 4.1, 1.6)],                # TV: StreamTv.FRAME 4.0 x 1.48 centred at y 2.1, +0.05 m a side (tests/world/tv_probe.gd keeps them in step)
 		&"N": [Rect2(-1.2, 0.0, 2.4, 2.6),                  # door + frame
 				Rect2(-4.3, 2.6, 2.6, 0.5), Rect2(2.1, 2.5, 1.8, 0.7)],  # neon signs
 		&"E": [Rect2(-5.4, 0.77, 3.8, 2.36), Rect2(0.3, 0.0, 4.4, 3.6)],   # blackboard y 1.07..2.83 (+0.3) ; counter + back bar panel
