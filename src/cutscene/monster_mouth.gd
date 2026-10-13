@@ -37,6 +37,7 @@ var _glow_lip: OmniLight3D
 var _jitter: Array[Vector3] = []  ## per tooth: angle jitter, length scale, radius jitter
 var _tooth_ring: Array[int] = []
 var _tooth_angle: Array[float] = []
+var tooth_xf: Array[Transform3D] = []  ## where `_pose_teeth` put each tooth (a headless run has no MultiMesh storage to ask; probes read this)
 var _built := false
 
 
@@ -209,6 +210,7 @@ func _build_teeth(rng: RandomNumberGenerator) -> void:
 func _pose_teeth() -> void:
 	if _teeth == null:
 		return
+	tooth_xf.resize(_tooth_ring.size())
 	for i in _tooth_ring.size():
 		var ring: Array = RINGS[_tooth_ring[i]]
 		var y: float = ring[1]
@@ -224,4 +226,5 @@ func _pose_teeth() -> void:
 		var up := (Vector3.UP * cos(tilt) - d * sin(tilt)).normalized()  # leans toward the axis
 		var tangent := Vector3(-sin(a), 0.0, cos(a))
 		var orient := Basis(tangent * size, up * size, tangent.cross(up) * size)
-		_teeth.set_instance_transform(i, Transform3D(orient, d * radius + Vector3(0.0, y + 0.35 * closed * bend, 0.0)))
+		tooth_xf[i] = Transform3D(orient, d * radius + Vector3(0.0, y + 0.35 * closed * bend, 0.0))
+		_teeth.set_instance_transform(i, tooth_xf[i])

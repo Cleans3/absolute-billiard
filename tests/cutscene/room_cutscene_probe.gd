@@ -288,9 +288,9 @@ func _intro_once() -> void:
 	_check(cards.is_open(), "...and Night 1's story cards follow")
 	_check(player.global_position.is_equal_approx(home) and player.is_physics_processing() and player.humanoid.is_physics_processing() and player.visible, "everyone is home and back in the game")
 	_check(player.humanoid.transform.is_equal_approx(Transform3D.IDENTITY) and door.is_locked(), "...upright, the door shut and bolted for the whole session")
-	_check((level.get_node("UILayer/HUD") as Control).visible, "the HUD is back")
 	cards.close()
 	await _frames(2)
+	_check((level.get_node("UILayer/HUD") as Control).visible, "the HUD is back (it hides itself under the story cards, so after they close)")
 	loop._begin_night()  # the next Night: no second intro
 	await _frames(3)
 	_check(not cs.is_playing() and not director.is_busy(), "the intro plays once: Night 2 does not replay it")

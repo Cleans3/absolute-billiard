@@ -16,6 +16,7 @@ var dock: Control  ## the bottom strip a card (the run's stats) is added to; it 
 
 
 func _init() -> void:
+	super()  # a subclass _init does not call UIModal's by itself: without it the shell is not in group ui_modal and the router never sees it
 	dim = false
 	priority = 100
 	keep_on_phase = true  # a phase change under a cutscene must not close it

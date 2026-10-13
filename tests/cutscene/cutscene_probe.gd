@@ -310,9 +310,9 @@ func _mouth() -> void:
 	_check(lip.get_aabb().size.x <= 3.0 and throat.get_aabb().size.x <= 3.0 and absf(MonsterMouth.WIDTH_M - lip.get_aabb().size.x) < 0.1, "mouth: %.2f m across, fits a 3 m shaft" % lip.get_aabb().size.x)
 	_check(throat.get_aabb().position.y <= -MonsterMouth.DEPTH_M and tongue.mesh != null and teeth.multimesh.instance_count == 50, "mouth: a %.1f m throat, a tongue, 50 teeth in one MultiMesh" % MonsterMouth.DEPTH_M)
 	_check(throat.material_override is ShaderMaterial and lip.material_override is ShaderMaterial, "mouth: the wet flesh shader")
-	var open_tooth := teeth.multimesh.get_instance_transform(0)
+	var open_tooth := m.tooth_xf[0]  # (a headless MultiMesh cannot be asked)
 	m.close_amount = 1.0
-	var shut_tooth := teeth.multimesh.get_instance_transform(0)
+	var shut_tooth := m.tooth_xf[0]
 	_check(not open_tooth.is_equal_approx(shut_tooth) and shut_tooth.origin.length() < open_tooth.origin.length(), "mouth: closing pulls the outer teeth in over the throat")
 	m.close_amount = 0.0
 	var a := tongue.position
