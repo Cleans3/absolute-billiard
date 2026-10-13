@@ -43,10 +43,14 @@ var table: Table                # pocket ids for call-pocket, optional
 var controls: TouchControls     # optional: headless probes and puppets have none
 var player: Node                # Player: pinned to the aim line while active
 var ball: Ball
+## The aim guide (01 §3): this shooter's own, drawn from the live intent while CUE is active. Puppet cues have none.
+var guide: ShotGuide
 
 var _t := 0.0
 var _stat_wait := 0.0
 var _wobble_deg := 0.0
+var _spin_radius := 0.35        # CueSpec.spin_offset_radius as the shooter's stats resolve it (what Ball.strike offsets the tip by)
+var _guide_intent := ShotIntent.new()
 
 @onready var cue_mesh: MeshInstance3D = $CueMesh
 @onready var _cue_len: float = (cue_mesh.mesh as CylinderMesh).height
@@ -55,6 +59,8 @@ var _wobble_deg := 0.0
 func _ready() -> void:
 	cue_mesh.top_level = true
 	cue_mesh.hide()
+	guide = ShotGuide.new()
+	add_child(guide)
 	set_process(false)
 	set_process_unhandled_input(false)
 
@@ -83,6 +89,8 @@ func end() -> void:
 	charging = false
 	power = 0.0
 	cue_mesh.hide()
+	if guide != null:
+		guide.clear()
 	set_process(false)
 	set_process_unhandled_input(false)
 	if controls != null:
@@ -93,6 +101,7 @@ func end() -> void:
 func refresh_stats() -> void:
 	_wobble_deg = maxf(0.0, _stat(&"cue_aim_wobble_deg", 0.0) - cue_spec.wobble_reduction)
 	call_required = _stat(&"rule_call_pocket", 0.0) > 0.0
+	_spin_radius = _stat(&"cue_spin_radius_mult", cue_spec.spin_offset_radius)
 	_stat_wait = STAT_PERIOD
 
 
@@ -222,19 +231,40 @@ func _process(delta: float) -> void:
 	if e != 0.0 and not UIRouter.blocking():
 		set_elevation(elevation_deg + e * elevation_rate_deg * delta)
 	_pose_cue()
+	_update_guide()
 	if player != null:
 		player.call(&"pin_to_cue", ball.global_position, aim_yaw)
 	_push_ui()
 
 
-## Cue in world space along the (swayed) aim, tip at the ball, butt up by the elevation.
+## Cue in world space along the (swayed) aim, butt up by the elevation the strike will really use, tip on the spot the spin
+## offset names: the same `right * side + up * follow` x radius x spin radius as `Ball.plan_strike`, so what the cue shows is
+## what the ball gets (08 §2.2). Puppets' cues have no spin to show (it is not on the wire).
 func _pose_cue() -> void:
 	var yaw := swayed_yaw()
 	var aim3 := Vector3(-sin(yaw), 0.0, -cos(yaw))
 	var right := aim3.cross(Vector3.UP)
-	var d := aim3.rotated(right, -deg_to_rad(elevation_deg))
-	var tip := ball.global_position - d * (ball.radius + CUE_GAP_M + power * ball.radius * PULLBACK_RADII)
+	var d := aim3.rotated(right, -deg_to_rad(Ball.effective_elevation(elevation_deg, spin, cue_spec)))
+	var up_c := right.cross(d).normalized()  # "top of the ball" as the cue sees it
+	var strike_at := ball.global_position + (right * spin.x + up_c * spin.y) * ball.radius * _spin_radius
+	var tip := strike_at - d * (ball.radius + CUE_GAP_M + power * ball.radius * PULLBACK_RADII)
 	cue_mesh.global_transform = Transform3D(Basis(right, d, right.cross(d)), tip - d * (_cue_len * 0.5))
+
+
+## The aim guide follows the live intent: the swayed yaw, the charged power (a fixed preview before any is charged), spin and
+## elevation. Rebuilt by `ShotGuide` only when one of them changed.
+func _update_guide() -> void:
+	if guide == null:
+		return
+	var swayed := swayed_yaw()
+	var elev := Ball.effective_elevation(elevation_deg, spin, cue_spec)
+	var preview := power < ShotGuide.PREVIEW_BELOW
+	_guide_intent.aim_dir = Vector2(-sin(swayed), -cos(swayed))
+	_guide_intent.power = (ShotGuide.PREVIEW_POWER_JUMP if elev >= Ball.JUMP_MIN_ELEVATION_DEG else ShotGuide.PREVIEW_POWER) if preview else power
+	_guide_intent.spin_offset = spin
+	_guide_intent.elevation_deg = elevation_deg
+	_guide_intent.shooter_id = multiplayer.get_unique_id()
+	guide.update(ball, _guide_intent, cue_spec, table, preview)
 
 
 func _push_ui() -> void:

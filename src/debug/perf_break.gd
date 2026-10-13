@@ -94,8 +94,8 @@ func _run() -> void:
 	check("pocket_sensors_on_at_rest", sensors_on, 0, "<=", "areas", false, hard)
 	check("bodies_active_at_rest", active_rest, 0, "<=", "bodies", false, hard)
 	check("contacts_per_step_peak", _pairs_peak, 40, "<=", "contacts", false, hard)
-	check("ccd_bodies_peak", _cd_peak, 3, "<=", "bodies", false, hard)  # was 2: the break now hands the rack's energy on (BallCollisions), a third ball clears the CCD speed
-	check("events_per_shot_max", max_events, 400 if stat_fx else 200, "<=", "events")
+	check("ccd_bodies_peak", _cd_peak, 12, "<=", "bodies", false, hard)  # was 3 at a 10 m/s cap (2 before BallCollisions): the 20 m/s break throws most of the rack past ccd_speed_mps (5.5) at once for ~0.5 s; CCD is the tunnelling guard, its cost is gated by jolt_step_live_mean
+	check("events_per_shot_max", max_events, 700 if stat_fx else 450, "<=", "events")  # was 400 / 200 at a 10 m/s cap; PROVISIONAL until measured (07 §3 W2 note)
 	check("strike_to_rest_max", _max(rest_s), 10.0, "<=", "s", false, hard)  # was 9: rolling resistance 0.035 -> 0.025 and no damping; RoundDirector.SHOT_CEILING_SEC is 12
 	check("off_table_or_fell", off_table + _fell, 0, "<=", "balls")
 	check("ball_count_delta", absi(tree_balls - balls.size()), 0, "<=", "balls")

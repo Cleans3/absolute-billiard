@@ -41,6 +41,7 @@ var pre_solve_velocity := Vector3.ZERO  # linear velocity at the start of the cu
 var sim: PhysicsSim  # set by PhysicsSim.register; null = stock TableSpec values
 var _base_mass := 0.0
 var _ccd_speed := 0.0  # spec.ccd_speed_mps is derived; read once (apply_spec), not per tick
+var _max_speed := 24.0  # spec.max_ball_speed_mps, read once (apply_spec)
 var _pending_rail_id: StringName
 var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
 
@@ -81,6 +82,7 @@ func apply_spec() -> void:
 	angular_damp_mode = RigidBody3D.DAMP_MODE_REPLACE
 	angular_damp = spec.ball_angular_damp
 	_ccd_speed = spec.ccd_speed_mps
+	_max_speed = spec.max_ball_speed_mps
 
 
 ## A cushion or jaw was touched this step or is being touched (PhysicsSim leaves such a cluster to Jolt).
@@ -109,30 +111,59 @@ static func effective_elevation(deg: float, spin: Vector2, cue: CueSpec) -> floa
 	return elevation
 
 
-func strike(intent: ShotIntent, cue: CueSpec) -> void:
+## What a strike gives the ball before the bed answers. `strike` and the shot guide both read it, so what the guide draws is
+## the formula the host fires, not a copy of it.
+class Plan extends RefCounted:
+	var aim3 := Vector3.ZERO   ## cue direction, unit; an elevated cue points down into the cloth
+	var speed := 0.0           ## m/s the impulse gives the ball (impulse / mass: independent of the ball's mass)
+	var offset := Vector3.ZERO ## where the tip hits, relative to the ball centre: the spin offset, then torque = offset x impulse
+	var elevation_deg := 0.0   ## after `effective_elevation`
+	var jump := false
+	var masse := false
+	var miscue := false        ## spin past the cue's threshold: a third of the power and a scattered aim
+
+
+## `power_mult` / `spin_radius` are the shooter's resolved stats (`sim.stat`); `random_miscue` scatters the aim of a miscue (the host
+## does, a preview must not).
+static func plan_strike(intent: ShotIntent, cue: CueSpec, radius: float, max_speed: float, power_mult := 1.0, spin_radius := -1.0, random_miscue := false) -> Plan:
+	var plan := Plan.new()
 	var aim := intent.aim_dir.normalized()
-	var power := clampf(intent.power, 0.0, 1.0)
-	var spin_radius := cue.spin_offset_radius
-	if sim != null:
-		power *= sim.stat(&"cue_power_mult", intent.shooter_id, 1.0)
-		spin_radius = sim.stat(&"cue_spin_radius_mult", intent.shooter_id, spin_radius)
+	var power := clampf(intent.power, 0.0, 1.0) * power_mult
 	var spin := intent.spin_offset.limit_length(1.0)
-	var elevation := effective_elevation(intent.elevation_deg, spin, cue)
-	intent.jump = cue.jump_unlocked and power >= 0.70 and elevation >= JUMP_MIN_ELEVATION_DEG
-	intent.masse = cue.masse_unlocked and elevation >= MASSE_MIN_ELEVATION_DEG and spin.length() >= MASSE_MIN_SPIN
+	var spin_r := cue.spin_offset_radius if spin_radius < 0.0 else spin_radius
+	plan.elevation_deg = effective_elevation(intent.elevation_deg, spin, cue)
+	plan.jump = cue.jump_unlocked and power >= 0.70 and plan.elevation_deg >= JUMP_MIN_ELEVATION_DEG
+	plan.masse = cue.masse_unlocked and plan.elevation_deg >= MASSE_MIN_ELEVATION_DEG and spin.length() >= MASSE_MIN_SPIN
+	plan.speed = cue.speed_at(power)
 	if spin.length() > cue.miscue_threshold:
-		power *= MISCUE_POWER_SCALE
-		aim = aim.rotated(deg_to_rad(randf_range(-MISCUE_SCATTER_DEG, MISCUE_SCATTER_DEG)))
+		plan.miscue = true
+		plan.speed *= MISCUE_POWER_SCALE
+		if random_miscue:
+			aim = aim.rotated(deg_to_rad(randf_range(-MISCUE_SCATTER_DEG, MISCUE_SCATTER_DEG)))
+	plan.speed = minf(plan.speed, max_speed)  # nothing outruns the colliders (TableSpec.max_ball_speed_mps)
 	var aim3 := Vector3(aim.x, 0.0, aim.y)
 	var right := aim3.cross(Vector3.UP).normalized()
-	if elevation > 0.0:
-		aim3 = aim3.rotated(right, -deg_to_rad(elevation))
+	if plan.elevation_deg > 0.0:
+		aim3 = aim3.rotated(right, -deg_to_rad(plan.elevation_deg))
 	var up_c := right.cross(aim3).normalized()  # "top of the ball" as the cue sees it
-	var offset := -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * spin_radius
+	plan.aim3 = aim3
+	plan.offset = -aim3 * radius + (right * spin.x + up_c * spin.y) * radius * spin_r
+	return plan
+
+
+func strike(intent: ShotIntent, cue: CueSpec) -> void:
+	var power_mult := 1.0
+	var spin_radius := cue.spin_offset_radius
+	if sim != null:
+		power_mult = sim.stat(&"cue_power_mult", intent.shooter_id, 1.0)
+		spin_radius = sim.stat(&"cue_spin_radius_mult", intent.shooter_id, spin_radius)
+	var plan := plan_strike(intent, cue, radius, spec.max_ball_speed_mps, power_mult, spin_radius, true)
+	intent.jump = plan.jump
+	intent.masse = plan.masse
 	freeze = false  # resting balls are frozen (PhysicsSim); an impulse on a frozen body is dropped
 	sleeping = false
 	_set_resting(false)
-	apply_impulse(aim3 * power * mass * cue.power_cap_speed_mps, offset)
+	apply_impulse(plan.aim3 * plan.speed * mass, plan.offset)
 	struck.emit(self, intent)
 
 
@@ -285,6 +316,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	_was_touching_wall = touching_wall
 	var v := state.linear_velocity
 	var speed := v.length()
+	if speed > _max_speed:  # a step must never carry a ball through a collider: a heavy cue ball into a light one, a blast
+		v *= _max_speed / speed
+		state.linear_velocity = v
+		speed = _max_speed
 	if speed < spec.rest_speed_mps and state.angular_velocity.length() < spec.rest_ang_rad_s:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO

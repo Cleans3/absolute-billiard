@@ -4,7 +4,8 @@
 
 [resource]
 script = ExtResource("1")
-power_cap_speed_mps = 10.0
+power_cap_speed_mps = 20.0
+power_top_boost = 0.5
 spin_offset_radius = 0.35
 jump_unlocked = true
 masse_unlocked = true

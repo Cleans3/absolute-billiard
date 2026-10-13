@@ -1,11 +1,11 @@
 class_name RackDropper
 extends RefCounted
 
-## Seeded Bridson Poisson-disk drop (01 §3) and the clear-spot search RoundDirector reuses for
+## Seeded Bridson Poisson-disk drop (01 §3), kept as a formation round the foot spot, and the clear-spot search RoundDirector reuses for
 ## respawns. Positions are table-local Vector2(x, z); nothing here knows a metre, only ball radii.
 
 const TYPE_DIR := "res://src/resources/ball_types/"
-const SPACING_RADII := 2.4       # Bridson minimum spacing r, in ball radii
+const SPACING_RADII := 2.2       # Bridson minimum spacing r, in ball radii (2.4 before the formation rack: a looser pack passes less of the break on)
 const POCKET_KEEPOUT_RADII := 0.35  # clear ring past a pocket hole + ball radius, in ball radii
 const CANDIDATES := 30           # Bridson k
 const SHRINK := 0.95             # spacing multiplier when a sample comes up short
@@ -35,12 +35,10 @@ static func drop(spec: TableSpec, layout: TableLayout, config: NightConfig, seed
 		r = maxf(r * SHRINK, floor_r)
 		points = poisson(interior(spec), r, rng, [head], keepouts(spec, layout))
 	assert(points.size() >= n, "table too small for %d balls" % n)
-	# seeded Fisher-Yates (Array.shuffle uses the global RNG), keep n, most open spots first
-	for i in range(points.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var t := points[i]
-		points[i] = points[j]
-		points[j] = t
+	# The rack is a formation: the n samples nearest the foot spot, most open spots first. The table-wide scatter this replaced left
+	# the cue ball one or two balls to hit (adhoc-1013c U12: a full-power break moved 12-20 % of the balls, a formation 85-95 %).
+	var foot := Vector2(layout.spots.foot.x, layout.spots.foot.z)
+	points.sort_custom(func(a: Vector2, b: Vector2) -> bool: return a.distance_squared_to(foot) < b.distance_squared_to(foot))
 	points.resize(n)
 
 	# 06 P31: the black ball opens the Round in the middle of the formation; the rest are dealt by openness as before.

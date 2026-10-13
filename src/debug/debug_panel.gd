@@ -21,7 +21,7 @@ const STAT_RANGES := {
 	&"cue_ball_mass_mult": Vector3(0.2, 5.0, 0.05), &"table_tilt_deg": Vector3(0.0, 8.0, 0.1),
 }
 const CUE_RANGES := {
-	&"power_cap_speed_mps": Vector3(2.0, 25.0, 0.5), &"spin_offset_radius": Vector3(0.0, 0.6, 0.01), &"miscue_threshold": Vector3(0.5, 1.0, 0.01),
+	&"power_cap_speed_mps": Vector3(2.0, 40.0, 0.5), &"power_top_boost": Vector3(0.0, 1.0, 0.01), &"spin_offset_radius": Vector3(0.0, 0.6, 0.01), &"miscue_threshold": Vector3(0.5, 1.0, 0.01),
 }
 const TIMESCALES := [1.0, 0.5, 0.25, 0.1, 2.0]
 

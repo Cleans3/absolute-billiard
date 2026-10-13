@@ -5,7 +5,7 @@ extends RefCounted
 ## Frame: `shot_id u16 | base_tick u32 | count u8` then `count` × 21-byte events:
 ## `id_flags u8 | tick_offset u16 | pos 3×s16 | lin 3×s16 | ang 3×s16`, all little-endian.
 ## id_flags = ball_id (6 bits, < 64) | flag << 6. Fixed-point: pos 0.1 mm (±3.27 m about `origin`),
-## lin 0.5 mm/s (±16.3 m/s), ang 0.02 rad/s (±655 rad/s). tick_offset counts LIVE_TICK ticks.
+## lin 1 mm/s (±32.7 m/s: the 24 m/s speed ceiling fits), ang 1/32 rad/s (±1023 rad/s). tick_offset counts LIVE_TICK ticks.
 
 enum Flag { NONE, POCKETED, RETIRED, RESTORED }
 
@@ -13,8 +13,8 @@ const HEADER_SIZE := 7
 const EVENT_SIZE := 21
 const MAX_BALLS := 64
 const POS_SCALE := 10000.0
-const LIN_SCALE := 2000.0
-const ANG_SCALE := 50.0
+const LIN_SCALE := 1000.0
+const ANG_SCALE := 32.0
 
 
 static func begin(buf: PackedByteArray, shot_id: int, base_tick: int) -> void:

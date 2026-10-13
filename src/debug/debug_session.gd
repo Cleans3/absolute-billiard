@@ -17,7 +17,7 @@ signal said(text: String)  ## one line of feedback for the panel's status bar
 const SETTLE_SEC := 6.0  ## restored balls drop their clearance and come to rest well inside this
 const MAX_RECORDS := 60
 const PRESETS := ["break", "straight_in", "cut", "stun"]
-const CUE_FIELDS := [&"power_cap_speed_mps", &"spin_offset_radius", &"miscue_threshold"]
+const CUE_FIELDS := [&"power_cap_speed_mps", &"power_top_boost", &"spin_offset_radius", &"miscue_threshold"]
 const STATS := [&"cloth_friction_mult", &"cushion_restitution_mult", &"cue_ball_mass_mult", &"table_tilt_deg"]
 const PRESET_TYPES := {
 	cue = preload("res://src/resources/ball_types/cue.tres"),

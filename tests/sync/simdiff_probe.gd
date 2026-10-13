@@ -11,8 +11,8 @@ const CUE_T := preload("res://src/resources/ball_types/cue.tres")
 const RED_T := preload("res://src/resources/ball_types/red_basic.tres")
 const GATE_M := 0.005
 const MIN_CONTACTS := 40
-const EVENT_BUDGET := 220  # 07 §3, plain break (06 P30: each pot's drop rides the divergence stream)
-const MODDED_EVENT_CEILING := 400  # drinks lengthen shots (108 vs 81 contacts); alpha decides whether 07 §3 flexes
+const EVENT_BUDGET := 450  # 07 §3, plain break: was 220 at a 10 m/s cap (06 P30: each pot's drop rides the divergence stream); the 20 m/s break moves every ball and bounces it off the rails, PROVISIONAL until measured (07 §3 W2 note)
+const MODDED_EVENT_CEILING := 700  # drinks lengthen shots (108 vs 81 contacts); was 400
 
 var table: Table
 var contacts := 0

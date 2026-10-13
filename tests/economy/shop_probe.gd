@@ -206,7 +206,7 @@ func _upgrades() -> void:
 	for id in [&"heavy_shaft", &"chalk_tin", &"jump_cue", &"custom_tip"]:
 		_check(eco.try_purchase(id, 1), "buy %s" % id)
 	var spec := eco.build_cue_spec()
-	_check(is_equal_approx(spec.power_cap_speed_mps, 11.5), "heavy_shaft: power cap ×1.15 (got %s)" % spec.power_cap_speed_mps)
+	_check(is_equal_approx(spec.power_cap_speed_mps, CueSpec.new().power_cap_speed_mps * 1.15), "heavy_shaft: power cap ×1.15 (got %s)" % spec.power_cap_speed_mps)
 	_check(is_equal_approx(spec.spin_offset_radius, 0.42), "chalk_tin: spin radius ×1.20 (got %s)" % spec.spin_offset_radius)
 	_check(spec.jump_unlocked and spec.masse_unlocked and is_equal_approx(spec.wobble_reduction, 2.0), "jump/masse/wobble")
 	var base: Array[StringName] = [&"red_basic", &"black_penalty"]
