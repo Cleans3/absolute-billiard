@@ -32,7 +32,7 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | WorldInteractions (03) | `answer_phone` → `world_interaction_applied` (every peer) | StoryDirector (09) plays Moe's call at the phone; `BartenderChat` holds Gus |
 | WorldInteractions (03) | `slot_spin` → `world_interaction_applied` with the host-rolled result (every peer) | SlotMachine plays the drums, SlotScreen words the win (02 §3.9); Cash (`slot`) and chaos Effects reach clients through their own mirrors |
 | StoryDirector (09) | `BartenderChat` story pool / `phone_ignored` line | Bartender (P24) |
-| CutscenePlayer (09 §4.4) | `started(id)`, `played(id, skipped)` (local, every peer) | MainLevel (F3b): the ack to the host, `max_wait_sec(id)`, then Night 1's cards / the stats card / the main menu |
+| CutscenePlayer (09 §4.4) | `started(id)`, `played(id, skipped)` (local, every peer) | `MainLevel/CutsceneDirector` (F3b): `cutscene_ack(id)` to the host, the host's wait (`max_wait_sec(id)` / `END_GRACE_SEC`), then Night 1 (`start_campaign(mode, seed)`) / the stats card / the main menu; `cutscene_cue(id, seed)` starts the intro |
 | Ball (01) / PhysicsSim (04) / RoundDirector (01) | `Ball.contacted`, `Ball.net_flag`, `PhysicsSim.frame_received(frame)` (client, new), `ball_flag_applied`, `shot_started_net`, `trick_detected`, `shot_ended` | ImpactFx (10): pops, bursts, combos, trick celebrations, every peer; reads only |
 | `NightConfig.story` / `Event.story_line` (09) | read by | PhaseScreen (paid/short lines), StoryDirector / TruckOutro (ending cards), Blackboard (Moe's ledger, hazard flavor), EventVote |
 

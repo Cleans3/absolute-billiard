@@ -48,6 +48,7 @@ var _test_elev: HSlider
 var _refresh_queued := false
 var _view_toggles := {}
 var _staging_toggle: CheckButton
+var _cutscene_toggle: CheckButton
 
 
 func _init() -> void:
@@ -292,6 +293,7 @@ func _build_view(page: VBoxContainer) -> void:
 	if not DisplayServer.is_touchscreen_available():
 		_view_toggles["freecam"] = DebugWidgets.toggle(page, "Free camera (WASD, mouse, Q/E)", false, func(on: bool) -> void: debug_root.set_view("freecam", on))
 	_staging_toggle = DebugWidgets.toggle(page, "Skip Round set-up / clean-up (this peer: no saucer, no wait)", RoundDirector.skip_staging, func(on: bool) -> void: RoundDirector.skip_staging = on)
+	_cutscene_toggle = DebugWidgets.toggle(page, "Skip cutscenes (this peer: no intro, Game over / Campaign won as screens)", CutsceneDirector.skip_cutscenes, func(on: bool) -> void: CutsceneDirector.skip_cutscenes = on)
 	DebugWidgets.label(page, "Time scale")
 	var row := DebugWidgets.row(page)
 	for t: float in TIMESCALES:
@@ -320,6 +322,7 @@ func _refresh() -> void:
 	_rebuild_shots()
 	_game_label.text = _game_text()
 	_staging_toggle.set_pressed_no_signal(RoundDirector.skip_staging)
+	_cutscene_toggle.set_pressed_no_signal(CutsceneDirector.skip_cutscenes)
 
 
 func _game_text() -> String:

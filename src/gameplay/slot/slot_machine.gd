@@ -143,6 +143,17 @@ func _on_applied(peer_id: int, kind: StringName, _target_id: int, payload: Dicti
 		play(peer_id, payload)
 
 
+## The failure cutscene's blackout (09 §3.8.2): the cabinet goes dark (no bulbs, no readout, nothing chasing), or comes back.
+func set_power(on: bool) -> void:
+	_mat.set_shader_parameter(&"glow", 1.0 if on else 0.0)
+	_mat.set_shader_parameter(&"fill", 0.28 if on else 0.03)
+	if not on:
+		_mat.set_shader_parameter(&"flash", 0.0)
+		_pop.visible = false
+	_led.visible = on
+	_title.visible = on
+
+
 func is_playing() -> bool:
 	return is_processing()
 

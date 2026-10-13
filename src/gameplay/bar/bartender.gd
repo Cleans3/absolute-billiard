@@ -20,6 +20,7 @@ var _wipe_t := -1.0
 var _gesture := &""
 var _gesture_t := 0.0
 var _talk_left := 0.0
+var celebrating := false  ## the win cutscene (09 §3.8.3): arms up, hopping, until `celebrate(false)`
 
 @onready var _humanoid: Humanoid = $Humanoid
 @onready var chat: BartenderChat = $Chat
@@ -48,7 +49,30 @@ func _on_said(text: String, pool: StringName) -> void:
 	_humanoid.clear_hand(1)
 
 
+## Gus cheers (tweened Humanoid targets, no AnimationPlayer): both arms up and shaking, a hop, until told to stop. `line` is said in the bubble
+## with blips. Local presentation; the win cutscene calls it on every peer.
+func celebrate(on: bool, line := "") -> void:
+	celebrating = on
+	_gesture_t = 0.0
+	_humanoid.clear_hand(0)
+	_humanoid.clear_hand(1)
+	_humanoid.position.y = 0.0
+	if on:
+		_wipe_t = -1.0
+		_talk_left = 0.0
+		if line != "":
+			bubble.show_line(line, BartenderChat.line_seconds(line))
+			voice.speak(line)
+
+
 func _process(delta: float) -> void:
+	if celebrating:
+		_gesture = &"cheer"
+		_gesture_t += delta
+		_step_gesture()
+		_humanoid.position.y = absf(sin(_gesture_t * 5.0)) * 0.14
+		_humanoid.set_look(0.15 * sin(_gesture_t * 2.0), -0.05)
+		return
 	var goal := Vector2.ZERO
 	var near := LOOK_RANGE_M
 	for p: Node3D in get_tree().get_nodes_in_group(&"players"):

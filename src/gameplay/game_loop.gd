@@ -127,11 +127,12 @@ func is_final_night() -> bool:
 	return _is_final_at(night_index)
 
 
-func start_campaign(p_mode: StringName = MODE_CAMPAIGN) -> void:
+## `p_seed` 0 draws a fresh campaign seed; the intro passes the one it dressed the crew with (every peer already holds it, 09 §3.8).
+func start_campaign(p_mode: StringName = MODE_CAMPAIGN, p_seed := 0) -> void:
 	if nights.is_empty():
 		push_error("GameLoop.start_campaign: `nights` is empty")
 		return
-	campaign_seed = randi()
+	campaign_seed = p_seed if p_seed != 0 else randi()
 	night_index = 0
 	mode = p_mode
 	run_stats.apply({})

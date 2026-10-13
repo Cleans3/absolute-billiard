@@ -8,7 +8,8 @@ extends Node
 ## Options (`play(id, opts)`; each scene reads the keys it knows): "seed" (campaign_seed: who wears what), "crew_size", "skins"
 ## (Array[CharacterSkin], seat order), "skippable" (default: true, except the intro until this player has watched it once), "manual"
 ## (probes: only Cutscene.step advances), "parent" (Node to hang the scene on, default this), "instant"; TruckOutro: "stats",
-## "captions"; FallCam: "mouth", "drop_height", "caption". See each scene's `configure`.
+## "captions"; FallCam: "mouth", "drop_height", "caption", "on_update"; the in-room beats (IntroRoom, FailRoom, WinRoom): "level" (the
+## MainLevel root). See each scene's `configure`.
 
 signal started(id: StringName)
 signal played(id: StringName, skipped: bool)  ## once per play(): the last part ended, was skipped, or the whole thing was aborted
@@ -20,10 +21,17 @@ const SCENES := {
 	&"intro_cabin": {"scene": "res://src/cutscene/IntroCabin.tscn", "sec": IntroCabin.LENGTH_SEC},
 	&"truck_outro": {"scene": "res://src/cutscene/TruckOutro.tscn", "sec": 0.0},  # open-ended: loops until the player continues
 	&"fall": {"scene": "res://src/cutscene/FallCam.tscn", "sec": FallCam.LENGTH_SEC},
+	&"intro_room": {"scene": "res://src/cutscene/IntroRoom.tscn", "sec": IntroRoom.LENGTH_SEC},  # IN the bar: the throw, the slam, the lock
+	&"fail_room": {"scene": "res://src/cutscene/FailRoom.tscn", "sec": FailRoom.LENGTH_SEC},  # IN the bar: red alert, black screens, blood, the pull
+	&"win_room": {"scene": "res://src/cutscene/WinRoom.tscn", "sec": WinRoom.LENGTH_SEC},  # IN the bar: green light, Gus cheers, the gas
 }
 const SEQUENCES := {
-	&"intro": [&"intro_van", &"intro_cabin"],
+	&"intro": [&"intro_van", &"intro_cabin", &"intro_room"],
+	&"fail": [&"fail_room", &"fall"],
+	&"win": [&"win_room", &"truck_outro"],
 }
+## Sequences whose last part must play even when an earlier one is skipped: the win's truck is the payoff and carries the stats card.
+const SKIP_KEEPS_LAST: Array[StringName] = [&"win"]
 
 var current: Cutscene  ## the part on screen now, null between plays
 var playing_id := &""
@@ -60,10 +68,16 @@ static func length_sec(id: StringName) -> float:
 	return total
 
 
+## A sequence that ends on a button (the truck's Continue): nothing scripted ends it, so the host has no length to wait for.
+static func is_open_ended(id: StringName) -> bool:
+	var parts := parts_of(id)
+	return not parts.is_empty() and float(SCENES[parts[-1]]["sec"]) <= 0.0
+
+
 ## A9: how long the host waits for every peer's ack before it acts anyway. 0 = it does not wait (nothing follows an open-ended one).
 static func max_wait_sec(id: StringName) -> float:
 	var total := length_sec(id)
-	return total + ACK_MARGIN_SEC if total > 0.0 else 0.0
+	return total + ACK_MARGIN_SEC if total > 0.0 and not is_open_ended(id) else 0.0
 
 
 func is_playing() -> bool:
@@ -131,8 +145,12 @@ func _on_part_finished(skipped: bool, cs: Cutscene) -> void:
 	if current == cs:
 		current = null
 	if skipped:
-		_skipped = true
-		_queue.clear()
+		if SKIP_KEEPS_LAST.has(playing_id) and not _queue.is_empty():
+			while _queue.size() > 1:
+				_queue.pop_front()
+		else:
+			_skipped = true
+			_queue.clear()
 	_next_part()
 
 

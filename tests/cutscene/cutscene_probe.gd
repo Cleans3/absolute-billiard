@@ -10,6 +10,9 @@ const VAN := "res://src/cutscene/IntroVan.tscn"
 const CABIN := "res://src/cutscene/IntroCabin.tscn"
 const TRUCK := "res://src/cutscene/TruckOutro.tscn"
 const FALL := "res://src/cutscene/FallCam.tscn"
+const INTRO_ROOM := "res://src/cutscene/IntroRoom.tscn"
+const FAIL_ROOM := "res://src/cutscene/FailRoom.tscn"
+const WIN_ROOM := "res://src/cutscene/WinRoom.tscn"
 const MOUTH := "res://src/cutscene/MonsterMouth.tscn"
 const SAMPLE_STATS := {
 	"nights_cleared": 3, "pots": 58, "best_combo": 6, "trick_shots": 9, "best_shot": 1240, "cash_earned": 8420,
@@ -43,7 +46,9 @@ func _run() -> void:
 	await process_frame
 	_check(root.get_camera_3d() == base_cam and not UIRouter.blocking(), "the level's camera is current and nothing blocks input to begin with")
 	_dress_rules()
-	for sc: Array in [[&"intro_van", VAN, IntroVan.LENGTH_SEC], [&"intro_cabin", CABIN, IntroCabin.LENGTH_SEC], [&"fall", FALL, FallCam.LENGTH_SEC]]:
+	# the in-room beats run with no level here (their fixtures are null): lifecycle only, the real level is tests/cutscene/room_cutscene_probe.gd
+	for sc: Array in [[&"intro_van", VAN, IntroVan.LENGTH_SEC], [&"intro_cabin", CABIN, IntroCabin.LENGTH_SEC], [&"fall", FALL, FallCam.LENGTH_SEC],
+			[&"intro_room", INTRO_ROOM, IntroRoom.LENGTH_SEC], [&"fail_room", FAIL_ROOM, FailRoom.LENGTH_SEC], [&"win_room", WIN_ROOM, WinRoom.LENGTH_SEC]]:
 		_lifecycle(sc[0], sc[1], sc[2])
 	_truck()
 	_crew_sizes_and_dress()
@@ -78,6 +83,13 @@ func _run_out(cs: Cutscene, dt: float, cap: float) -> float:
 		cs.step(dt)
 		n += 1
 	return n * dt
+
+
+func _names(ids: Array[StringName]) -> Array:
+	var out: Array = []
+	for i in ids:
+		out.append(String(i))
+	return out
 
 
 func _camera_back(what: String) -> void:
@@ -339,10 +351,12 @@ func _stats_card_compact() -> void:
 # --- the player ---------------------------------------------------------------------------------------------------------------------
 
 func _player() -> void:
-	_check(CutscenePlayer.length_sec(&"intro") == IntroVan.LENGTH_SEC + IntroCabin.LENGTH_SEC, "player: the intro is the van then the cabin (%.1f s)" % CutscenePlayer.length_sec(&"intro"))
+	_check(CutscenePlayer.length_sec(&"intro") == IntroVan.LENGTH_SEC + IntroCabin.LENGTH_SEC + IntroRoom.LENGTH_SEC, "player: the intro is the van, the cabin, then the bar (%.1f s)" % CutscenePlayer.length_sec(&"intro"))
+	_check(_names(CutscenePlayer.parts_of(&"fail")) == ["fail_room", "fall"] and _names(CutscenePlayer.parts_of(&"win")) == ["win_room", "truck_outro"], "player: fail = alert then fall, win = gas then truck")
+	_check(CutscenePlayer.is_open_ended(&"win") and CutscenePlayer.is_open_ended(&"truck_outro") and not CutscenePlayer.is_open_ended(&"fail") and CutscenePlayer.max_wait_sec(&"win") == 0.0, "player: the win ends on the truck's Continue, the host has no length to wait for")
 	_check(CutscenePlayer.max_wait_sec(&"intro") == CutscenePlayer.length_sec(&"intro") + CutscenePlayer.ACK_MARGIN_SEC, "player: the host waits the sequence plus %.0f s for the acks" % CutscenePlayer.ACK_MARGIN_SEC)
 	_check(CutscenePlayer.max_wait_sec(&"fall") == FallCam.LENGTH_SEC + CutscenePlayer.ACK_MARGIN_SEC and CutscenePlayer.max_wait_sec(&"truck_outro") == 0.0, "player: the fall has its own wait, the open-ended truck has none")
-	for id in [&"intro", &"intro_van", &"intro_cabin", &"truck_outro", &"fall"]:
+	for id in [&"intro", &"intro_van", &"intro_cabin", &"intro_room", &"truck_outro", &"fall", &"fail_room", &"fail", &"win_room", &"win"]:
 		_check(CutscenePlayer.ids().has(id) and not CutscenePlayer.parts_of(id).is_empty(), "player: knows '%s'" % id)
 	_check(CutscenePlayer.parts_of(&"nope").is_empty(), "player: an unknown id has no parts")
 	var player := CutscenePlayer.new()
@@ -359,14 +373,14 @@ func _player() -> void:
 	_check(not player.play(&"fall"), "player: one thing at a time")
 	var steps := 0
 	var parts: Array[String] = []
-	while player.is_playing() and steps < 400:
+	while player.is_playing() and steps < 600:
 		if player.current != null and (parts.is_empty() or parts[-1] != String(player.current.id())):
 			parts.append(String(player.current.id()))
 		player.current.step(0.05)
 		steps += 1
-	_check(parts == ["intro_van", "intro_cabin"], "player: the van, then the cabin on the same cut (%s)" % [parts])
+	_check(parts == ["intro_van", "intro_cabin", "intro_room"], "player: the van, the cabin, then the bar on the same cut (%s)" % [parts])
 	_check(events == ["start intro", "played intro false"], "player: one start, one ack, not skipped (%s)" % [events])
-	_check(absf(steps * 0.05 - 5.0) < 0.2, "player: the intro takes about 5 s (%.2f)" % (steps * 0.05))
+	_check(absf(steps * 0.05 - CutscenePlayer.length_sec(&"intro")) < 0.3, "player: the intro takes about %.1f s (%.2f)" % [CutscenePlayer.length_sec(&"intro"), steps * 0.05])
 	_check(player.current == null and not player.is_playing() and SaveManager.cutscene_seen(&"intro"), "player: nothing left running, the intro is marked seen")
 	_camera_back("the intro")
 	for child in player.get_children():

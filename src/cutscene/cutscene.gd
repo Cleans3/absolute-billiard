@@ -17,6 +17,9 @@ const HIDE_GROUP := &"cutscene_hides"  ## HUD roots in this group are hidden whi
 const MAX_CREW := 4
 const MAX_STEP_SEC := 0.1  ## a hitch longer than this does not skip the choreography
 
+## Playback speed of every engine-driven cutscene clock (probes, the preview tool: 20 = a 6 s beat in 0.3 s). 1 in the game.
+static var time_scale := 1.0
+
 var cut_seed := 0  ## every random choice comes from `rng`, seeded from this: same seed, same picture on every peer
 var crew_size := 4  ## Humanoids in the scene, 1-4: the roster size
 var crew_skins: Array[CharacterSkin] = []  ## one per seat; a missing one falls back to the seat's colour
@@ -33,7 +36,7 @@ var rng := RandomNumberGenerator.new()
 
 var _layer: CanvasLayer
 var _prev_camera: Camera3D
-var _hidden: Array[CanvasItem] = []
+var _hidden: Array[Node] = []  # CanvasItems and CanvasLayers in group HIDE_GROUP that were visible
 
 
 # --- what a subclass fills in ---------------------------------------------------------------------------------------------------
@@ -90,7 +93,7 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	step(minf(delta, MAX_STEP_SEC))
+	step(minf(delta, MAX_STEP_SEC) * time_scale)
 
 
 ## Builds the scene, takes the camera, opens the shell and starts the clock. The node must already be in the tree.
@@ -162,11 +165,18 @@ func clear_caption() -> void:
 		shell.hide_caption()
 
 
+## A scene that changed the world (the in-room beats move the crew, work the door) puts it in its end state here; runs once, before
+## the camera and the HUD come back, whether the timeline ran out, Skip was pressed or abort() was called.
+func _on_end(_skipped: bool) -> void:
+	pass
+
+
 func _end(skipped: bool) -> void:
 	if not playing:
 		return
 	playing = false
 	set_process(false)
+	_on_end(skipped)
 	_restore_camera()
 	_restore_hud()
 	if shell != null and is_instance_valid(shell):
@@ -187,14 +197,13 @@ func _restore_camera() -> void:
 
 func _hide_hud() -> void:
 	for n in get_tree().get_nodes_in_group(HIDE_GROUP):
-		var item := n as CanvasItem
-		if item != null and item.visible:
-			_hidden.append(item)
-			item.hide()
+		if (n is CanvasItem or n is CanvasLayer) and bool(n.get(&"visible")):  # TouchControls is a CanvasLayer
+			_hidden.append(n)
+			n.set(&"visible", false)
 
 
 func _restore_hud() -> void:
-	for item in _hidden:
-		if is_instance_valid(item):
-			item.show()
+	for n in _hidden:
+		if is_instance_valid(n):
+			n.set(&"visible", true)
 	_hidden.clear()

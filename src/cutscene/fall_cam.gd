@@ -5,7 +5,8 @@ extends Cutscene
 ## (the Night's `short_line`). It ENDS ON BLACK: the host's next screen (the run's stats card on black) must go up in the
 ## `played` handler, in the same frame. Plays IN the room (on_stage false) when given the Trapdoor's mouth; with no mouth (the preview
 ## tool, the probe) it builds a small demo shaft and a mouth of its own on the stage.
-## Options: "mouth" (MonsterMouth in the Pit), "drop_height" (metres from the camera's start down to the mouth's lip), "caption".
+## Options: "mouth" (MonsterMouth in the Pit), "drop_height" (metres from the camera's start down to the mouth's lip), "caption",
+## "on_update" (Callable(time), called after every pose: F3b drops the real bodies from it).
 
 const LENGTH_SEC := 4.2
 const T_LIP := 1.6  ## the camera crosses the lip
@@ -16,11 +17,13 @@ const T_CAPTION := 3.1
 const BELOW_LIP_ACCEL := 3.0
 const FLOOR_Y := -5.0  ## the lowest the camera goes (it is black by then)
 const SHAFT_HALF := 1.5
+const SWING := 1.1  ## the camera starts this far to the side of the hole's axis
 
 var mouth: MonsterMouth
 var drop_height := 3.4
 var caption_text := ""
 var with_fallers := true  ## the rest of the crew tumbling beside the camera; off in the room (F3b tweens the real bodies)
+var on_update := Callable()  ## called with the time after every pose
 
 var _demo := false
 var _fallers: Array[Node3D] = []
@@ -41,6 +44,8 @@ func configure(opts: Dictionary) -> void:
 	drop_height = float(opts.get("drop_height", drop_height))
 	caption_text = str(opts.get("caption", caption_text))
 	with_fallers = bool(opts.get("fallers", mouth == null))
+	var cb: Variant = opts.get("on_update", null)
+	on_update = cb if cb is Callable else Callable()
 	on_stage = mouth == null
 
 
@@ -96,28 +101,38 @@ func _build_demo() -> void:
 
 # --- the timeline -------------------------------------------------------------------------------------------------------------------
 
-## The camera's height above the lip at `time`: falls from `drop_height`, reaching the lip at T_LIP, then keeps its speed and accelerates.
-func _height_at(time: float) -> float:
+## The camera's height above the lip at `time`: falls from `drop`, reaching the lip at T_LIP, then keeps its speed and accelerates.
+static func height_at(drop: float, time: float) -> float:
 	if time <= T_LIP:
 		var u := time / T_LIP
-		return drop_height * (1.0 - u * u)
-	var v := 2.0 * drop_height / T_LIP
+		return drop * (1.0 - u * u)
+	var v := 2.0 * drop / T_LIP
 	var d := time - T_LIP
 	return maxf(-v * d - 0.5 * BELOW_LIP_ACCEL * d * d, FLOOR_Y)
 
 
-func _update(time: float, _dt: float) -> void:
-	var base := mouth.global_transform
-	var y := _height_at(time)
-	var swing := 1.1 * (1.0 - smoothstep(0.0, T_LIP, time))  # starts a little to the side, looking at the hole, ends straight above it
+## Where the camera is at `time` when the lip's transform is `base` and it starts `drop` metres above it (F3b's room beat ends on
+## `camera_pose(base, drop, 0.0)`, so the cut into the fall does not jump).
+static func camera_pose(base: Transform3D, drop: float, time: float) -> Transform3D:
+	var y := height_at(drop, time)
+	var swing := SWING * (1.0 - smoothstep(0.0, T_LIP, time))  # starts a little to the side, looking at the hole, ends straight above it
 	var spin := 0.35 * TAU * time / LENGTH_SEC + 0.6
 	var up_dir := Vector3(cos(spin), 0.0, sin(spin))
 	var eye := Vector3(0.0, y, swing)
 	var target := Vector3(0.0, y - 3.0, 0.0)
-	var dir := (target - eye).normalized()
-	var look := Basis.looking_at(dir, up_dir)
-	camera.global_transform = base * Transform3D(look, eye)
-	camera.fov = 62.0 + 38.0 * smoothstep(0.0, T_LIP + 0.6, time)
+	var look := Basis.looking_at((target - eye).normalized(), up_dir)
+	return base * Transform3D(look, eye)
+
+
+static func fov_at(time: float) -> float:
+	return 62.0 + 38.0 * smoothstep(0.0, T_LIP + 0.6, time)
+
+
+func _update(time: float, _dt: float) -> void:
+	var base := mouth.global_transform
+	var y := height_at(drop_height, time)
+	camera.global_transform = camera_pose(base, drop_height, time)
+	camera.fov = fov_at(time)
 	mouth.pose(time)
 	mouth.close_amount = smoothstep(T_LIP + T_SHUT, T_LIP + T_SHUT + 0.6, time)
 	for i in _fallers.size():
@@ -131,3 +146,5 @@ func _update(time: float, _dt: float) -> void:
 		h.set_hand(1, Vector3(-0.36, 1.85 + 0.2 * sin(time * 9.0 + p + 1.7), -0.15))
 	if caption_text != "" and time >= T_CAPTION:
 		caption_line(caption_text)
+	if on_update.is_valid():
+		on_update.call(time)

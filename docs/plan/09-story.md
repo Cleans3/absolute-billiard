@@ -126,9 +126,12 @@ fine (P16); the ledger shows it as it is (`-$25`).
 ### 3.6 Endings (phase screens and cutscenes)
 - **Reckoning, Quota met:** the Night's `paid_line`, from Moe on the phone.
 - **Quota missed (Game over):** the failure sequence (§3.8.2); its `short_line` is the caption over the black after the fall. The Game over
-  PhaseScreen with its buttons is replaced by the run's stats card on black and then the main menu (F3b).
-- **Campaign won (Buyout paid):** the win sequence (§3.8.3); the three `ending_cards` are the ride's captions. Until F3b wires it,
-  `StoryDirector` still shows them as cards over the existing Campaign won screen.
+  PhaseScreen with its buttons is replaced by the run's stats card on black and then the main menu (F3b, built).
+- **Campaign won (Buyout paid):** the win sequence (§3.8.3); the three `ending_cards` are the ride's captions, so `StoryDirector` no longer
+  shows them as cards and `PhaseScreen` opens no Campaign won screen while cutscenes play (F3b, built). **The "Campaign won -> Endless" button is
+  gone from play**: the truck's Continue ends the run for everyone, and Endless is a mode picked in the Lobby (02 §3.4). `PhaseScreen`'s Game over /
+  Campaign won screens (and `GameLoop.advance()` from `CAMPAIGN_WON`) stay only as the path taken with `CutsceneDirector.skip_cutscenes` (a headless
+  run, the playtest bot, the debug panel's toggle): every probe that predates the cutscenes runs on them unchanged.
 - **Endless:** every Endless Night opens with one card from `endless.tres`.
 
 ### 3.7 The twist: Moe is in the chat
@@ -146,36 +149,54 @@ and the time (the same crew wears the same gag, blindfold or hood on every peer)
 are scripted tweens, never ragdolls. Lights are realtime lights over the baked room, never a DirectionalLight (it would light the whole
 level), and a cutscene that plays away from the room is staged far outside it (`Cutscene.STAGE_ORIGIN`).
 
-**Waiting for each other (A9).** Every peer reports `CutscenePlayer.played(id, skipped)` when its copy ends; F3b sends that to the host
-as a reliable ack. The host acts (starts Night 1's cards and Intermission, the main menu) when **every connected peer has acked or after
-`CutscenePlayer.max_wait_sec(id)`**, which is the sequence's scripted length plus `ACK_MARGIN_SEC` (5 s), whichever comes first. A peer
-that was in the background, or joins late, plays `play(id, {"instant": true})`: no scene, only the ack, and goes straight to the end state.
-**Resume never replays the intro** (a Resume lands on a Round boundary). An open-ended cutscene (the truck) has no wait: nothing follows it
-on the host.
+**Waiting for each other (A9, built in F3b by `MainLevel/CutsceneDirector`).** Every peer reports `CutscenePlayer.played(id, skipped)` when
+its copy ends; the director sends that to the host as a reliable ack (`cutscene_ack`). The host acts when **every connected peer that is not in
+the background has acked, or after `CutscenePlayer.max_wait_sec(id)`**, which is the sequence's scripted length plus `ACK_MARGIN_SEC` (5 s),
+whichever comes first: for the intro, it starts Night 1 (`start_campaign(mode, seed)`, so the cards and the Intermission follow). A peer that
+was in the background, or is just back from it (`CutsceneDirector.LATE_MSEC`), plays `play(id, {"instant": true})`: no scene, only the ack, and
+goes straight to the end state (the failure's stats card, the truck). **Resume never replays the intro** (it sends no cue; a Resume lands on a Round
+boundary). An open-ended cutscene (the truck, the stats card) has no scripted length: each peer's Continue is its ack, a client leaves to the
+main menu right after sending it, and the host leaves after its own Continue once every peer has acked or `END_GRACE_SEC` (20 s) ran out.
+The endings need no cue: each peer starts them from the phase it already sees.
 
 #### 3.8.1 The intro (every fresh session, both modes)
 1. **IntroVan**, 2.0 s: the back of the Rope's van at night, the crew on the two side benches, hands tied, each in a gag, a blindfold or a
    hood (seeded per seat). The van rocks and hits bumps, a dome light flickers, headlights and streetlamps sweep the faces.
 2. **IntroCabin**, 3.0 s: the van brakes to a halt in a clearing; the cabin in the woods, porch light, "GUS'S CORNER POCKET est. 1979"; the
    engine dies and the headlights fade; the cabin door swings open on a warm glow. It ends there.
-3. *(F3b, in `MainLevel`)* The crew is thrown through the door into the middle of the bar (scripted tweens), the door shuts behind them and
-   locks (bolt sound, a beat of silence). Then Night 1's cards.
+3. **IntroRoom**, 6.5 s, IN the bar (`MainLevel`): cut from the cabin's open door to the bar's. The bolt draws back (a clunk), the door
+   (`MainLevel/EntranceDoor`: a dynamic leaf over the baked slab, always there, shut and bolted) bursts inward, and the crew is thrown through it one
+   after another, 0.95 s apart, in a lob over the table to their spawn spots, tumbling with their arms flailing, landing on their backs (a thud),
+   lying still a moment, then getting up. At most two bodies are limp (tilted past 60 degrees, in the air or on the floor) at any moment. Scripted
+   tweens of the Player nodes and a tilt of each Humanoid about its middle: no ragdoll, no collision. The last one is through, the door slams (a
+   bang), the bolt shoots with a clunk (a close-up of the lock), a beat of silence, and the shot cuts back to the local player's own eye as they
+   stand. Camera: a wide shot from the south end looking at the door, the close-up, then the player's eye. Then Night 1's cards (the host starts the
+   campaign once everyone has acked). The door stays bolted for the rest of the session. Skip leaves the same end state (everyone home, upright).
 
 #### 3.8.2 Quota failure (both modes)
-1. *(F3b)* A red alert light in the middle of the ceiling spins and floods the room red; the screen goes black; the mirror turns bloody
-   (`Mirror.set_blood`); the TV is off (`Tv.set_feeds_on(false)`). After 5 s the floor opens (`Trapdoor`).
-2. **FallCam**, 4.2 s: the camera drops through the floor into the **MonsterMouth** (a fleshy maw in the trapdoor's pit: lip, teeth,
-   ribbed throat, tongue), the rest of the crew falling beside it; the teeth shut overhead and the screen goes black. It ends on black
-   with the Night's `short_line` as a caption.
-3. *(F3b)* The run's stats card on black (A11, §3.9), then the **main menu for everyone** (Solo and crew alike: the crew rehosts).
+1. **FailRoom**, 5.0 s, IN the bar: from the local player's own eye (input blocked). An `AlertLight` in the middle of the ceiling (one realtime
+   red spot sweeping the room, an emissive dome, a siren) and a pulsing red wash over the screen (`CutScreen`); at 1.2 s the wall TV goes black
+   (`Tv.set_feeds_on(false)`), at 1.7 s the slot machine's screen goes dark (`SlotMachine.set_power(false)`; the Blackboard is chalk, not a screen),
+   from 1.4 to 3.8 s the mirror bleeds (`Mirror.set_blood` 0 -> 1); from 3 s the crew is pulled, arms flailing, onto the Trapdoor and the camera
+   travels to where FallCam starts. At 5 s the floor opens (`Trapdoor.open()`) and the `MonsterMouth` in its Pit is revealed.
+2. **FallCam**, 4.2 s: the camera (it starts exactly where FailRoom's last frame stood: `FallCam.camera_pose`) drops through the floor into the
+   **MonsterMouth** (a fleshy maw in the trapdoor's pit: lip, teeth, ribbed throat, tongue); the real bodies fall past it, free-falling from their
+   spots on the Trapdoor and down the throat (`RoomCutscene.drop_member`, driven from FallCam's clock by the director); the teeth shut overhead and
+   the screen goes black. It ends on black with the Night's `short_line` as a caption.
+3. The run's stats card on black (A11, §3.9; `CutsceneDirector` puts it up in the very call FallCam ends in, so nothing flashes between), then
+   **Continue -> the main menu for everyone** (Solo and crew alike: the crew rehosts). Skip at any point jumps to that card.
 
 #### 3.8.3 Campaign win (Campaign only; Endless never wins)
-1. *(F3b)* The light turns green, Gus celebrates (tweened arms, a hop), the vent opens and sprays green gas; the player's view blurs and
-   goes black.
+1. **WinRoom**, 6.5 s, IN the bar: from the local player's own eye. The same beacon comes on GREEN and turns slowly, the screen takes a green
+   wash; at 0.8 s Gus celebrates (`Bartender.celebrate`: tweened Humanoid targets, both arms up and shaking, a hop, a line in his bubble); from 1.2
+   s the view turns up to the vent; at 2.4 s `Vent.open()`, at 2.8 s a bounded green plume (one `CPUParticles3D`, 60 soft billboard quads) sprays
+   from its mouth with a hiss; from 3.2 s the view sways, swims and blurs (the screen's mip chain, `CutScreen`), from 5.2 s it fades to black. The
+   crew is not moved. Skip still plays the truck.
 2. **TruckOutro**, open-ended: dawn; the crew sits dazed on crates on the bed of a flatbed truck. The truck is stationary in the frame
    while the world scrolls past (road, lane marks, trees, poles, a far ridge), the wheels turn, and the truck shakes: engine buzz, road
    bumps, roll and pitch, small lane-change manoeuvres. The `ending_cards` play as captions; then the **stats card** slides up along the
-   bottom (§3.9). **Continue** → the main menu for everyone. Skip jumps to the card.
+   bottom (§3.9). **Continue** → the main menu for everyone. Skip jumps to the card. Skipping the room beat above still plays the truck
+   (`CutscenePlayer.SKIP_KEEPS_LAST`).
 
 ### 3.9 The run's stats card (A11, 02 §3.11)
 `RunStatsCard`: at most 8 rows in a scroll list (Nights cleared, Balls potted, Best combo, Trick shots, Biggest shot, Cash earned,
@@ -207,8 +228,10 @@ screen (a 140 px list that scrolls, a smaller grade, a **Continue** button); aft
   "answered" flag is replayed as the same interaction with `{replay: true}` (silent), so a resumed or rejoining client doesn't hear it
   ring again. `round_state` carries `campaign_seed` so every peer keys its story profile to the same campaign. **No new `@rpc`**, so the
   04 §5 table only gains a row in the kinds table.
-- **Cutscenes:** local on every peer, no RPC in the framework. F3b adds ONE reliable ack rpc (peer → host, "my cutscene `id` ended") and the
-  host's wait of `max_wait_sec(id)`; that rpc lands in 04 §5 and `rpc_table_probe` with F3b.
+- **Cutscenes:** local on every peer, no RPC in the framework. F3b adds two reliable rpcs on `MainLevel/CutsceneDirector` (04 §5,
+  `rpc_table_probe`): `cutscene_cue(id, seed)` (host -> all, call_local) starts the intro on a fresh run, `cutscene_ack(id)` (peer -> host) says
+  "my copy of `id` is over" (for an ending: "I pressed Continue"). The endings use no rpc: every peer starts them from the phase it already sees.
+  The host's wait is `max_wait_sec(id)` for the intro and `END_GRACE_SEC` after its own Continue for the endings.
 - **Gus:** stays cosmetic and per peer (P24), with the story pool seeded per Night.
 
 ### 4.3 Gus pools
@@ -234,15 +257,27 @@ screen (a 140 px list that scrolls, a smaller grade, a **Continue** button); aft
 `fall`: `mouth` (the `MonsterMouth` in the Trapdoor's pit; given one, FallCam plays IN the room, `on_stage` false, and adds no duplicate
 bodies), `drop_height` (metres from the camera's start down to the lip), `caption`, `fallers`.
 
-**What F3b wires** (the seams, all in `MainLevel`):
-- A `CutscenePlayer` child; HUD roots (HUD, touch controls, blackboard) get the group `cutscene_hides`, which the cutscene hides on `play()`
-  and restores on end.
-- The ack and wait of §3.8: `played` → reliable rpc to the host; host: all acks or `max_wait_sec(id)`.
-- After the intro: the throw and the lock (scripted tweens), then Night 1. After `fall`: the stats card on black **in the `played` handler,
-  in the same frame** (FallCam ends on black; the card must be up before the next rendered frame). After `truck_outro`: the main menu.
-- `StoryDirector` stops showing `ending_cards` over the Campaign won screen once the truck plays them as captions.
-- The room-side beats, which need the world lane's `Vent`, `Trapdoor` (its `Pit` anchor holds the `MonsterMouth`), `Mirror.set_blood` and
-  `Tv.set_feeds_on`.
+**What F3b wired** (built; the seams, all in `MainLevel`):
+- `MainLevel/CutsceneDirector` (`src/cutscene/cutscene_director.gd`, class `CutsceneDirector`): owns the `CutscenePlayer`, tags the HUD and touch
+  controls with the group `cutscene_hides`, fills every scene's options (seed = `campaign_seed` or the intro's cue seed, `crew_size` and `skins` from
+  the roster in seat order, `level` = the MainLevel, `stats`, `captions`, `mouth`, `drop_height`), reacts to `GameLoop.phase_changed`
+  (`GAME_OVER` -> `fail`, `CAMPAIGN_WON` in a Campaign -> `win`), and holds the host's wait. `CutsceneDirector.skip_cutscenes` (static; true
+  headless, set by `SoloSupport.until_playable` unless `keep_cutscenes`, by the playtest bot, by the debug panel's View toggle) turns all of it off.
+  `MainLevel._start` hands the host's fresh start to `CutsceneDirector.start_run`; a Resume bypasses it.
+- The sequences (`CutscenePlayer`): `intro` = IntroVan, IntroCabin, **IntroRoom**; `fail` = **FailRoom**, FallCam; `win` = **WinRoom**,
+  TruckOutro (`SKIP_KEEPS_LAST`: skipping the room beat still rides the truck). The three **room beats** are `RoomCutscene`s
+  (`room_cutscene.gd`): the same Cutscene (own camera, shell, Skip, restore) with `on_stage` false and `opts["level"]`, working the level's fixtures:
+  `EntranceDoor` (new, `src/gameplay/bar_room/entrance_door.gd`), `Tv.set_feeds_on`, `Mirror.set_blood`, `SlotMachine.set_power` (new), `Trapdoor`,
+  `Vent`, `Bartender.celebrate` (new), `AlertLight` (new beacon, one realtime spot), `CutScreen` (new: the red / green wash, blur and fade of
+  `UILayer/CutScreen`, its own shader so the drink effects' ViewOverlay is untouched), `CutsceneSfx` (new: slam, clunk, thud, siren, hiss, rendered
+  in code like the Bartender's blips).
+- The crew: every peer places EVERY player itself from the shared timeline (the local walker's `_physics_process` and the puppets' `_process` are
+  off while a beat runs, the owner's pose stream is ignored for the duration), so the throw, the pull and the fall are a pure function of seat and
+  time. `RoomCutscene._release_crew` puts it all back (upright, hands free, home).
+- After `fall`: the stats card on black **in the `played` handler, in the same frame** (a `CutsceneShell` with its fade at 1 and a full
+  `RunStatsCard`). After `truck_outro`: Continue.
+- `StoryDirector` stops showing `ending_cards` over the Campaign won screen (only the skipped path still does); `PhaseScreen` opens no Game over
+  / Campaign won screen while cutscenes play.
 
 **Cost** (07 §2). Each cutscene is a one-shot scene shown alone: IntroVan ≈ 4 realtime lights, 3 meshes + the crew (2 draws a body, plus 1 for
 its dress); IntroCabin ≈ 5 lights, ~12 meshes (trees, cabin, porch, van are one Soup each), 1 MultiMesh of stars; TruckOutro ≈ 2 lights,
@@ -262,7 +297,9 @@ phone is unmeasured.
 | `EconomyManager` | `PhaseScreen` | `quota_evaluated(paid, demand, is_game_over)` picks `paid_line` / `short_line` |
 | `Blackboard` | `GameLoop` / `EconomyManager` | footer text per §3.5 |
 | `EventVote` / `Blackboard` | `Event.story_line` | flavor under the name |
-| `MainLevel` (F3b) | `CutscenePlayer` | `play(id, opts)`, `played(id, skipped)`, `max_wait_sec(id)` |
+| `CutsceneDirector` (F3b) | `CutscenePlayer` | `play(id, opts)`, `played(id, skipped)`, `max_wait_sec(id)` |
+| `CutsceneDirector` | host / peers | `cutscene_cue(id, seed)`, `cutscene_ack(id)` (04 §5) |
+| `RoomCutscene`s | `EntranceDoor` / `Tv` / `Mirror` / `SlotMachine` / `Trapdoor` / `Vent` / `Bartender` | `set_openness`+`set_bolt` / `set_feeds_on(false)` / `set_blood` / `set_power(false)` / `open()` / `open()` / `celebrate(on, line)` |
 | `Cutscene` | `UIRouter` | its `CutsceneShell` is a `ui_modal` at priority 100: `UIRouter.blocking()` is true while one plays |
 | `Cutscene` | HUD roots | group `cutscene_hides` hidden while it plays |
 | `TruckOutro` | `RunStatsCard` | `show_stats(stats, title, true, "Continue", true)`; its `closed` ends the ride |
@@ -294,12 +331,16 @@ phone is unmeasured.
 - `StoryNight` resources (3 Nights + Endless) with the Appendix A text; `StoryCards`; the phone; Gus's story pool and `phone_ignored`; the
   Event `story_line`; the blackboard ledger; the two posters; velvet's chat line each Night.
 - F3a: the cutscene framework, `IntroVan`, `IntroCabin`, `TruckOutro`, `MonsterMouth` + `FallCam`, the preview tool and probe.
+- F3b: the three room beats and their wiring (`CutsceneDirector`, `EntranceDoor`, `AlertLight`, `CutScreen`, `CutsceneSfx`), the ack rpcs and the
+  host's wait, the stats card on black, the main-menu routing; probes `tests/cutscene/room_cutscene_probe.gd` (one peer, the real MainLevel) and
+  `room_cutscene_pair_probe.gd` (acks and the max wait over two peers), the windowed `src/tools/preview_room_cutscenes.gd`.
 - Probes: every campaign Night has a StoryNight inside the limits and no money amounts. Cards open once and skip. The phone rings, can be
   answered once, and survives a resume (pair probe). No story line repeats inside a campaign. Every cutscene starts, owns the current
   camera, blocks input, ends on Skip and restores the camera; the dress is fixed by the seed; the player chains the intro and acks.
 
-**F3b (needs the world lane's Vent / Trapdoor / Mirror.set_blood / Tv.set_feeds_on):** the throw and lock, the red alert, the bloody
-mirror, the floor opening, Gus's celebration and the gas, the ack rpc and the wait, the stats card on black, the main-menu routing.
+**F3b: built** (code and probes; the pictures and the phone are alpha's / Cleanse's: see the report). **Open, needs the phone:** the dynamic door leaf
+against the baked slab (a lit-by-probes panel next to a lightmapped one: the same seam the Trapdoor's panels have), the gas plume's overdraw on
+tier 2, and the screen-mip blur pass.
 
 **Later:**
 - Recorded voice.
