@@ -139,7 +139,8 @@ const ATLAS_PATH := "res://assets/decor/poster_atlas.png"
 const ATLAS_SIZE := Vector2(1024, 1024)
 const CELL := Vector2(256, 300)
 const WHITE_UV := Vector2(0.5, 0.95)  # the untouched white strip: untextured props take their colour from the vertex colour
-const POSTER_OFFSET := 0.04           # frame depth; the poster sits on its front face
+const POSTER_OFFSET := 0.04           # frame depth; the poster stands in front of its front face
+const POSTER_STANDOFF := 0.015        # ...this far in front of it (was 2 mm: coplanar to a coarse depth buffer, which z-fights; 07 §7.7)
 
 
 ## Floor rects (x0, z0, x1, z1) no decor may stand in; wall rects per wall: Rect2(along, y, w, h) no poster may touch.

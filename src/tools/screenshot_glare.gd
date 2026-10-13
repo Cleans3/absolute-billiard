@@ -3,11 +3,17 @@ extends SceneTree
 ## One-shot (adhoc-1013c W1, U4): the real MainLevel (Solo) at the phone's quality tier, from the views where the glare shows
 ## (the side and corner pockets, the rail's outer face, a tripod near and far, the bartender's face), to PNGs plus a "halo" count:
 ## the pixels brighter than 0.55 with a near-black pixel (< 0.04) within 2 px, in the centre half of the frame, which is what
-## "black with a bright white outline" is. Needs a window. The desktop is not proof (07: the phone glare never reproduced here);
+## "black with a bright white outline" is. The PNGs are what the SCREEN shows: with `viewport/hdr_2d` the root's texture is linear
+## on the Mobile renderer (a 0.5 sRGB grey reads back as 54, the screen shows 127, measured with xwd; Compatibility reads back
+## sRGB either way), so a Mobile readback is converted to sRGB first. Before
+## adhoc-1014a this tool, like every readback in the repo, saved the linear picture: dark, nothing like the phone. Needs a window. The desktop is not proof (07: the phone glare never reproduced here);
 ## this is the before/after pair for the changes that can be shown.
 ##   DISPLAY=:0 godot --path . -s src/tools/screenshot_glare.gd -- <out_dir> <tag> [key=value ...]
-## tier=0|1|2 (default 1: MSAA off, scale 0.85, the QualityManager tier through Settings), aa=off|fxaa|smaa (override
-## the tier's screen-space AA), no_glow=1, no_probes=1, no_lamp_shadow=1, lamp_specular=<f>.
+## tier=0|1|2 (default 1: MSAA off, scale 0.85, the QualityManager tier through Settings).
+## near=<m> far=<m> set the tool camera's clip planes (default 0.05 / 4000, the game's).
+## flags=<AB_GLARE syntax> (GlareFlags: `none` = the baseline before adhoc-1014a, the default; `default` = what ships; `all`; or
+## a list such as `glow_off,aa:smaa,msaa:off`), applied the way the phone's debug panel applies them. The older keys remain:
+## aa=off|fxaa|smaa (= flags aa:...), no_glow=1, no_probes=1, no_lamp_shadow=1, lamp_specular=0 (= lamp_spec_off).
 
 const SIZE := Vector2i(1280, 720)
 const HALO_LIGHT := 0.55
@@ -35,6 +41,8 @@ func _run() -> void:
 	var o := _opts()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	Settings.path = "user://shot_glare_settings.cfg"
+	GlareFlags.persist = false
+	GlareFlags.set_all(_flags(o))
 	Settings.set_value(&"quality", Settings.QUALITY[1 + int(o.get("tier", "1"))])
 	SaveManager.root = "user://shot_glare"
 	DirAccess.make_dir_recursive_absolute(SaveManager.root)
@@ -47,9 +55,10 @@ func _run() -> void:
 	var level := current_scene
 	if is_instance_valid(lobby):
 		lobby.queue_free()
-	_experiments(level, o)
 	var cam := Camera3D.new()
 	cam.fov = 70.0
+	cam.near = float(o.get("near", cam.near))  # near=0.002 far=50000 stretches the depth buffer: what a coarse one would do to the table's mm-scale overlaps
+	cam.far = float(o.get("far", cam.far))
 	level.add_child(cam)
 	var rows: Array[String] = []
 	var first := true
@@ -58,7 +67,6 @@ func _run() -> void:
 		cam.look_at(v.target, v.get("up", Vector3.UP))
 		for i in (60 if first else 14):
 			cam.current = true  # the player's camera reclaims current while it spawns
-			_override_aa(o)
 			for cl: CanvasLayer in root.find_children("*", "CanvasLayer", true, false):
 				cl.visible = false
 			for c: Control in root.get_children().filter(func(n: Node) -> bool: return n is Control):
@@ -68,32 +76,30 @@ func _run() -> void:
 		await RenderingServer.frame_post_draw
 		var img := root.get_texture().get_image()
 		img.convert(Image.FORMAT_RGB8)
+		if root.use_hdr_2d and RenderingServer.get_current_rendering_method() != "gl_compatibility":
+			img.linear_to_srgb()  # Mobile's hdr_2d target is linear: the screen's last blit converts it, a readback does not (Compatibility reads back sRGB)
 		img.save_png("%s/%s_%s.png" % [out_dir, tag, v.name])
 		rows.append("%-16s halo px %5d" % [v.name, _halo(img)])
-	print("--- glare, tag=%s %s msaa=%d scale=%.2f aa=%d" % [tag, o, root.msaa_3d, root.scaling_3d_scale, root.screen_space_aa])
+	print("--- glare, tag=%s %s flags=%s msaa=%d scale=%.2f aa=%d" % [tag, o, GlareFlags.describe(), root.msaa_3d, root.scaling_3d_scale, root.screen_space_aa])
 	for r in rows:
 		print(r)
 	quit()
 
 
-func _override_aa(o: Dictionary) -> void:
+## The flag set a run asks for: `flags=` first, then the older single keys.
+func _flags(o: Dictionary) -> Dictionary:
+	var f := GlareFlags.parse(String(o.get("flags", "none")).replace("+", ","))
 	if o.has("aa"):
-		root.screen_space_aa = {off = Viewport.SCREEN_SPACE_AA_DISABLED, fxaa = Viewport.SCREEN_SPACE_AA_FXAA, smaa = Viewport.SCREEN_SPACE_AA_SMAA}[o.aa]
-
-
-func _experiments(level: Node, o: Dictionary) -> void:
+		f[&"aa"] = {off = "none", fxaa = "fxaa", smaa = "smaa"}[o.aa]
 	if o.has("no_glow"):
-		for we: WorldEnvironment in level.find_children("*", "WorldEnvironment", true, false):
-			we.environment.glow_enabled = false
+		f[&"glow_off"] = "1"
 	if o.has("no_probes"):
-		for n in level.find_children("*", "ReflectionProbe", true, false):
-			n.queue_free()
-	var lamp := level.find_child("TableLamp", true, false) as SpotLight3D
-	if lamp != null:
-		if o.has("no_lamp_shadow"):
-			lamp.shadow_enabled = false
-		if o.has("lamp_specular"):
-			lamp.light_specular = float(o.lamp_specular)
+		f[&"probes_off"] = "1"
+	if o.has("no_lamp_shadow"):
+		f[&"lamp_shadow_off"] = "1"
+	if o.get("lamp_specular", "1") == "0":
+		f[&"lamp_spec_off"] = "1"
+	return f
 
 
 ## World-space eyes and targets: the table sits at (0, 0, -3.5), cloth at y 0.9; the Bartender behind the counter at (6, 0, 2.5).

@@ -49,6 +49,9 @@ var _refresh_queued := false
 var _view_toggles := {}
 var _staging_toggle: CheckButton
 var _cutscene_toggle: CheckButton
+var _glare_toggles := {}  # flag -> CheckButton
+var _glare_choices := {}  # choice flag -> Button
+var _glare_label: Label
 
 
 func _init() -> void:
@@ -298,6 +301,38 @@ func _build_view(page: VBoxContainer) -> void:
 	var row := DebugWidgets.row(page)
 	for t: float in TIMESCALES:
 		DebugWidgets.button(row, "%sx" % String.num(t, 2), func() -> void: debug_root.set_timescale(t))
+	_build_glare(page)
+
+
+## The glare hypotheses (adhoc-1014a V3, 07 §7.7): each candidate cause of the phone's black-with-white-outline edges is one switch,
+## applied live. "Baseline" turns every fix off (the glare as it was), then switch them on one at a time. Persisted on this device.
+func _build_glare(page: VBoxContainer) -> void:
+	var box := DebugWidgets.section(page, "Glare hypotheses (a switch = the fix on)", false)
+	_glare_label = DebugWidgets.label(box, "", true)
+	var row := DebugWidgets.row(box)
+	for set_def: Array in [["Baseline", {}], ["Shipped", GlareFlags.DEFAULTS], ["All on", GlareFlags.everything()]]:
+		DebugWidgets.button(row, set_def[0], func() -> void:
+			GlareFlags.set_all(set_def[1])
+			_refresh_glare())
+	for f: StringName in GlareFlags.BOOLS:
+		_glare_toggles[f] = DebugWidgets.toggle(box, GlareFlags.BOOLS[f], GlareFlags.on(f), func(on: bool) -> void:
+			GlareFlags.set_flag(f, "1" if on else "")
+			_refresh_glare())
+	for f: StringName in GlareFlags.CHOICES:
+		var opts: Array = GlareFlags.CHOICES[f][1]
+		_glare_choices[f] = DebugWidgets.button(box, "", func() -> void:
+			var next: String = opts[(opts.find(GlareFlags.choice(f)) + 1) % opts.size()]
+			GlareFlags.set_flag(f, next)
+			_refresh_glare())
+	_refresh_glare()
+
+
+func _refresh_glare() -> void:
+	for f: StringName in _glare_toggles:
+		(_glare_toggles[f] as CheckButton).set_pressed_no_signal(GlareFlags.on(f))
+	for f: StringName in _glare_choices:
+		(_glare_choices[f] as Button).text = "%s: %s  (tap to change)" % [GlareFlags.CHOICES[f][0], GlareFlags.choice(f)]
+	_glare_label.text = "now: %s" % GlareFlags.describe()
 
 
 # ---------------------------------------------------------------- refresh
@@ -323,6 +358,7 @@ func _refresh() -> void:
 	_game_label.text = _game_text()
 	_staging_toggle.set_pressed_no_signal(RoundDirector.skip_staging)
 	_cutscene_toggle.set_pressed_no_signal(CutsceneDirector.skip_cutscenes)
+	_refresh_glare()
 
 
 func _game_text() -> String:

@@ -58,6 +58,16 @@ func _run() -> void:
 	strip.buttons()[0].pressed.emit()
 	await _frames(2)
 	_check(panel.visible and router.current == panel and UIRouter.blocking(), "DEBUG opens the panel as the one open modal, input is gated")
+	# the View page's glare hypotheses (adhoc-1014a V3): one switch per flag, applied live to the level, persisted nowhere in a probe
+	GlareFlags.persist = false
+	_check(panel._glare_toggles.size() == GlareFlags.BOOLS.size() and panel._glare_choices.size() == GlareFlags.CHOICES.size(), "the panel has a switch per glare flag")
+	var baked: Light3D = level.find_child("BakedNeonCyan", true, false)
+	GlareFlags.set_all({})
+	panel._refresh_glare()
+	_check(baked != null and is_equal_approx(baked.light_specular, 0.5) and not (panel._glare_toggles[&"baked_spec_off"] as CheckButton).button_pressed, "baseline: the baked neon keeps its specular, the switch shows off")
+	(panel._glare_toggles[&"baked_spec_off"] as CheckButton).button_pressed = true
+	_check(GlareFlags.on(&"baked_spec_off") and is_zero_approx(baked.light_specular), "its switch zeroes the specular in the live level")
+	GlareFlags.set_all(GlareFlags.DEFAULTS)
 	var slider: HSlider = panel._fields[&"rolling_resistance"]
 	slider.value = 0.031
 	await _frames(2)

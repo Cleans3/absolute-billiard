@@ -36,12 +36,12 @@ mesh = SubResource("BoxMesh_frame")
 surface_material_override/0 = SubResource("Material_frame")
 
 [node name="Slate" type="MeshInstance3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.003)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.015)
 mesh = SubResource("QuadMesh_slate")
 surface_material_override/0 = SubResource("ShaderMaterial_slate")
 
 [node name="Text" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.012)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.04)
 
 [node name="Header" type="Label3D" parent="Text"]
 unique_name_in_owner = true

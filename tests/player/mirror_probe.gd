@@ -148,9 +148,9 @@ func _run() -> void:
 		prev = h
 	_check(steady, "never taller further away")
 	QualityManager.current_tier = 1
-	_check(mirror.window_height(0.5, FOCAL) == 768, "tier 1: at most 768")
+	_check(mirror.window_height(0.5, FOCAL) == 512, "tier 1: at most 512")
 	QualityManager.current_tier = 2
-	_check(mirror.window_height(0.5, FOCAL) == 384, "tier 2: at most 384")
+	_check(not Mirror.has_window_pass(), "tier 2: no window pass")
 	QualityManager.current_tier = 0
 	mirror.tick(Vector3(-3.4, 1.6, -3.8), FOCAL)  # 3.5 m from the glass plane: 686 px -> 704
 	_check(view.size == Mirror.view_size(704), "3.5 m away the pass is 704 px tall: %s" % view.size)
@@ -160,13 +160,22 @@ func _run() -> void:
 	_check(view.size.y == 192, "across the room it shrinks: %s" % view.size)
 	mirror.tick(Vector3(-5.9, 1.6, -3.8), FOCAL)  # 1 m: the glass is wider than the screen
 	_check(view.size == Mirror.view_size(1024), "1 m from the glass it grows to the tier's tallest, sharp: %s" % view.size)
-	QualityManager.current_tier = 2
+	QualityManager.current_tier = 1
 	mirror.tick(Vector3(-5.9, 1.6, -3.8), FOCAL)
-	_check(view.size.y == 384, "tier 2 caps the pass at 384: %s" % view.size)
+	_check(view.size.y == 512, "tier 1 caps the pass at 512: %s" % view.size)
+	# tier 2: a static mirror. The pass never draws, even from in front of the glass, and the glass stops reading its picture
+	QualityManager.current_tier = 2
+	var renders_before := mirror.renders
+	var drew := 0
+	for i in 30:
+		drew += 1 if mirror.tick(Vector3(-3.4, 1.6, -3.8), FOCAL) else 0
+	_check(drew == 0 and mirror.renders == renders_before and view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "tier 2: the window pass never draws (static mirror)")
+	_check(not bool(mirror._mat.get_shader_parameter(&"avatars_on")), "...and the glass shows the room cube alone, not a stale pass")
 	QualityManager.current_tier = 0
+	_check(mirror.tick(Vector3(-3.4, 1.6, -3.8), FOCAL) and bool(mirror._mat.get_shader_parameter(&"avatars_on")), "back on tier 0 the pass draws and shows again")
 
-	# the room cube: 1024 / 768 / 512 px faces, mipmapped (the shader samples them with filter_linear_mipmap)
-	_check(Mirror.FACE_PX.size() == 3 and Mirror.FACE_PX[0] == 1024 and Mirror.FACE_PX[1] == 768 and Mirror.FACE_PX[2] == 512, "cube faces 1024 / 768 / 512 by tier: %s" % [Mirror.FACE_PX])
+	# the room cube: 1024 / 512 / 384 px faces, mipmapped (the shader samples them with filter_linear_mipmap)
+	_check(Mirror.FACE_PX.size() == 3 and Mirror.FACE_PX[0] == 1024 and Mirror.FACE_PX[1] == 512 and Mirror.FACE_PX[2] == 384, "cube faces 1024 / 512 / 384 by tier: %s" % [Mirror.FACE_PX])
 	_check(FileAccess.get_file_as_string("res://src/gameplay/bar/mirror.gd").contains("generate_mipmaps"), "each face gets its mipmaps")
 	_check(preload("res://src/shaders/mirror.gdshader").code.contains("filter_linear_mipmap"), "the shader samples the cube with mipmaps")
 

@@ -6,8 +6,8 @@ extends Node3D
 ## for them: no shadow atlas (the lamp's shadows are not in the feeds), no MSAA, FXAA instead.
 ## Cost control (07 §2 "TV feeds"): the feeds draw alternately, one pass per period, only while the TV is on the viewer's screen
 ## (VisibleOnScreenNotifier3D) and `feeds_on`; sizes and rate by QualityManager tier:
-##   tier 0  two 640x427 feeds, 15 Hz each (a pass every 1/30 s)     tier 1  two 480x320, 10 Hz each (every 1/20 s)
-##   tier 2  one wide 640x213 feed, the ceiling camera's, across the whole glass, 10 Hz
+##   tier 0  two 640x427 feeds, 15 Hz each (a pass every 1/30 s)     tier 1  two 400x267, 8 Hz each (every 1/16 s)
+##   tier 2  one wide 512x171 feed, the ceiling camera's, across the whole glass, 5 Hz (the lowest tier: one slow feed)
 ## A feed shows only after it has drawn once (shader `lit`), so the TV is black whenever it is off, resized or new. No noise.
 ## Render layers: the frame is on layer 1 + the mirror's ROOM_LAYER (the room cube keeps a TV on the wall); the glass and the LIVE bugs are on
 ## SCREEN_LAYER (+ ROOM_LAYER for the glass) which no feed camera draws, so a tripod turned at the TV does not film itself. Feeds draw layer 1,
@@ -18,14 +18,15 @@ const SCREEN := Vector2(3.72, 1.24)       ## the glass, metres
 const FRAME := Vector2(4.0, 1.48)         ## outer size: the south wall's TV zone is x -2.05..2.05 (DecorPlan.wall_keep_clear)
 const DEPTH := 0.2                        ## rim depth: from the wall plane into the room
 const SCREEN_Z := DEPTH - 0.03            ## the glass sits recessed in the rim
+const LABEL_LIFT := 0.025                 ## the LIVE bugs stand this far in front of the glass: a few mm z-fights on a coarse depth buffer (07 §7.7)
 const DIVIDER := 0.04                     ## the bar between the two pictures (it hides the seam)
 const SCREEN_LAYER := 1 << 13             ## render layer 14: the glass and its labels; no feed camera draws it
 const FEED_MASK := 1 | Humanoid.MIRROR_LAYER | Humanoid.HEAD_LAYER
 const HALF_ASPECT := SCREEN.x * 0.5 / SCREEN.y  ## each half's picture: 3:2 with these numbers
 const WIDE_ASPECT := SCREEN.x / SCREEN.y
-const HALF_W: Array[int] = [640, 480]     ## picture width (px) of one half on tiers 0 / 1
-const WIDE_W := 640                       ## tier 2: width of the single wide feed
-const PERIOD: Array[float] = [1.0 / 30.0, 1.0 / 20.0, 1.0 / 10.0]  ## seconds between two feed passes, per tier
+const HALF_W: Array[int] = [640, 400]     ## picture width (px) of one half on tiers 0 / 1
+const WIDE_W := 512                       ## tier 2: width of the single wide feed
+const PERIOD: Array[float] = [1.0 / 30.0, 1.0 / 16.0, 1.0 / 5.0]  ## seconds between two feed passes, per tier
 const NEAR_M := 0.05
 const FAR_M := 40.0
 const FRAME_COLOR := Color(0.07, 0.07, 0.08)
@@ -258,7 +259,7 @@ func _build_labels() -> void:
 		l.layers = SCREEN_LAYER
 		l.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var left := -SCREEN.x * 0.5 if i == 0 else DIVIDER * 0.5
-		l.position = Vector3(left + 0.08, SCREEN.y * 0.5 - 0.09, SCREEN_Z + 0.004)
+		l.position = Vector3(left + 0.08, SCREEN.y * 0.5 - 0.09, SCREEN_Z + LABEL_LIFT)
 		l.text = "LIVE  CAM 1" if i == 0 else "LIVE  CEILING"
 		add_child(l)
 		_labels.append(l)

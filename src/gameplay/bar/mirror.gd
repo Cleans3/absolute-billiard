@@ -7,16 +7,17 @@ extends Node3D
 ## The window pass runs every frame from the *interpolated* eye (a throttled or tick-time eye is what made the old mirror swim), at any
 ## distance in front of the glass (a range cut-off froze the avatars and the table over the live room, 06 P33 U2); what it costs is
 ## scaled instead: the pass is sized to the glass's size on the viewer's screen, and not drawn at all off screen or behind the glass.
-## Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
+## Tier 2 (the lowest, 07 §2) draws no window pass at all: the glass is the static room cube (the avatars and the table are not in it);
+## tier 1 caps the pass at 512 px. Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
 
 const LAYER := Humanoid.MIRROR_LAYER      ## the window pass: avatars (Humanoid puts every body on it) and the table
 const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (the room shell)
 const SIZE := Vector2(3.6, 2.4)
 const ASPECT := SIZE.x / SIZE.y           ## the window pass keeps the glass's 3:2
-const VIEW_MAX_H: Array[int] = [1024, 768, 384]  ## tallest window pass per QualityManager tier (px), reached only when the glass fills the screen
+const VIEW_MAX_H: Array[int] = [1024, 512, 0]    ## tallest window pass per QualityManager tier (px), reached only when the glass fills the screen; 0 = no pass (static)
 const VIEW_MIN_H := 128
 const VIEW_STEP := 64                     ## the pass is resized in steps of this height, and shrinks only 2 steps late (no thrash at a boundary)
-const FACE_PX: Array[int] = [1024, 768, 512]  ## cube face size per tier; mipmapped (the room is minified from a distance)
+const FACE_PX: Array[int] = [1024, 512, 384]  ## cube face size per tier; mipmapped (the room is minified from a distance)
 const CAPTURE_AT := Vector3(0.0, 0.2, 2.5) ## local: in front of the glass at about eye height
 const FAR_M := 40.0
 const NEAR_MIN_M := 0.05
@@ -42,6 +43,7 @@ var blood := 0.0                          ## `set_blood`: 0 clean glass .. 1 sme
 var _mat: ShaderMaterial
 var _capturing := false
 var _recapture := false
+var _avatars_on := true                   ## the glass shows the window pass (false: tier 2, the static cube alone)
 
 @onready var _view: SubViewport = $View
 @onready var _cam: Camera3D = $View/Cam
@@ -111,15 +113,29 @@ static func focal_px(cam: Camera3D, vp: Viewport) -> float:
 ## One frame for a viewer at `eye` (Vector3.INF = glass off screen): the window pass draws this frame whenever the viewer is in front
 ## of the glass, however far, sized to the glass on their screen (`focal` from `focal_px`; 0 = the tier's tallest). Returns whether it drew.
 func tick(eye: Vector3, focal := 0.0) -> bool:
-	if not eye.is_finite() or not in_front(eye):
+	if not eye.is_finite() or not in_front(eye) or not has_window_pass():
 		_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		_show_avatars(has_window_pass())
 		return false
+	_show_avatars(true)
 	var h := window_height(maxf((eye - global_position).dot(global_basis.z), NEAR_MIN_M), focal)
 	var cur := _view.size.y
 	if h > cur or h <= cur - 2 * VIEW_STEP:
 		_view.size = view_size(h)
 	render_for(eye)
 	return true
+
+
+## Whether the current tier draws the avatars-and-table window pass (tier 2: no, the glass is the static room cube).
+static func has_window_pass() -> bool:
+	return VIEW_MAX_H[clampi(QualityManager.current_tier, 0, VIEW_MAX_H.size() - 1)] > 0
+
+
+## The glass reads the window pass's texture only while it is being drawn: a tier that stops drawing it must not leave its last frame up.
+func _show_avatars(on: bool) -> void:
+	if on != _avatars_on and _mat != null:
+		_avatars_on = on
+		_mat.set_shader_parameter(&"avatars_on", on)
 
 
 ## In front of the glass plane (a viewer behind it, in the wall, sees no reflection).
@@ -130,7 +146,7 @@ func in_front(eye: Vector3) -> bool:
 ## The window pass's height (px) for a viewer `dist` m from the glass plane: the glass's height on screen rounded up to VIEW_STEP,
 ## between VIEW_MIN_H and the tier's tallest. `focal` <= 0: the tallest.
 func window_height(dist: float, focal: float) -> int:
-	var tallest := VIEW_MAX_H[clampi(QualityManager.current_tier, 0, VIEW_MAX_H.size() - 1)]
+	var tallest := maxi(VIEW_MAX_H[clampi(QualityManager.current_tier, 0, VIEW_MAX_H.size() - 1)], VIEW_MIN_H)
 	if focal <= 0.0:
 		return tallest
 	return clampi(ceili(SIZE.y * focal / dist / VIEW_STEP) * VIEW_STEP, VIEW_MIN_H, tallest)

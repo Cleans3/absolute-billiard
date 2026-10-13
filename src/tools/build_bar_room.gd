@@ -713,7 +713,7 @@ func _wall_frame(wall: StringName, along: float, y: float, off: float) -> Dictio
 func _poster(st: SurfaceTool, p: Array) -> Dictionary:
 	var width: float = p[7]
 	var height: float = width * DecorPlan.CELL.y / (DecorPlan.CELL.x * p[3])
-	var f := _wall_frame(p[4], p[5], p[6], DecorPlan.POSTER_OFFSET + 0.002)
+	var f := _wall_frame(p[4], p[5], p[6], DecorPlan.POSTER_OFFSET + DecorPlan.POSTER_STANDOFF)
 	var frame := _wall_frame(p[4], p[5], p[6], DecorPlan.POSTER_OFFSET * 0.5)
 	# frame: a dark box a little larger than the print
 	var bm := BoxMesh.new()
