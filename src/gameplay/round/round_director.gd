@@ -39,6 +39,7 @@ const BOMB_RADIUS_RADII := 14.0   # [tune] blast radius in ball radii
 const BOMB_KICK_MPS := 3.0        # [tune] speed given to a neighbour at zero distance, linear falloff
 const RACK_ENTRY_SIZE := 10  # net_id u8 | type u8 | x f32 | z f32 (table-local)
 const SHOT_CEILING_SEC := 12.0  # 01 §3: past this every ball is stilled and the shot resolves anyway
+const SHOT_CEILING_TILTED_SEC := 7.5  # a tilted table keeps balls drifting to the low corner: stilled sooner
 const WEDGE_DIRECTIONS := 16
 const OFF_TABLE_RADII := 2.0    # past the nose rectangle by this many radii = off the table (A3)
 
@@ -325,7 +326,7 @@ func is_cue_wedged() -> bool:
 func _physics_process(delta: float) -> void:
 	_shot_time += delta
 	_retire_off_table()
-	if _shot_time > SHOT_CEILING_SEC:
+	if _shot_time > (SHOT_CEILING_SEC if is_zero_approx(table.sim.table_tilt_deg) else SHOT_CEILING_TILTED_SEC):
 		for b in _balls:
 			b.linear_velocity = Vector3.ZERO  # Ball._integrate_forces snaps a still ball to rest
 			b.angular_velocity = Vector3.ZERO
