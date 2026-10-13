@@ -105,13 +105,20 @@ func _run() -> void:
 	loop._set_phase(GameLoop.Phase.GAME_OVER)
 	_check(not phase._text.text.contains("\n\n") and not phase._text.text.begins_with("\n") and phase._text.text == phase._reckoning, "an Endless Night's Game over is just the numbers: %s" % phase._text.text)
 
-	# --- the Buyout paid (Night 3, Campaign): the Campaign won buttons; the finale's ending cards come with the F3 rewrite ---
+	# --- C7: the Buyout paid (Night 3, Campaign): the finale's three ending cards, then the Campaign won buttons ---
 	loop.mode = GameLoop.MODE_CAMPAIGN
 	loop.night_index = 2
 	loop._set_phase(GameLoop.Phase.CAMPAIGN_WON)
 	await _frames(2)
-	_check(loop.nights[2].story.ending_cards.is_empty() and not cards.is_open(), "Night 3's story has no ending cards yet, so nothing opens over the Campaign won screen")
-	_check(phase.visible and phase._title.text == "Campaign won" and phase._next.text == "Endless" and phase._next.visible, "the Campaign won screen with its Endless button")
+	var ending: Array[String] = loop.nights[2].story.ending_cards
+	_check(cards.is_open() and cards.cards == ending and ending.size() == 3 and not phase.visible, "the three ending cards open over the Campaign won screen")
+	_check(cards.index == 0 and cards._body.text == ending[0], "they start at the first")
+	cards.advance()
+	cards.advance()
+	_check(cards.is_open() and cards.index == 2 and cards._body.text == ending[2], "the third card names velvet's reveal")
+	cards.advance()
+	await _frames(2)
+	_check(not cards.is_open() and phase.visible and phase._title.text == "Campaign won" and phase._next.text == "Endless" and phase._next.visible, "then the existing Campaign won screen with its Endless button")
 
 	# --- C1: an Endless Night opens with the Endless card, every Night ---
 	loop.mode = GameLoop.MODE_ENDLESS

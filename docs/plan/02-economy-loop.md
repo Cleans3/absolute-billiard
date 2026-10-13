@@ -286,7 +286,7 @@ grade:  D < 200 ≤ C < 400 ≤ B < 600 ≤ A < 850 ≤ S < 1100 ≤ S+
 ```
 Every weight and floor is a `RunStats` constant. **Provisional** (06 P37): the playtest bot recalibrates them so that a clean Campaign win lands in S / S+, a typical win in A, an early loss in D / C; Endless has no ceiling, a long run just climbs.
 
-**The card.** `RunStatsCard` (`src/ui/RunStatsCard.tscn`, `run_stats_card.gd`) shows a snapshot: eight rows (Nights cleared, Balls potted, Best combo, Trick shots, Biggest shot, Cash earned, Scratches with their fines, Time played) in a vertical `ScrollContainer`, the grade big under them, readable at phone size on the project theme. It opens nothing by itself: the endings instance it (campaign win on the truck, the black card after the failure fall, both modes; the cutscene slice wires them). The debug panel's Game tab has a **Run stats card** button.
+**The card.** `RunStatsCard` (`src/ui/RunStatsCard.tscn`, `run_stats_card.gd`) shows a snapshot: eight rows (Nights cleared, Balls potted, Best combo, Trick shots, Biggest shot, Cash earned, Scratches with their fines, Time played) in a vertical `ScrollContainer`, the grade big under them, readable at phone size on the project theme. It opens nothing by itself: the endings instance it (campaign win on the truck, the black card after the failure fall, both modes). `show_stats(stats, title, closable, close_text, compact)`: `compact` is the low form (a 140 px list, a smaller grade) that `TruckOutro` docks along the bottom of the screen with a **Continue** button (09 §3.9); F3b wires the black card after the fall. The debug panel's Game tab has a **Run stats card** button.
 
 ## 4. Godot implementation sketch (D7 naming)
 

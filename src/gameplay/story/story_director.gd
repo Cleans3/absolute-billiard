@@ -227,7 +227,7 @@ func _show_chat() -> void:
 
 # --- Gus ------------------------------------------------------------------------------------------------------------------------
 
-## The story lines unlocked so far, in telling order: Night 1's up to this Night's (Endless keeps all five).
+## The story lines unlocked so far, in telling order: Night 1's up to this Night's (Endless keeps all three).
 func _feed_gus() -> void:
 	var gus := _bartender()
 	if gus == null or game_loop == null or game_loop.nights.is_empty():

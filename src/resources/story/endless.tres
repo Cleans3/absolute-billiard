@@ -5,7 +5,7 @@
 [resource]
 script = ExtResource("1")
 night = 0
-intro_cards = Array[String](["Somebody bought Gus's debt. The rate went up. The stream goes on."])
+intro_cards = Array[String](["Somebody bought Gus's debt. The rate went up. The door stays locked. The stream goes on."])
 call = Array[String]([])
 gus_lines = Array[String]([])
 paid_line = ""

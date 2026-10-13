@@ -215,6 +215,23 @@ static func save_story_said(campaign: int, lines: Array[String]) -> void:
 	_story_put("story_said", campaign, lines)
 
 
+# --- cutscenes (09 §4.4): per player, not per campaign, so the intro is skippable once this player has watched it ---------------
+
+static func cutscene_seen(id: StringName) -> bool:
+	var seen: Variant = _read_profile().get("cutscenes_seen", [])
+	return seen is Array and (seen as Array).has(String(id))
+
+
+static func mark_cutscene_seen(id: StringName) -> void:
+	var d := _read_profile()
+	var stored: Variant = d.get("cutscenes_seen", [])
+	var seen: Array = stored if stored is Array else []
+	if not seen.has(String(id)):
+		seen.append(String(id))
+		d["cutscenes_seen"] = seen
+		_write_profile(d)
+
+
 ## The campaigns that can still be resumed (their checkpoint exists), as profile keys.
 static func checkpoint_campaigns() -> PackedStringArray:
 	var out := PackedStringArray()

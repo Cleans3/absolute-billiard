@@ -11,7 +11,7 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | 04 | [04-architecture-netcode.md](04-architecture-netcode.md) | mobile-first platform matrix, ENet+Noray (Steam optional), event-based sync, RPC/channel table, SaveProfile broadcast, M0 perf spike | omp → opus rewrite |
 | 07 | [07-optimization.md](07-optimization.md) | per-aspect mobile budgets: physics, render, net, memory, GDScript, load, battery, assets, CI gates | opus |
 | 08 | [08-player.md](08-player.md) | Player v1: touch-first first person, WALK/CUE/CARRY modes, touch layout, desktop parity, avatars | alpha (claude), 2026-09-30 (P6) |
-| 09 | [09-story.md](09-story.md) | "The Last Table": Gus, Velvet Moe, the Rope; intro cards, the phone, Gus's story lines, hazard flavor, Moe's ledger, endings, velvet in the chat | alpha (claude), 2026-10-11 (P29) |
+| 09 | [09-story.md](09-story.md) | "The Last Table": the abduction frame (the Rope, the cabin, Gus, Velvet Moe); intro cards, the phone, Gus's story lines, hazard flavor, Moe's ledger, endings, velvet in the chat; the cutscenes and `src/cutscene/` (intro van → cabin, quota failure, truck outro) | alpha (claude), 2026-10-11 (P29), 2026-10-13 (P39, F3a) |
 | 10 | [10-fx.md](10-fx.md) | chaos VFX: pop / spark on every hit, pot bursts, trick celebrations, combo + streak escalation, scratch fizzle; pooled, tiered, presentation only | beta-9n-2 (claude), 2026-10-13 (adhoc-1012a) |
 
 ## Cross-module signal map (post-rewrite, 2026-08-29)
@@ -32,8 +32,9 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | WorldInteractions (03) | `answer_phone` → `world_interaction_applied` (every peer) | StoryDirector (09) plays Moe's call at the phone; `BartenderChat` holds Gus |
 | WorldInteractions (03) | `slot_spin` → `world_interaction_applied` with the host-rolled result (every peer) | SlotMachine plays the drums, SlotScreen words the win (02 §3.9); Cash (`slot`) and chaos Effects reach clients through their own mirrors |
 | StoryDirector (09) | `BartenderChat` story pool / `phone_ignored` line | Bartender (P24) |
+| CutscenePlayer (09 §4.4) | `started(id)`, `played(id, skipped)` (local, every peer) | MainLevel (F3b): the ack to the host, `max_wait_sec(id)`, then Night 1's cards / the stats card / the main menu |
 | Ball (01) / PhysicsSim (04) / RoundDirector (01) | `Ball.contacted`, `Ball.net_flag`, `PhysicsSim.frame_received(frame)` (client, new), `ball_flag_applied`, `shot_started_net`, `trick_detected`, `shot_ended` | ImpactFx (10): pops, bursts, combos, trick celebrations, every peer; reads only |
-| `NightConfig.story` / `Event.story_line` (09) | read by | PhaseScreen (paid/short lines, ending cards), Blackboard (Moe's ledger, hazard flavor), EventVote |
+| `NightConfig.story` / `Event.story_line` (09) | read by | PhaseScreen (paid/short lines), StoryDirector / TruckOutro (ending cards), Blackboard (Moe's ledger, hazard flavor), EventVote |
 
 Autoload: `NetManager` only. `SaveManager` static. `GameLoop`, `EconomyManager`, `StreamManager`, `EffectManager`, `EventScheduler`, `RoundDirector` = `MainLevel` children; `PhysicsSim` = Table-scene node. (D7)
 

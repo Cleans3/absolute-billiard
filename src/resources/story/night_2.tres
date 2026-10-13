@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 night = 2
-intro_cards = Array[String](["Moe kept his word. The stream is up, and the chat already knows your names.", "Nine hundred tonight. 'Interest', Moe calls it. Gus calls it Tuesday."])
-call = Array[String](["People are watching. Good. Watching is the whole point.", "Nine hundred. And tell Gus I noticed the new cushions."])
-gus_lines = Array[String](["New cushions? I didn't buy new cushions.", "The Rope came by this afternoon. Ordered water. Tipped in threats.", "Every time you scratch, somewhere a loan shark smiles.", "That wanted poster? I didn't scratch the face out. I found it like that."])
-paid_line = "Nine hundred. You're starting to look like an investment."
-short_line = "Interest is a funny thing. It keeps going after you stop."
+intro_cards = Array[String](["Night two. The door is still bolted. The stream is up, and the chat already knows your names.", "Moe raised the number. 'Interest', he calls it. Gus calls it Tuesday. Gus no longer knows what day it is."])
+call = Array[String](["People are watching. Good. Watching is the whole point.", "The number went up. Interest. And tell Gus I noticed the new cushions."])
+gus_lines = Array[String](["New cushions? I didn't buy new cushions.", "The Rope came by this afternoon. Ordered water. Tipped in threats.", "That floor by the table? Don't stand on it. It's fine. Just don't stand on it.", "That wanted poster? I didn't scratch the face out. I found it like that."])
+paid_line = "You paid again. You're starting to look like an investment."
+short_line = "Interest keeps going after you stop. So does the floor."
 chat_line = "nice cushions"
 ending_cards = Array[String]([])
