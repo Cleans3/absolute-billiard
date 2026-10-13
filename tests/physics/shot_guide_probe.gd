@@ -36,8 +36,9 @@ class Recorder extends Node:
 	var ps := PackedVector3Array()
 	var os := PackedVector3Array()
 	var first_kind := &""
-	var first_t := 0.0
-	var prev_t := 0.0
+	var first_t := 0.0     ## end of the step that reported the first contact
+	var first_prev := 0.0  ## start of that step: the contact is in (first_prev, first_t]
+	var prev_t := 0.0      ## start of the latest step (moves on every tick; use first_prev after a contact)
 
 	func arm() -> void:
 		ts.clear()
@@ -59,7 +60,8 @@ class Recorder extends Node:
 	func contact(_ball: Ball, _other: Node, kind: StringName) -> void:
 		if on and first_kind == &"":
 			first_kind = kind
-			first_t = t  # end of the step that reported it; the contact is in (prev_t, t]
+			first_t = t
+			first_prev = prev_t
 
 
 var table: Table
@@ -149,9 +151,11 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 	var tol_s := FLAT_S if flat else SPECIAL_S
 	var cls := "flat" if flat else "special"
 	_runs[cls] += 1
-	var hop := 0.0
-	for p in rec.ps:
-		hop = maxf(hop, p.y - (table.spec.bed_height_m + r))
+	var hop := 0.0  # highest the cue ball rose off the cloth before its first contact (after one, a bounce is not a hop)
+	for i in rec.ps.size():
+		if rec.first_kind != &"" and rec.ts[i] > rec.first_prev:
+			break
+		hop = maxf(hop, rec.ps[i].y - (table.spec.bed_height_m + r))
 	if elev > 0.0:
 		_hop = maxf(_hop, hop)
 	# 1. the same first contact
@@ -159,16 +163,16 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 	if m_pocket:
 		_check(cue.is_pocketed or table.in_hole(Vector2(cue.global_position.x, cue.global_position.z)) or host_kind == &"", "%s: the guide drops the ball in a pocket, the host touched a %s" % [label, host_kind])
 	elif m_kind == &"":  # the guide's stretch ended (rolled out, ran out of length) without a contact: the host may touch something later, not sooner
-		_check(host_kind == &"" or rec.prev_t >= m_end - 0.05, "%s: the guide's stretch ends untouched at %.3f s, the host hits '%s' at %.3f s" % [label, m_end, host_kind, rec.first_t])
+		_check(host_kind == &"" or rec.first_t >= m_end - 0.05, "%s: the guide's stretch ends untouched at %.3f s, the host hits '%s' at %.3f s" % [label, m_end, host_kind, rec.first_t])
 	else:
 		_check(host_kind == m_kind, "%s: the guide says first contact is '%s' at %.3f s, the host's is '%s' at %.3f s" % [label, m_kind, m_end, host_kind, rec.first_t])
 	# 2. the contact lands inside the host's step (give or take the tolerance)
 	if host_kind != &"" and host_kind == m_kind:
 		var late := m_end - rec.first_t
-		var early := rec.prev_t - m_end
+		var early := rec.first_prev - m_end
 		var terr := maxf(maxf(late, early), 0.0)
 		_worst[cls][1] = maxf(_worst[cls][1], terr)
-		_check(terr <= tol_s, "%s: contact time %.3f s vs the host's (%.3f, %.3f] s, %.0f ms off" % [label, m_end, rec.prev_t, rec.first_t, terr * 1000.0])
+		_check(terr <= tol_s, "%s: contact time %.3f s vs the host's (%.3f, %.3f] s, %.0f ms off" % [label, m_end, rec.first_prev, rec.first_t, terr * 1000.0])
 	# 3. the whole path up to the contact (a step before it)
 	var worst := 0.0
 	var upto := (m_end if m_kind != &"" else window) - 0.02

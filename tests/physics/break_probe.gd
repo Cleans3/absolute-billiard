@@ -71,7 +71,7 @@ func _run() -> void:
 ## Racks `entries` (RackDropper placements: table-local x, z), breaks it, returns {moved: fraction, rest: seconds}.
 func _break(entries: Array[Dictionary], what: String) -> Dictionary:
 	var y := table.spec.bed_height_m + table.spec.ball_radius_m + 0.002
-	var head := table.layout.spots.head
+	var head: Vector3 = table.layout.spots.head  # spots is a Dictionary: a typed declaration, not an inference
 	var cue := _spawn(CUE_T, Vector3(head.x, y, head.z))
 	var objs: Array[Ball] = []
 	var start: Array[Vector3] = []
