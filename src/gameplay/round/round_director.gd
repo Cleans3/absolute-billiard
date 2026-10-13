@@ -44,6 +44,7 @@ const SHOT_CEILING_SEC := 12.0  # 01 §3: past this every ball is stilled and th
 const SHOT_CEILING_TILTED_SEC := 7.5  # a tilted table keeps balls drifting to the low corner: stilled sooner
 const WEDGE_DIRECTIONS := 16
 const OFF_TABLE_RADII := 2.0    # past the nose rectangle by this many radii = off the table (A3)
+const RESYNC_MIN_MSEC := 2000   # a client asks for the full state at most this often when its digest disagrees (06 P49)
 
 @export var table: Table
 @export var ball_scene: PackedScene = preload("res://src/gameplay/balls/Ball.tscn")
@@ -86,6 +87,7 @@ var _shot_time := 0.0
 var _potted: Array[Ball] = []
 var _off_table: Array[Ball] = []  # left the table this shot and not yet put back
 var _rest_pos: Dictionary = {}    # Ball -> Vector2 table-local, taken as the shot opens
+var _last_resync_msec := -RESYNC_MIN_MSEC
 
 
 func _ready() -> void:
@@ -99,6 +101,8 @@ func _ready() -> void:
 	table.sim.ball_flag_applied.connect(_on_net_flag_applied)
 	table.sim.nudged.connect(_on_nudged)
 	table.sim.shot_validator = _validate_shot
+	table.sim.check_source = table_check
+	table.sim.desync_detected.connect(_on_desync)
 	table.ball_dropped.connect(_on_ball_dropped)
 	_fx = get_node_or_null(^"../EffectManager")
 	if _fx != null:
@@ -288,6 +292,33 @@ func _on_blind_ended() -> void:
 		_request_full_state_rpc.rpc_id(HOST_ID)
 
 
+## Client: the table digest was wrong twice running (a lost frame, a flag that never came, a table that is not there yet).
+func _on_desync() -> void:
+	var now := Time.get_ticks_msec()
+	if multiplayer.is_server() or now - _last_resync_msec < RESYNC_MIN_MSEC:
+		return
+	_last_resync_msec = now
+	_request_full_state_rpc.rpc_id(HOST_ID)
+
+
+## The digest of this peer's table as it stands at rest (06 P49): the Round and how many shots it has seen, every ball (type,
+## lifecycle, 1 mm cell), the pocket stats, the motion numbers and, once EffectManager has them, the hazard parameters.
+## The host's and a client's are equal whenever the client has played everything the host sent. 0 = no Round yet.
+func table_check(at_tick := NAN) -> int:
+	if _round_id == "":
+		return 0
+	var h := TableHash.new()
+	h.add_str(_round_id)
+	h.add_int(_seed)
+	h.add_int(_shot_index)
+	table.sim.add_digest(h, at_tick)
+	h.add_float(table.pocket_radius_mult)
+	h.add_float(table.pocket_osc_m)
+	if _fx != null and _fx.has_method(&"hazard_state"):
+		h.add_variant(_fx.call(&"hazard_state"))
+	return h.result()
+
+
 ## Host, back from the background: its streams stalled, so every client re-syncs from a snapshot.
 func _on_host_resumed() -> void:
 	if multiplayer.is_server():
@@ -306,7 +337,7 @@ func _request_full_state_rpc() -> void:
 func send_full_state(peer_id: int) -> void:
 	if _round_id == "":
 		return
-	_full_state_rpc.rpc_id(peer_id, _round_id, _seed, _shot_index, current_shooter_id, _round_active, shot_in_progress, shot_clock_left, _rack_blob(), table.sim.snapshot_frame(), table.sim.pocket_time())
+	_full_state_rpc.rpc_id(peer_id, _round_id, _seed, _shot_index, current_shooter_id, _round_active, shot_in_progress, shot_clock_left, _rack_blob(), table.sim.snapshot_frame(), table.sim.pocket_time(), table.sim.motion_stats())
 	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager", &"../BarSkins", &"../StoryDirector"]:
 		var node := get_node_or_null(NodePath(n))
 		if node != null and node.has_method(&"resync_peer"):
@@ -314,19 +345,34 @@ func send_full_state(peer_id: int) -> void:
 
 
 @rpc("authority", "call_remote", "reliable", 3)
-func _full_state_rpc(round_id: String, seed: int, shot_index: int, shooter_id: int, active: bool, live: bool, clock_left: float, blob: PackedByteArray, frame: PackedByteArray, host_pocket_t: float) -> void:
-	_apply_rack(round_id, seed, blob)
+func _full_state_rpc(round_id: String, seed: int, shot_index: int, shooter_id: int, active: bool, live: bool, clock_left: float, blob: PackedByteArray, frame: PackedByteArray, host_pocket_t: float, stats: PackedFloat32Array) -> void:
+	var keep := _holds_rack(round_id, seed, blob)  # the same balls: a desync resend corrects them in place, no rebuild, no pop
+	if not keep:
+		_apply_rack(round_id, seed, blob)
 	_shot_index = shot_index
 	_shot_id = "%s-s%d" % [round_id, shot_index] if shot_index > 0 else ""
 	_round_active = active
 	shot_in_progress = live
 	shot_clock_left = clock_left
-	table.sim.apply_snapshot(frame, host_pocket_t)
+	table.sim.apply_snapshot(frame, host_pocket_t, keep, stats)
 	if not active and _stager != null and not skip_staging:
 		_clear_balls()  # a Round that has ended is cleared by its clean-up (it may be playing on the host right now): no frozen rack through Intermission
 	if current_shooter_id != shooter_id:
 		current_shooter_id = shooter_id
 		shooter_changed.emit(shooter_id)
+
+
+## Client: are these exactly the balls (id and type) this peer already has for this Round?
+func _holds_rack(round_id: String, seed: int, blob: PackedByteArray) -> bool:
+	if round_id != _round_id or seed != _seed or blob.size() != _balls.size() * RACK_ENTRY_SIZE:
+		return false
+	var types := {}
+	for b in _balls:
+		types[b.net_id] = BALL_TYPES.find(b.ball_type)
+	for o in range(0, blob.size(), RACK_ENTRY_SIZE):
+		if types.get(int(blob[o]), -1) != blob[o + 1]:
+			return false
+	return true
 
 
 ## Freezes the table where it stands, then (06 P33 U15) clears it: the bed opens under the balls and they fall into the pit, `staging` for the

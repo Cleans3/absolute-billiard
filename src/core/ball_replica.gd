@@ -9,9 +9,20 @@ extends RefCounted
 const STRIDE := 10  # tick, pos(3), lin(3), ang(3)
 const KEEP := 24    # events kept per ball; older ones are dropped once passed
 const NOW := 0xFFFF  # tick_offset sentinel: "apply at the playback clock's current tick"
+const BLEND_TICKS := 12  # 100 ms at LIVE_TICK (= PhysicsSim.INTERP_DELAY_SEC): an authoritative correction is spread over this long
+const BLEND_MIN_M := 0.001  # a smaller correction is just taken (06 P49)
+
+
+## The part of an authoritative correction not yet shown: added to the sampled position, shrinking linearly to zero.
+class Blend extends RefCounted:
+	var start := 0.0
+	var offset := Vector3.ZERO
+
 
 var _data: Array[PackedFloat64Array] = []
 var _scratch := BallMotion.State.new()
+var _shown := BallMotion.State.new()
+var _blend: Dictionary = {}  # net_id -> Blend
 
 
 func _ensure(id: int) -> PackedFloat64Array:
@@ -26,6 +37,57 @@ func anchor(id: int, tick: int, s: BallMotion.State) -> void:
 	var d := PackedFloat64Array()
 	_push(d, tick, s)
 	_data[id] = d
+
+
+## An authoritative state (the host's word for where the ball is, 06 P49): inserted like `insert`, but never older than the
+## newest event of that ball (it is the newest information, whatever tick it was stamped), and the jump it makes in what is
+## on screen at `now` (or at its own tick, if later) is spread over BLEND_TICKS instead of shown as a pop.
+func insert_blended(id: int, tick: int, s: BallMotion.State, now: float, p: BallMotion.Params) -> void:
+	tick = maxi(tick, newest_tick(id))
+	var t_ref := maxf(now, float(tick))
+	var had := sample(id, t_ref, p, _shown)
+	var before := _shown.pos + blend_offset(id, t_ref) if had else Vector3.ZERO
+	insert(id, tick, s)
+	if not had:
+		return
+	sample(id, t_ref, p, _shown)
+	var err := before - _shown.pos
+	if err.length() <= BLEND_MIN_M:
+		_blend.erase(id)
+		return
+	set_blend(id, t_ref, err)
+
+
+## Added to `sample`'s position to get what is drawn at tick `t`.
+func blend_offset(id: int, t: float) -> Vector3:
+	var bl: Blend = _blend.get(id)
+	if bl == null or t < bl.start:
+		return Vector3.ZERO
+	var k := (t - bl.start) / BLEND_TICKS
+	return bl.offset * (1.0 - k) if k < 1.0 else Vector3.ZERO
+
+
+## Ball `id` is drawn `offset` off from tick `start` on, closing over BLEND_TICKS.
+func set_blend(id: int, start: float, offset: Vector3) -> void:
+	var bl := Blend.new()
+	bl.start = start
+	bl.offset = offset
+	_blend[id] = bl
+
+
+func clear_blend(id: int) -> void:
+	_blend.erase(id)
+
+
+func clear_blends() -> void:
+	_blend.clear()
+
+
+func newest_tick(id: int) -> int:
+	if not has_ball(id):
+		return 0
+	var d := _data[id]
+	return int(d[d.size() - STRIDE])
 
 
 func insert(id: int, tick: int, s: BallMotion.State) -> void:
@@ -77,7 +139,7 @@ func sample(id: int, tick: float, p: BallMotion.Params, out: BallMotion.State) -
 	out.lin = Vector3(d[o + 4], d[o + 5], d[o + 6])
 	out.ang = Vector3(d[o + 7], d[o + 8], d[o + 9])
 	var dt := (tick - d[o]) / float(PhysicsSim.LIVE_TICK)
-	if dt > 0.0:
+	if dt > 0.0 and not BallMotion.is_at_rest(out):  # no motion at all = the host has the ball frozen here (a rest), not "released": it stays (06 P49)
 		BallMotion.advance(out, dt, p)
 	if i > KEEP:  # bounded memory: drop events the playback clock has long passed
 		_data[id] = d.slice((i - KEEP / 2) * STRIDE)

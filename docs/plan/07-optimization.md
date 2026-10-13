@@ -156,19 +156,19 @@ Event-based sync per D2, ENet + Noray primary per P1. Mobile radios punish *pack
 | ch | mode | carries |
 |---|---|---|
 | 0 | reliable ordered (4.7 default) | lobby, `shot_resolved`, `update_cash`, `apply_event`, `SaveProfile` broadcast |
-| 1 | `unreliable_ordered` | batched ball contact events, 2 Hz heartbeat |
+| 1 | `unreliable_ordered` | batched ball contact events, 2 Hz heartbeat (live Shot), 1 Hz table-digest beat (at rest, 06 P49) |
 | 2 | `unreliable` | free-roam player transforms, `4 players × 10 Hz [tune]`, 12 B each |
 
 **Measure.** Custom monitors `Game/NetBytesPerSec` and `Game/EventsPerShot`; `MultiplayerPeer` stats. On device: `adb shell dumpsys netstats` and Perfetto's radio track to confirm the radio drops to idle between shots. Test on a real cellular link at least once — Wi-Fi hides tail-energy entirely.
 
 **Techniques, in order.**
 1. **Coalesce per physics frame, flush at 30 Hz.** 240 Hz ticks must never become 240 packets/s. One packet holds every event since the last flush.
-2. **Silence at rest.** Between shots send nothing; ENet's own ping (500 ms) keeps the connection. The heartbeat is `2 Hz` *only while a shot is live*.
+2. **Near-silence at rest.** Between shots the ball stream is silent; ENet's own ping (500 ms) keeps the connection. The corrective heartbeat is `2 Hz` *only while a shot is live*. Since 06 P49 the host also sends, once a Shot (or any settle) ends, one rest frame (`~7 + 21 B` per ball in play, ~340 B for 16 balls) and, while nothing moves, a 1 Hz digest beat of ~33 B on the wire (`PhysicsSim.REST_BEAT_SEC`): measured with `tests/sync/wire_pair_probe.gd`, idle host upstream 343 → 376 B/s and a 7 s shot window ~+300 B (+3 %), the 10 Hz player poses already keeping the radio awake between Shots.
 3. **Interpolate, never extrapolate near a cushion** (D2). Gate `+500!` popups on the client playback clock.
 4. **Reconnect from the last checkpoint.** `SaveProfile` (<1 KB) broadcast at each Round end; on rejoin the host sends one reliable full-state packet (13 transforms + economy + active Effects). Hold the slot `30 s [tune]`.
 5. **Backgrounding is a disconnect.** On `NOTIFICATION_APPLICATION_PAUSED` stop sending; on resume always request full state — never resume dead-reckoning across a suspend.
 
-**Do not.** Do not send snapshots at 20 Hz (04's original plan — that is 20× the bytes and reconstructs cushion contacts as straight lines). Do not send per-event packets. Do not add an app-level idle heartbeat on top of ENet's ping. Do not stream free-roam player transforms reliably.
+**Do not.** Do not send snapshots at 20 Hz (04's original plan — that is 20× the bytes and reconstructs cushion contacts as straight lines). Do not send per-event packets. Do not add an app-level idle heartbeat on top of ENet's ping beyond the one 33-byte digest beat (06 P49); it replaces nothing, it is how a client with a lost frame or no table is found. Do not stream free-roam player transforms reliably.
 
 **Acceptance:** a full break on a 4-player lobby stays under `16 KB/s` host upstream, and a client killed mid-shot rejoins to a correct table within `3 s`.
 
