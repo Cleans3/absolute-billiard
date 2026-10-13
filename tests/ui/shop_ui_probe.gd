@@ -1,11 +1,14 @@
 extends SceneTree
 ## Shop UI probe (polish 2, C11 C12 C15): the Bartender panel keeps its size in every mode, phase, shelf and refusal text;
-## Serve / Throw never leave a hidden target selected; no card clips its content; every Drink, Upgrade and hazard
+## Serve / Throw never leave a hidden target selected, Solo and the shooter see no Throw and no target choice (06 P35);
+## no card clips its content; every Drink, Upgrade and hazard
 ## has an icon of its own, distinct from the others, shown on the card, the row and the vote.
 ##   godot --path . --headless -s tests/ui/shop_ui_probe.gd
 ## Prints SHOP UI OK, or the failing checks and SHOP UI FAIL (exit 1).
 
 const COUNTER := Vector3(3.5, 0.05, 2.5)  # customer side of the counter: the Player closes the menu when out of reach
+const MATE := 77  # the stand-in crewmate
+const MATE_NAME := "A crew member with a really very long name indeed"
 
 var fails := 0
 var finished := false
@@ -13,6 +16,7 @@ var level: Node
 var menu: BartenderMenu
 var econ: EconomyManager
 var loop: GameLoop
+var rd: RoundDirector
 var player: Player
 var panel_size := Vector2.ZERO
 var picks: Array = []
@@ -58,6 +62,7 @@ func _run() -> void:
 	menu = level.get_node("UILayer/BartenderMenu")
 	econ = level.get_node("EconomyManager")
 	loop = level.get_node("GameLoop")
+	rd = level.get_node("RoundDirector")
 	player = level.get_node("PlayerSpawner").get_local_player() as Player
 	var panel: Control = menu.get_node("Panel")
 	panel_size = Vector2(panel.offset_right - panel.offset_left, panel.offset_bottom - panel.offset_top)
@@ -129,6 +134,7 @@ func _sizes() -> void:
 			await _frames(4)
 			_check(loop.phase == GameLoop.Phase.ROUND_LIVE, "the Round is live")
 			await _stand_at_counter()
+		_crew(true)  # both modes are real only with a crew whose shot is not mine
 		menu.open()
 		await _frames(2)
 		_check(menu.visible, "%s: the menu opens at the counter" % phase_name)
@@ -143,6 +149,7 @@ func _sizes() -> void:
 				econ.set_stock(econ.stock_key, ids, left)
 				await _frames(3)
 				var tag := "%s %s shelf %d" % [phase_name, mode, start]
+				_check(menu.kind == mode, "%s: the menu is in the mode asked for" % tag)
 				_panel_ok(tag)
 				_check(menu._cards.get_child_count() == ids.size(), "%s: a card per offer" % tag)
 				for card: Control in menu._cards.get_children():
@@ -155,48 +162,95 @@ func _sizes() -> void:
 		await _frames(3)
 		_panel_ok("%s empty shelf" % phase_name)
 		menu.close()
+		_crew(false)
 
 
 # --- Serve / Throw keep one coherent selection ---------------------------------------------------------
 
+## A crewmate at the table and the shot theirs, or Solo again with the shot mine.
+func _crew(on: bool) -> void:
+	var roster: Array = net.get_roster()
+	if on and roster.size() < 2:
+		roster.append({peer_id = MATE, name = MATE_NAME, seat = 1, ready = true})
+	elif not on and roster.size() > 1:
+		roster.pop_back()
+	_shooter(MATE if on else root.multiplayer.get_unique_id())
+	net.roster_changed.emit()
+
+
+func _shooter(peer_id: int) -> void:
+	rd.current_shooter_id = peer_id
+	rd.shooter_changed.emit(peer_id)
+
+
 func _modes() -> void:
 	var me := root.multiplayer.get_unique_id()
-	var roster: Array = net.get_roster()
 	var shelf: Array[StringName] = [&"beer", &"energy_drink", &"static_shot", &"moonshine", &"bar_nuts"]
 	econ.set_stock(econ.stock_key, shelf, [3, 2, 1, 1, 3] as Array[int])
-	roster.append({peer_id = 77, name = "A crew member with a really very long name indeed", seat = 1, ready = true})
-	net.roster_changed.emit()
+	for c in menu.picked.get_connections():  # the Player relays a pick to the host; this probe only wants the menu's report
+		if c.callable.get_object() == player:
+			menu.picked.disconnect(c.callable)
+	# Solo: one Buy action, no Serve / Throw buttons, no target row, the drink is served to me
+	menu.open()
+	await _frames(2)
+	_check(not menu._serve.visible and not menu._throw.visible and not menu._target_row.visible and menu._targets.is_empty(), "Solo: no mode buttons and no target row")
+	_check(menu._hint.text == "Served to you" and menu.kind == &"bar_serve" and menu.target_peer == me, "Solo: serves me: '%s' %s %d" % [menu._hint.text, menu.kind, menu.target_peer])
+	menu.set_mode(&"throw_drink")
+	await _frames(2)
+	_check(menu.kind == &"bar_serve" and not menu._throw.visible, "Solo: Throw cannot be selected (you cannot throw at yourself)")
+	_check(menu.drink_button(&"beer").text == "Buy", "Solo: the card says Buy: '%s'" % menu.drink_button(&"beer").text)
+	picks.clear()
+	menu.drink_button(&"beer").pressed.emit()
+	_check(picks == [[&"bar_serve", &"beer", me]], "Solo: a Buy is served to me: %s" % [picks])
+	_panel_ok("solo")
+	menu.close()
+	# a crew, the shot is theirs: Serve to: a toggle per member, or Throw at the shooter
+	_crew(true)
 	menu.open()
 	await _frames(2)
 	_check(menu.kind == &"bar_serve" and menu.target_peer == me, "opens on Serve with You selected: %s %d" % [menu.kind, menu.target_peer])
-	_check(menu._targets.size() == 2 and menu._targets[me].button_pressed, "two targets, You pressed")
+	_check(menu._serve.visible and menu._throw.visible and menu._target_row.visible and menu._hint.text == "Serve to:", "crew: Serve / Throw and a labelled target row: '%s'" % menu._hint.text)
+	_check(menu._targets.size() == 2 and menu._targets[me].button_pressed and menu._targets[me].text == "You", "two targets, You pressed")
 	_panel_ok("long crew name")
-	menu._targets[77].pressed.emit()
-	_check(menu.target_peer == 77 and menu._targets[77].button_pressed and not menu._targets[me].button_pressed, "tapping the crewmate selects them")
+	menu._targets[MATE].pressed.emit()
+	_check(menu.target_peer == MATE and menu._targets[MATE].button_pressed and not menu._targets[me].button_pressed, "tapping the crewmate selects them")
+	picks.clear()
+	menu.drink_button(&"beer").pressed.emit()
+	_check(picks == [[&"bar_serve", &"beer", MATE]], "a serve reports the crewmate: %s" % [picks])
 	menu.set_mode(&"throw_drink")
 	await _frames(2)
-	_check(menu.target_peer == 0 and menu._targets.is_empty() and not menu._target_row.visible, "Throw: no hidden target stays selected (%d)" % menu.target_peer)
+	_check(menu.kind == &"throw_drink" and menu.target_peer == 0 and menu._targets.is_empty() and not menu._target_row.visible, "Throw: no target row, no hidden target (%d)" % menu.target_peer)
+	_check(menu._hint.text.begins_with("Throws at: A crew member") and menu._hint.text.ends_with("…") and menu._hint.text.length() <= 11 + BartenderMenu.NAME_MAX, "Throw names the shooter, trimmed: '%s'" % menu._hint.text)
 	_check(menu._throw.button_pressed and not menu._serve.button_pressed, "Throw is the pressed mode")
 	_panel_ok("throw")
 	picks.clear()
 	menu.drink_button(&"beer").pressed.emit()
-	_check(picks.size() == 1 and picks[0][0] == &"throw_drink" and picks[0][2] == me, "a throw reports no crewmate target: %s" % [picks])
+	_check(picks == [[&"throw_drink", &"beer", me]], "a throw reports no crewmate target: %s" % [picks])
 	_check(not menu.visible, "a throw closes the menu")
 	menu.open()
 	await _frames(2)
 	menu.set_mode(&"bar_serve")
 	await _frames(2)
 	_check(menu.target_peer == me and menu._targets[me].button_pressed and menu._target_row.visible, "back on Serve it is You again, not the crewmate: %d" % menu.target_peer)
-	menu._targets[77].pressed.emit()
+	menu._targets[MATE].pressed.emit()
 	menu.close()
 	menu.open()
 	await _frames(2)
 	_check(menu.kind == &"bar_serve" and menu.target_peer == me and menu._tabs.current_tab == 0, "reopening resets to Drinks / Serve / You")
-	menu._targets[77].pressed.emit()
-	roster.pop_back()  # the crewmate leaves while selected
-	net.roster_changed.emit()
+	# the shot comes to me while Throw is selected: no Throw, back on a labelled Serve row
+	menu.set_mode(&"throw_drink")
+	_shooter(me)
 	await _frames(2)
-	_check(menu.target_peer == me and menu._targets.size() == 1, "a departed crewmate is not selected: %d" % menu.target_peer)
+	_check(menu.kind == &"bar_serve" and not menu._throw.visible and not menu._serve.visible, "I am the shooter: no Throw, no mode buttons")
+	_check(menu._target_row.visible and menu._hint.text == "Serve to:" and menu._targets.size() == 2 and menu.target_peer == me, "I am the shooter: still a Serve to: row (%d targets)" % menu._targets.size())
+	_panel_ok("shooter")
+	_shooter(MATE)
+	await _frames(2)
+	_check(menu._throw.visible and menu.kind == &"bar_serve", "the shot leaves me: Throw is back, Serve stays")
+	menu._targets[MATE].pressed.emit()
+	_crew(false)  # the crewmate leaves while selected
+	await _frames(2)
+	_check(menu.target_peer == me and menu._targets.is_empty() and not menu._target_row.visible and menu._hint.text == "Served to you", "a departed crewmate is not selected: %d" % menu.target_peer)
 	_panel_ok("roster change")
 	menu.close()
 

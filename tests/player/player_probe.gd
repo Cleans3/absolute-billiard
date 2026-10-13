@@ -507,7 +507,7 @@ func _interact() -> void:
 	for id in shelf:
 		_check(menu.drink_button(id).custom_minimum_size.y >= 48.0, "card %s is touch-sized" % id)
 	menu.set_mode(&"throw_drink")
-	_check(menu.drink_button(&"beer").disabled, "throw cards grey out without Cash")
+	_check(menu.kind == &"bar_serve" and not menu._throw.visible, "Solo: the menu offers no Throw (shop_ui_probe covers a crew)")
 	econ.add_cash(1000, &"test")
 	menu.set_mode(&"bar_serve")
 	_check(not menu.drink_button(&"beer").disabled, "serve card beer is enabled with Cash: %s" % menu.drink_button(&"beer").text)
@@ -526,11 +526,10 @@ func _interact() -> void:
 	econ.set_stock(econ.stock_key, shelf, [3, 2, 1, 1, 3] as Array[int])
 	var rejected: Array[StringName] = []
 	world.interaction_rejected.connect(func(_k: StringName, r: StringName) -> void: rejected.append(r))
-	menu.set_mode(&"throw_drink")
-	menu.drink_button(&"beer").pressed.emit()
+	menu.picked.emit(&"throw_drink", &"beer", root.multiplayer.get_unique_id())  # the menu never offers it to the shooter: the host still refuses
 	await _frames(2)
 	_check(rejected == [&"shooter_cant_grief"], "throw reached the host's hostile rules: %s" % [rejected])
-	_check(not menu.is_open(), "a throw closes the Bartender")
+	menu.close()
 	_check(econ.stock_left(0) == 3, "a refused throw takes nothing off the shelf")
 	player.interact()
 	menu.set_mode(&"bar_serve")
