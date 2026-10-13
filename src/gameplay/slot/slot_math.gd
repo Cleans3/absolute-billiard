@@ -35,6 +35,8 @@ const WINS := {
 const BET_RATES: Array[float] = [0.02, 0.05, 0.10]
 const BET_STEP := 5
 const BET_MIN := 10
+## The custom stake's ceiling, as a share of the Night's Quota ([tune]; the presets top out at 10%): the stake a player may risk grows with the Night.
+const BET_CAP_RATE := 0.25
 
 ## Seconds from the spin to each reel's stop; a near-miss (first two reels match) keeps the third drum going longer.
 const STOP_AT: Array[float] = [0.9, 1.4, 1.9]
@@ -80,6 +82,20 @@ static func bets(quota: int) -> PackedInt32Array:
 	for rate in BET_RATES:
 		out.append(maxi(BET_MIN, roundi(quota * rate / BET_STEP) * BET_STEP))
 	return out
+
+
+## The highest custom stake for a Night with this Quota, a multiple of $BET_STEP and never under the floor.
+static func bet_cap(quota: int) -> int:
+	return maxi(BET_MIN, roundi(quota * BET_CAP_RATE / BET_STEP) * BET_STEP)
+
+
+## The whole-dollar stake a request asks for, snapped down to $BET_STEP; -1 for anything that is not a plain int (a float, a string,
+## a bool) or lands outside [BET_MIN, bet_cap(quota)]. The host reads every custom stake through this.
+static func snap_bet(raw: Variant, quota: int) -> int:
+	if typeof(raw) != TYPE_INT:
+		return -1
+	var bet: int = raw - posmod(raw, BET_STEP)
+	return bet if bet >= BET_MIN and bet <= bet_cap(quota) else -1
 
 
 ## First two reels agree and the third is not a win yet: the last drum crawls.

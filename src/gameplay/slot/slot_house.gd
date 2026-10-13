@@ -24,13 +24,16 @@ func _ready() -> void:
 		world.game_loop.phase_changed.connect(func(_p: int) -> void: flush())
 
 
-## The reason a spin is refused, or &"" (reach is WorldInteractions' own gate). Nothing is charged here.
+## The reason a spin is refused, or &"" (reach is WorldInteractions' own gate). Nothing is charged here. On success `payload[&"bet"]`
+## holds the stake the host will take (see `_stake`).
 func validate(peer_id: int, payload: Dictionary) -> StringName:
-	var tier: Variant = payload.get(&"tier")
-	if typeof(tier) != TYPE_INT or int(tier) < 0 or int(tier) >= SlotMath.BET_RATES.size():
-		return &"bad_payload"
 	var loop := world.game_loop
-	if loop == null or not (loop.phase in [GameLoop.Phase.INTERMISSION, GameLoop.Phase.ROUND_LIVE]):
+	if loop == null or loop.nights.is_empty():
+		return &"slot_closed"
+	var why := _stake(payload, loop.current_night().quota)
+	if why != &"":
+		return why
+	if not (loop.phase in [GameLoop.Phase.INTERMISSION, GameLoop.Phase.ROUND_LIVE]):
 		return &"slot_closed"
 	if loop.phase == GameLoop.Phase.ROUND_LIVE and world.effects.current_shooter() == peer_id and _shot_in_flight():
 		return &"shooter_busy"
@@ -39,20 +42,38 @@ func validate(peer_id: int, payload: Dictionary) -> StringName:
 	return &""
 
 
-## Takes the stake, last gate: a refusal above never costs anything. Needs the Night's Quota for the tier.
+## The stake of a request, written to `payload[&"bet"]`; or why not. Two shapes: `{bet, cash}`, a custom stake (plain int, snapped down to the
+## $5 step, inside [$10, SlotMath.bet_cap] of this Night; `cash` is the asker's view of their purse and must still be the host's number),
+## or `{tier}`, a preset (SlotMath.bets). Anything else is `bad_payload`; a stake outside the range is `bad_bet`; a purse that moved is
+## `stale_cash` (the asker re-reads it and pulls again).
+func _stake(payload: Dictionary, quota: int) -> StringName:
+	if payload.has(&"bet"):
+		if typeof(payload[&"bet"]) != TYPE_INT or typeof(payload.get(&"cash")) != TYPE_INT:
+			return &"bad_payload"
+		var bet := SlotMath.snap_bet(payload[&"bet"], quota)
+		if bet < 0:
+			return &"bad_bet"
+		if int(payload[&"cash"]) != world.economy.cash:
+			return &"stale_cash"
+		payload[&"bet"] = bet
+		return &""
+	var tier: Variant = payload.get(&"tier")
+	if typeof(tier) != TYPE_INT or int(tier) < 0 or int(tier) >= SlotMath.BET_RATES.size():
+		return &"bad_payload"
+	payload[&"bet"] = SlotMath.bets(quota)[int(tier)]
+	return &""
+
+
+## Takes the stake, last gate: a refusal above never costs anything.
 func charge(payload: Dictionary) -> StringName:
-	return &"" if world.economy.try_spend_cash(bet_of(int(payload[&"tier"])), &"slot") else &"cant_afford"
-
-
-func bet_of(tier: int) -> int:
-	return SlotMath.bets(world.game_loop.current_night().quota)[tier]
+	return &"" if world.economy.try_spend_cash(int(payload[&"bet"]), &"slot") else &"cant_afford"
 
 
 ## Rolls the reels and queues the reveal. `payload` is rebuilt from scratch (a client's extra keys never reach the others)
-## and then carries the whole result for the broadcast: tier, bet, stops, win, payout, chaos.
+## and then carries the whole result for the broadcast: tier (the preset equal to the stake, else -1), bet, stops, win, payout, chaos.
 func spin(peer_id: int, payload: Dictionary) -> void:
-	var tier := int(payload[&"tier"])
-	var bet := bet_of(tier)
+	var bet := int(payload[&"bet"])  # validate() wrote it
+	var tier := Array(SlotMath.bets(world.game_loop.current_night().quota)).find(bet)
 	var stops := SlotMath.roll(rng)
 	var win := SlotMath.evaluate(stops)
 	var chaos: Array[Dictionary] = []

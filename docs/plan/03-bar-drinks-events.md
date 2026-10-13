@@ -204,7 +204,7 @@ Nine entries, three of them pro-social, so the bar is not only a heckling machin
 Effects are the easiest place to lose a phone frame, so they are capped by design, not by profiling later:
 - **No per-frame shader stacks.** `player_view_*` is one `CanvasLayer` with one pre-baked full-screen material whose uniforms are set by `EffectManager`; three simultaneous view effects write three uniforms, never three passes.
 - **`visual_hook` budget: 2 concurrent hooks, at most 1 full-screen.** A third request replaces the oldest of the same kind. Hooks are pre-instanced at Round start and pooled — no runtime `load()`, no allocation on the shot path.
-- Table/ball Effects mutate existing `PhysicsSim` scalars only. Nothing here adds a body, a light, or a particle emitter mid-shot; `jukebox` moves an audio-bus parameter, it does not spawn sources.
+- Table/ball Effects mutate existing `PhysicsSim` scalars only. Nothing here adds a body, a light, or a particle emitter mid-shot; `jukebox` moves an audio-bus parameter, it does not spawn sources. (adhoc-1014a: the jukebox prop also plays the bar's music and *any* press, hype or not, skips the track for everyone, free, 3 s gate: 06 P55, 07 §8. The hype Effect above is unchanged.)
 - `VIEW` effects never round-trip to the host, so a `flick_lights` on a 4G phone costs one RPC and zero physics work.
 
 ## 4. Godot implementation sketch

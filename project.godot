@@ -20,6 +20,7 @@ run/max_fps=60
 [autoload]
 
 NetManager="*res://src/core/net_manager.gd"
+Sfx="*res://src/core/sfx.gd"
 
 [display]
 

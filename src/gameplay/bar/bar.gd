@@ -11,6 +11,7 @@ const PEDESTAL := preload("res://src/gameplay/bar/GoLivePedestal.tscn")
 const GO_LIVE_AT := Vector3(-3.7, 0.0, -1.0)  ## beside the table's south-west corner (table centre (0, 0, -3.5))
 const PHONE_PROP_AT := Vector3(6.1, 0.0, 3.5)  ## the aisle behind the counter, in front of the phone (09 §2.2)
 const PHONE_AT := Vector3(6.8, 1.28, 3.5)  ## the phone on the back-bar panel (x 6.8 face), between the cabinet and the low shelf
+const JUKEBOX_AT := Vector3(6.55, 1.1, 5.8)  ## the baked jukebox's body (build_bar_room.gd `_jukebox`): where its music comes from
 const SLOT_AT := Vector3(-6.3, 0.0, 1.5)  ## the slot machine's footprint centre, against the west wall; its front faces +X (docs/plan/02 §3.9)
 ## Sittable seats (06 P33 U7, local Interactables of kind `sit`, not in PROPS: they are not host prompts and the decor keep-clear
 ## list is made from PROPS). [id, floor point, Player yaw the sitter faces, seat top]. The counter stools (build_bar_room.gd STOOL_X)
@@ -57,7 +58,7 @@ const PROPS: Array = [
 
 func _ready() -> void:
 	for spec: Array in PROPS:
-		var prop: Interactable = SlotProp.new() if spec[0] == SlotHouse.PROP_KIND else Interactable.new()
+		var prop: Interactable = SlotProp.new() if spec[0] == SlotHouse.PROP_KIND else (JukeboxProp.new() if spec[0] == &"jukebox" else Interactable.new())
 		prop.interaction = FxCatalog.interaction(spec[0])
 		if prop.interaction == null:
 			prop.kind = spec[0]
@@ -76,6 +77,8 @@ func _ready() -> void:
 			_add_phone(prop)
 		elif spec[0] == SlotHouse.PROP_KIND:
 			_add_slot()
+		elif spec[0] == &"jukebox":
+			_add_jukebox()
 	_add_seats()
 
 
@@ -112,6 +115,16 @@ func _add_slot() -> void:
 	machine.position = SLOT_AT
 	machine.rotation.y = PI / 2.0
 	add_child(machine)
+
+
+## The jukebox's music: one node at the baked jukebox, on every peer (its three @rpc ride this path; docs/plan/04 §5).
+func _add_jukebox() -> void:
+	var box := JukeboxPlayer.new()
+	box.name = "Jukebox"
+	box.position = JUKEBOX_AT
+	box.game_loop = get_node_or_null(^"../GameLoop") as GameLoop
+	box.world = get_node_or_null(^"../WorldInteractions") as WorldInteractions
+	add_child(box)
 
 
 ## The wall phone itself; the prop on the floor is its use target while it rings. Faces -X, into the room.

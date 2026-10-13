@@ -10,6 +10,8 @@ const QUALITY: Array[StringName] = [&"auto", &"high", &"medium", &"low"]  ## hig
 
 const DEFAULTS := {
 	&"master_volume": 1.0,
+	&"music_volume": 0.5,      ## the Music bus (jukebox), a quieter default than the effects
+	&"sfx_volume": 1.0,        ## the SFX bus (src/core/sfx.gd)
 	&"quality": &"auto",
 	&"fov": 75.0,
 	&"mouse_sens": 1.0,        ## multipliers on today's tuned rates (Player / CueController exports)
@@ -22,6 +24,8 @@ const DEFAULTS := {
 }
 const RANGES := {  ## [min, max, step] for the sliders; `set_value` clamps to it
 	&"master_volume": [0.0, 1.0, 0.05],
+	&"music_volume": [0.0, 1.0, 0.05],
+	&"sfx_volume": [0.0, 1.0, 0.05],
 	&"fov": [60.0, 110.0, 1.0],
 	&"mouse_sens": [0.25, 3.0, 0.05],
 	&"touch_look_sens": [0.25, 3.0, 0.05],
@@ -58,6 +62,7 @@ const MOUSE_NAMES := {
 }
 
 static var path := "user://settings.cfg"  ## probes point this at a scratch file
+static var music_duck_db := 0.0  ## Sfx.duck() lowers the Music bus by this much for a moment; `apply_audio` puts it on the bus
 static var _data: Dictionary = DEFAULTS.duplicate()
 static var _default_events: Dictionary = {}  ## action -> Array[InputEvent] as project.godot ships them
 static var _loaded := false
@@ -245,9 +250,19 @@ static func _signatures(events: Array) -> Array:
 
 
 static func _apply() -> void:
-	var v: float = _data[&"master_volume"]
-	AudioServer.set_bus_volume_db(0, linear_to_db(v))
-	AudioServer.set_bus_mute(0, v <= 0.001)
+	apply_audio()
+
+
+## The three volume rows onto Master / Music / SFX (default_bus_layout.tres). Muted at 0 so a silent slider costs no mixing.
+static func apply_audio() -> void:
+	_ensure()
+	for row: Array in [[&"Master", &"master_volume", 0.0], [&"Music", &"music_volume", music_duck_db], [&"SFX", &"sfx_volume", 0.0]]:
+		var bus := AudioServer.get_bus_index(row[0])
+		if bus < 0:
+			continue
+		var v: float = _data[row[1]]
+		AudioServer.set_bus_volume_db(bus, linear_to_db(maxf(v, 0.0001)) + float(row[2]))
+		AudioServer.set_bus_mute(bus, v <= 0.001)
 
 
 static func _notify() -> void:

@@ -4,6 +4,8 @@ extends SceneTree
 ## both peers get the same stops, the same win, the same chaos, play the same reels, and end with the same Cash.
 ##   1. WILD 8-BALLS: x3 and a free drink for the client: the payload is identical on both peers, `landed` fires once on both,
 ##      the drums rest on the host's stops, the drink's Effects are live for the client on both peers, Cash agrees.
+##   1b. a CUSTOM STAKE: the client sends {bet, cash}; the host snaps $57 to $55, charges it, and both peers read bet 55 in the payload;
+##      stale cash, a float, 0 and an over-cap stake are refused to the client for free.
 ##   2. refusals reach the requester: a bad tier (`bad_payload`) and a second spin while the first runs (`busy`).
 ##   3. SHORT CIRCUIT: the zap knocks the client down, on the client and as a puppet on the host.
 ##   tests/net/pair.sh tests/net/slot_pair_probe.gd
@@ -144,6 +146,33 @@ func _run() -> void:
 	await _check(econ.cash == 2000 - bet + 3 * bet, "Cash is $%d (%d) after stake and win" % [2000 - bet + 3 * bet, econ.cash])
 	await create_timer(SlotMath.SETTLE_SEC + 0.3).timeout
 
+	# 1b. a custom stake over the wire
+	if role == "host":
+		house.rng.seed = _seed_for(&"miss")
+		_put("go_custom", "1")
+	else:
+		await _read("go_custom")
+		world.request(&"slot_spin", 0, {&"bet": 57, &"cash": econ.cash})  # snaps down to $55
+	await _until(func() -> bool: return landed.size() == 2, "the custom spin to land", 15.0)
+	await create_timer(0.4).timeout
+	await _check(applied.size() == 2 and int(applied[1][&"bet"]) == 55 and int(applied[1][&"tier"]) == -1, "the payload carries the snapped stake $55 and no preset: %s" % [applied.back()])
+	var cash_custom := 2000 - bet + 3 * bet - 55
+	await _check(econ.cash == cash_custom, "Cash is $%d after the custom stake (%d)" % [cash_custom, econ.cash])
+	await create_timer(SlotMath.SETTLE_SEC + 0.3).timeout
+	if role == "client":
+		rejected.clear()
+		world.request(&"slot_spin", 0, {&"bet": 20, &"cash": econ.cash + 1})
+		world.request(&"slot_spin", 0, {&"bet": 20.0, &"cash": econ.cash})
+		world.request(&"slot_spin", 0, {&"bet": 0, &"cash": econ.cash})
+		world.request(&"slot_spin", 0, {&"bet": 100000, &"cash": econ.cash})
+		await _until(func() -> bool: return rejected.size() == 4, "four refusals to reach the client")
+		await _check(rejected == [&"stale_cash", &"bad_payload", &"bad_bet", &"bad_bet"], "stale cash, a float, zero, over the cap: %s" % [rejected])
+		rejected.clear()
+		_put("custom_refused", "1")
+	else:
+		await _read("custom_refused")
+		await _check(econ.cash == cash_custom and applied.size() == 2, "four refused stakes cost nothing and ran nothing")
+
 	# 2. refusals come back to whoever asked
 	if role == "client":
 		world.request(&"slot_spin", 0, {&"tier": 9})
@@ -151,7 +180,7 @@ func _run() -> void:
 		_put("bad_done", "1")
 	else:
 		await _read("bad_done")
-		await _check(econ.cash == 2000 - bet + 3 * bet, "a refusal cost nothing")
+		await _check(econ.cash == cash_custom, "a refusal cost nothing")
 		house.rng.seed = _seed_for(&"miss")
 		_put("go_busy", "1")
 	if role == "client":
@@ -160,10 +189,10 @@ func _run() -> void:
 		world.request(&"slot_spin", 0, {&"tier": 0})
 		world.request(&"slot_spin", 0, {&"tier": 0})
 		await _until(func() -> bool: return rejected == [&"busy"], "busy to reach the client")
-	await _until(func() -> bool: return landed.size() == 2, "the second spin to land", 15.0)
+	await _until(func() -> bool: return landed.size() == 3, "the second spin to land", 15.0)
 	await create_timer(0.5).timeout
-	await _check(applied.size() == 2 and applied[1][&"win"] == &"miss", "exactly one more spin ran: %d" % applied.size())
-	var cash_now := 2000 - bet + 3 * bet - SlotMath.bets(NIGHT_1.quota)[0]
+	await _check(applied.size() == 3 and applied[2][&"win"] == &"miss", "exactly one more spin ran: %d" % applied.size())
+	var cash_now := cash_custom - SlotMath.bets(NIGHT_1.quota)[0]
 	await _check(econ.cash == cash_now, "one more stake taken, nothing paid (cash %d vs %d)" % [econ.cash, cash_now])
 	await create_timer(SlotMath.SETTLE_SEC + 0.3).timeout
 
@@ -178,8 +207,8 @@ func _run() -> void:
 	var victim: Player = spawner.call(&"get_player", client_id)
 	await _check(victim != null, "the spinner's Player exists on this peer")
 	await _until(func() -> bool: return victim.mode == Player.Mode.RAGDOLL, "the zap to knock the spinner down", 15.0)
-	await _until(func() -> bool: return landed.size() == 3, "the third spin's drums to land")  # the knock fires at the host's reveal, this peer's drums a frame or two later
-	await _check(applied[2][&"win"] == &"zap", "the third spin was the short circuit")
+	await _until(func() -> bool: return landed.size() == 4, "the third spin's drums to land")  # the knock fires at the host's reveal, this peer's drums a frame or two later
+	await _check(applied[3][&"win"] == &"zap", "the third spin was the short circuit")
 	_put("done_" + role, "1")
 	await _read("done_" + other)
 	print("SLOT %s OK" % role.to_upper())

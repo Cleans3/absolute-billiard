@@ -19,7 +19,10 @@ func _ready() -> void:
 	keep_on_phase = true
 	priority = 60
 	var video := _page("Video & Audio")
-	_slider(video, "Master volume", &"master_volume", func(v: float) -> String: return "%d%%" % roundi(v * 100.0))
+	var percent := func(v: float) -> String: return "%d%%" % roundi(v * 100.0)
+	_slider(video, "Master volume", &"master_volume", percent)
+	_slider(video, "Music volume", &"music_volume", percent)
+	_slider(video, "Effects volume", &"sfx_volume", percent)
 	_quality(video)
 	_slider(video, "Field of view", &"fov", func(v: float) -> String: return "%d°" % roundi(v))
 	_check(video, "Show FPS", &"show_fps")
