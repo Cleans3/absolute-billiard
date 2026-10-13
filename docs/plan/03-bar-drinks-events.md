@@ -182,7 +182,7 @@ Payoff is the other half: a bumped shot that still drops is drama, and the strea
 | `pocket_jackpot` | 2 | 1.00 | 1 | no | 0 | **opportunity** — one randomly chosen pocket pays ×3 all Round; every shot is now a routing problem |
 | `vacation` | 1 | 1.30 | 1 | no | 0 | geometry (§3.9): half the cloth is water (rolling drag ×0.3), half sand (×2.2), split along the long axis |
 | `pinball` | 2 | 1.50 | 1 | no | 0 | geometry (§3.9), `round_start_only`: 4 pins that return a ball's speed (e 1, no friction) |
-| `double_ball` | 2 | 1.35 | 1 | no | 0 | `object_ball_mult MUL 2`, `round_start_only`: twice the object balls (≤ 24), every pot pays 1 / 2 (06 P51) |
+| `double_ball` | 2 | 1.35 | 1 | no | 0 | `object_ball_mult MUL 2`, `round_start_only`: twice the object balls (≤ 24), every pot pays 1 / 2 (06 P51); not offered for a Round with an authored rack (Night 1, the finale) |
 | `ice_rink` | 1 | 1.20 | 1 | no | 0 | `cloth_friction_mult MUL 0.45` |
 | `shaky_hands` | 1 | 1.30 | 1 | no | 0 | `cue_aim_wobble_deg ADD 1.5` (a `CUE` Effect, crew-wide) |
 | `lead_ball` | 2 | 1.20 | 1 | no | 0 | `cue_ball_mass_mult MUL 2.2` (a `CUE` Effect, crew-wide) |

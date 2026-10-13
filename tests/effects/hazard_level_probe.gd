@@ -45,6 +45,7 @@ func _run() -> void:
 	var bb: Blackboard = level.get_node("Blackboard")
 	for id in [&"sunken_ship", &"vacation", &"pinball", &"double_ball", &"ice_rink", &"shaky_hands", &"lead_ball"]:
 		await _round(id, loop, fx, sched, rd, table, bb)
+	_authored_racks(loop, sched)
 	# a rejoining client: the resync carries the Event and its roll
 	await _resync(fx, sched, loop, table)
 	finished = true
@@ -128,6 +129,34 @@ func _round(id: StringName, loop: GameLoop, fx: EffectManager, sched: EventSched
 	_check(bb._hazard.text == "none" and is_equal_approx(sim.table_tilt_deg, 0.0) and is_equal_approx(sim.cloth_friction_mult, 1.0), "%s: the board and the physics are plain again" % id)
 	if id == &"pinball":
 		_check(sim.get_children().all(func(n: Node) -> bool: return not (n is Node3D) or n.is_queued_for_deletion()), "pinball: the pin colliders are freed")
+
+
+## Double Ball is never offered for a Round whose rack is authored (Night 1's three, the finale's three) and is offered for a generated one.
+func _authored_racks(loop: GameLoop, sched: EventScheduler) -> void:
+	var saved_night := loop.night_index
+	var saved_seed := loop.campaign_seed
+	var seen := {}  # "night" -> offers that held double_ball
+	var pool := {}  # "night" -> offers made
+	for night in [0, 1, 2]:  # Night 1 (authored), Night 2 (generated), Night 3 = the Campaign finale (authored)
+		loop.night_index = night
+		var cfg := loop.current_night()
+		for s in 60:
+			loop.campaign_seed = 1000 + s
+			sched._used.clear()
+			for e in FxCatalog.EVENTS:
+				sched._seen[e.id] = true  # a scripted_first Event the crew has met is a plain choice, not a forced announcement
+			var ids := sched.offer(3, 2, cfg.night_number)
+			pool[night] = int(pool.get(night, 0)) + 1
+			if ids.has(&"double_ball"):
+				seen[night] = int(seen.get(night, 0)) + 1
+			sched._offer.clear()
+	_check(int(seen.get(0, 0)) == 0 and int(seen.get(2, 0)) == 0, "double_ball is never offered for an authored rack (Night 1 round 3: %d of %d offers, the finale: %d of %d)" % [int(seen.get(0, 0)), pool[0], int(seen.get(2, 0)), pool[2]])
+	print("hazlevel: double_ball in round-3 offers of 60 campaign seeds: Night 1 (authored) %d, Night 2 (generated) %d, Night 3 (finale, authored) %d" % [int(seen.get(0, 0)), int(seen.get(1, 0)), int(seen.get(2, 0))])
+	_check(int(seen.get(1, 0)) > 0, "... and still is for a generated rack (Night 2 round 3: %d of %d offers)" % [int(seen.get(1, 0)), pool[1]])
+	loop.night_index = saved_night
+	loop.campaign_seed = saved_seed
+	sched._used.clear()
+	sched._seen.clear()
 
 
 ## The resync a returning client gets (EffectManager.resync_peer): a second EffectManager restores the Event, its roll and its picture.

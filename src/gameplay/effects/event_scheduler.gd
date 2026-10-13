@@ -78,9 +78,12 @@ func offer(round_index: int, tier: int, night_number: int) -> Array[StringName]:
 	_offer.clear()
 	_votes.clear()
 	var normal: Array[Event] = []
+	var authored := _authored_layout(round_index) != null
 	for e in FxCatalog.EVENTS:
 		if e.tier != tier or e.min_night > night_number or _used.has(e.id):
 			continue
+		if authored and _touches(e, &"object_ball_mult"):
+			continue  # Double Ball would double an authored rack: the Night 1 and finale puzzles stay what they were drawn as
 		if e.scripted_first and not _seen.has(e.id):
 			_chosen = e  # the crew meets it once before it becomes a choice
 			break
@@ -202,16 +205,24 @@ func roll_hazard(e: Event, round_index: int) -> PackedInt32Array:
 	return HazardModel.roll(e.hazard, seed_, table.spec, table.layout, _authored_rack(round_index))
 
 
+## This Round's authored rack (Night 1's three, the Campaign finale's three), the one GameLoop hands RackDropper; null for a seeded Round.
+func _authored_layout(round_index: int) -> RackLayout:
+	if game_loop == null or game_loop.nights.is_empty():
+		return null
+	var config := game_loop.current_night()
+	var racks := config.finale_racks if game_loop.is_final_night() and not config.finale_racks.is_empty() else config.authored_racks
+	if round_index < 1 or round_index > racks.size():
+		return null
+	return racks[round_index - 1]
+
+
 ## Table-local balls of this Round's authored rack (none for a seeded one): pins stay clear of them.
 func _authored_rack(round_index: int) -> PackedVector2Array:
 	var out := PackedVector2Array()
-	if game_loop == null or table == null or game_loop.nights.is_empty():
+	var layout := _authored_layout(round_index)
+	if layout == null or table == null:
 		return out
-	var config := game_loop.current_night()
-	var racks := config.finale_racks if game_loop.is_final_night() and not config.finale_racks.is_empty() else config.authored_racks
-	if round_index < 1 or round_index > racks.size() or racks[round_index - 1] == null:
-		return out
-	for q in RackDropper.authored(table.spec, racks[round_index - 1]):
+	for q in RackDropper.authored(table.spec, layout):
 		out.append(q.pos)
 	return out
 
