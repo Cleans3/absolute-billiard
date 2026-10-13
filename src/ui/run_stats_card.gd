@@ -1,7 +1,9 @@
 class_name RunStatsCard
 extends Control
-## The end-of-run card (docs/plan/02 §3.11): at most MAX_ROWS stat rows in a scroll list (sized so they all fit; a longer
-## list scrolls), the D–S+ grade big at the bottom. About 620 px tall, so it clears a 720 px screen with margin.
+## The end-of-run card (docs/plan/02 §3.11): at most MAX_ROWS stat rows in a scroll list sized so they ALL show, nothing
+## ever needs scrolling (a longer list would scroll, never grow the card); the D–S+ grade big under them. Two shapes, one
+## list: the full card (one column, grade below, ~620 px tall) and the compact one that docks along the bottom of a
+## cutscene (two columns, grade to the right, ~250 px tall).
 ## Shows a RunStats snapshot (`GameLoop.run_stats.to_dict()`); it opens nothing by itself: the ending that wants it
 ## instances this scene, calls show_stats() and frees it. Presentation only.
 
@@ -11,8 +13,11 @@ const SCENE_PATH := "res://src/ui/RunStatsCard.tscn"  # loaded on demand: the sc
 const MAX_ROWS := 8
 const ROW_H := 36  # every row is this tall, so MAX_ROWS rows fill the list box exactly and nothing needs scrolling
 const ROW_GAP := 3
+const COLUMN_GAP := 28
 const VALUE_FONT := 28
-const COMPACT_LIST_H := 140.0  ## the scroll box when compact
+const FULL_WIDTH := 600.0
+const FULL_GRADE_SIZE := 96
+const COMPACT_WIDTH := 880.0  ## clears the Continue button, which sits 184 px in from the right edge
 const COMPACT_GRADE_SIZE := 64
 const GRADE_COLORS := {
 	"D": Color("FF5A5A"), "C": Color("FFA23D"), "B": Color("F4EAD3"), "A": Color("5BE08A"), "S": Color("3DE0FF"), "S+": Color("F2D98B"),
@@ -26,15 +31,16 @@ var _compact := false
 var _shown := false
 
 @onready var _title: Label = %Title
-@onready var _rows: VBoxContainer = %Rows
+@onready var _panel: PanelContainer = $Center/Panel
+@onready var _body: BoxContainer = %Body
+@onready var _rows: GridContainer = %Rows
+@onready var _rule: Control = %Rule
 @onready var _scroll: ScrollContainer = %Scroll
 @onready var _grade: Label = %Grade
 @onready var _close: Button = %Close
 
 
 func _ready() -> void:
-	_scroll.custom_minimum_size.y = MAX_ROWS * ROW_H + (MAX_ROWS - 1) * ROW_GAP  # a longer list would scroll
-	_rows.add_theme_constant_override(&"separation", ROW_GAP)
 	_close.pressed.connect(func() -> void: closed.emit())
 	if _shown:
 		_build()
@@ -46,7 +52,7 @@ static func make() -> RunStatsCard:
 
 
 ## `stats` is RunStats.to_dict(); `closable` adds a button (the debug hook says Close, the truck ending says Continue). `compact` is the
-## low card that docks along the bottom of a cutscene: a shorter list (it scrolls) and a smaller grade.
+## low card that docks along the bottom of a cutscene: the list in two columns, the grade beside it, every row still showing.
 func show_stats(stats: Dictionary, title := "Run over", closable := false, close_text := "Close", compact := false) -> void:
 	_stats = stats
 	_title_text = title
@@ -56,6 +62,16 @@ func show_stats(stats: Dictionary, title := "Run over", closable := false, close
 	_shown = true
 	if is_node_ready():
 		_build()
+
+
+## True when every row sits inside the list box, i.e. nothing needs scrolling. Valid once the card has been laid out
+## (a frame after it became visible); the probes assert it on the card exactly as an ending shows it.
+func all_rows_visible() -> bool:
+	var box := _scroll.get_global_rect().grow(1.0)
+	for line: Control in _rows.get_children():
+		if not box.encloses(line.get_global_rect()):
+			return false
+	return _rows.get_child_count() > 0
 
 
 ## [label, value] per row, in card order: progress first, the grudges last. Exactly MAX_ROWS; a longer list is a design change.
@@ -84,15 +100,23 @@ func _build() -> void:
 	_title.text = _title_text
 	_close.visible = _closable
 	_close.text = _close_text
-	if _compact:
-		_scroll.custom_minimum_size.y = COMPACT_LIST_H
-		_grade.add_theme_font_size_override(&"font_size", COMPACT_GRADE_SIZE)
+	var columns := 2 if _compact else 1
+	var lines := ceili(float(MAX_ROWS) / columns)
+	_rows.columns = columns
+	_rows.add_theme_constant_override(&"h_separation", COLUMN_GAP)
+	_rows.add_theme_constant_override(&"v_separation", ROW_GAP)
+	_scroll.custom_minimum_size.y = lines * ROW_H + (lines - 1) * ROW_GAP  # a longer list would scroll
+	_body.vertical = not _compact
+	_rule.visible = not _compact
+	_panel.custom_minimum_size.x = COMPACT_WIDTH if _compact else FULL_WIDTH
+	_grade.add_theme_font_size_override(&"font_size", COMPACT_GRADE_SIZE if _compact else FULL_GRADE_SIZE)
 	for c in _rows.get_children():
 		_rows.remove_child(c)
 		c.queue_free()
 	for r in rows(_stats):
 		var line := HBoxContainer.new()
 		line.custom_minimum_size.y = ROW_H
+		line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var name_label := Label.new()
 		name_label.text = r[0]
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL

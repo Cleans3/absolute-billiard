@@ -201,9 +201,9 @@ The endings need no cue: each peer starts them from the phase it already sees.
    (`CutscenePlayer.SKIP_KEEPS_LAST`).
 
 ### 3.9 The run's stats card (A11, 02 §3.11)
-`RunStatsCard`: at most 8 rows in a scroll list (Nights cleared, Balls potted, Best combo, Trick shots, Biggest shot, Cash earned,
+`RunStatsCard`: at most 8 rows in a scroll list sized so all of them show, never scrolling (Nights cleared, Balls potted, Best combo, Trick shots, Biggest shot, Cash earned,
 Scratches with fines, Time played), the D–S+ grade big at the bottom. On the truck it is the **compact** form docked along the bottom of the
-screen (a 140 px list that scrolls, a smaller grade, a **Continue** button); after the failure fall it is the full card on black.
+screen (two columns of four rows, the grade to their right, a **Continue** button; 880 x 261 px in a 300 px dock); after the failure fall it is the full card on black.
 
 ## 4. Godot implementation sketch
 

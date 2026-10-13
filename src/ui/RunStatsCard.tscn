@@ -35,28 +35,39 @@ theme_type_variation = &"Heading"
 text = "Run over"
 horizontal_alignment = 1
 
-[node name="Scroll" type="ScrollContainer" parent="Center/Panel/Column"]
+[node name="Body" type="BoxContainer" parent="Center/Panel/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+vertical = true
+
+[node name="Scroll" type="ScrollContainer" parent="Center/Panel/Column/Body"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 312)
 layout_mode = 2
+size_flags_horizontal = 3
 horizontal_scroll_mode = 0
 
-[node name="Rows" type="VBoxContainer" parent="Center/Panel/Column/Scroll"]
+[node name="Rows" type="GridContainer" parent="Center/Panel/Column/Body/Scroll"]
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 3
 
-[node name="Rule" type="HSeparator" parent="Center/Panel/Column"]
+[node name="GradeBox" type="VBoxContainer" parent="Center/Panel/Column/Body"]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+alignment = 1
+
+[node name="Rule" type="HSeparator" parent="Center/Panel/Column/Body/GradeBox"]
+unique_name_in_owner = true
 layout_mode = 2
 
-[node name="GradeCaption" type="Label" parent="Center/Panel/Column"]
+[node name="GradeCaption" type="Label" parent="Center/Panel/Column/Body/GradeBox"]
 layout_mode = 2
 theme_type_variation = &"Caption"
 text = "GRADE"
 horizontal_alignment = 1
 
-[node name="Grade" type="Label" parent="Center/Panel/Column"]
+[node name="Grade" type="Label" parent="Center/Panel/Column/Body/GradeBox"]
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Title"

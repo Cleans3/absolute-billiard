@@ -342,8 +342,7 @@ func _stats_card_compact() -> void:
 	var card := RunStatsCard.make()
 	card.show_stats(SAMPLE_STATS, "Paid in full", true, "Continue", true)
 	root.add_child(card)
-	var scroll := card.get_node("%Scroll") as ScrollContainer
-	_check(scroll.custom_minimum_size.y == RunStatsCard.COMPACT_LIST_H, "stats card: compact shortens the list so it scrolls")
+	_check((card.get_node("%Rows") as GridContainer).columns == 2, "stats card: compact lays the rows out in two columns, so all eight fit the dock")
 	_check((card.get_node("%Close") as Button).text == "Continue", "stats card: the button text is settable")
 	card.free()
 

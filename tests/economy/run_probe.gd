@@ -154,18 +154,32 @@ func _card() -> void:
 	await process_frame
 	await process_frame
 	for card: RunStatsCard in [early, late]:
-		var rows_box: VBoxContainer = card.get_node("%Rows")
+		var rows_box: GridContainer = card.get_node("%Rows")
 		var scroll: ScrollContainer = card.get_node("%Scroll")
-		var column: Control = card.get_node("Center/Panel/Column")
 		_check(rows_box.get_child_count() == 8 and scroll.horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "eight rows in a vertical scroll list")
 		_check(scroll.get_v_scroll_bar().max_value <= scroll.get_v_scroll_bar().page + 1.0, "all %d rows fit their box without scrolling (%.0f in %.0f)" % [rows_box.get_child_count(), scroll.get_v_scroll_bar().max_value, scroll.get_v_scroll_bar().page])
-		_check((card.get_node("%Grade") as Label).text == s.grade() and column.get_child(column.get_child_count() - 1) == card.get_node("%Grade"), "the grade %s sits at the bottom" % s.grade())
+		var grade: Label = card.get_node("%Grade")
+		_check(grade.text == s.grade() and grade.global_position.y >= scroll.global_position.y + scroll.size.y - 1.0, "the grade %s sits under the list" % s.grade())
+		_check(card.all_rows_visible(), "every row is inside the list box")
 		_check(card.get_node("Center/Panel").get_combined_minimum_size().y <= 650.0 and card.get_node("Center/Panel").get_combined_minimum_size().x <= 640.0, "the card fits a 1280x720 screen with margin: %s" % card.get_node("Center/Panel").get_combined_minimum_size())
 	_check((early.get_node("%Title") as Label).text == "You made it" and (early.get_node("%Close") as Button).visible and not (late.get_node("%Close") as Button).visible, "title and the optional Close button")
 	var closed := [false]
 	early.closed.connect(func() -> void: closed[0] = true)
 	(early.get_node("%Close") as Button).pressed.emit()
 	_check(closed[0], "Close raises closed")
+	# the compact card an ending docks along the bottom of a cutscene: two columns, the grade beside them, still no scrolling
+	var dock := RunStatsCard.make()
+	root.add_child(dock)
+	dock.show_stats(d, "Paid in full", true, "Continue", true)
+	await process_frame
+	await process_frame
+	var dock_panel: Control = dock.get_node("Center/Panel")
+	var dock_scroll: ScrollContainer = dock.get_node("%Scroll")
+	var dock_grade: Label = dock.get_node("%Grade")
+	_check(dock.all_rows_visible() and dock_scroll.get_v_scroll_bar().max_value <= dock_scroll.get_v_scroll_bar().page + 1.0, "compact: all eight rows show, no scrolling")
+	_check((dock.get_node("%Rows") as GridContainer).columns == 2 and dock_grade.global_position.x >= dock_scroll.global_position.x + dock_scroll.size.x - 1.0, "compact: two columns, the grade to the right of them")
+	_check(dock_panel.get_combined_minimum_size().y <= CutsceneShell.DOCK_HEIGHT - 24.0 and dock_panel.get_combined_minimum_size().x <= 1280.0 - 2.0 * 184.0, "compact: the card fits the dock with margin and clear of the Continue button: %s" % dock_panel.get_combined_minimum_size())
+	dock.free()
 	# a longer list scrolls inside the same card instead of growing it
 	var panel_h: float = early.get_node("Center/Panel").get_combined_minimum_size().y
 	var extra := Label.new()

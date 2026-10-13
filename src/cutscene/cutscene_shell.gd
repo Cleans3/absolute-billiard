@@ -7,7 +7,7 @@ extends UIModal
 signal skip_requested
 
 const CAPTION_FONT := 30
-const DOCK_HEIGHT := 460.0
+const DOCK_HEIGHT := 300.0  # the compact stats card (~250 px, RunStatsCard) docks here with margin
 
 var fade: ColorRect
 var caption: Label
