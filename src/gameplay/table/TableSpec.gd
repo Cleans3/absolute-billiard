@@ -54,10 +54,11 @@ const BASE_BOUNCE := 1.0
 ## Below `settle_speed_mps` the drag ramps up to (1 + settle_boost)× at standstill; spin about the vertical also loses a constant
 ## `spin_stop_rad_s2` (pivot friction), so it reaches zero instead of halving forever.
 @export_range(0.0, 1.0, 0.01) var settle_speed_mps := 0.30
-@export_range(0.0, 20.0, 0.1) var settle_boost := 8.0
+@export_range(0.0, 20.0, 0.1) var settle_boost := 1.5
 @export_range(0.0, 30.0, 0.1) var spin_stop_rad_s2 := 4.0
-## A tilted table (Event) pulls moving balls downhill by at most this × the rolling drag, so friction always wins and a shot ends.
-@export_range(0.0, 1.0, 0.01) var tilt_max_vs_roll := 0.75
+## A tilted table (Event) pulls moving balls downhill by at most this × the rolling drag. Past 1 they drift downhill and pot (2.8 is the
+## 4° Event's own pull, so it is uncapped there; steeper tilts saturate); a ball that stops stays stopped. `RoundDirector.SHOT_CEILING_TILTED_SEC` ends the drift.
+@export_range(0.0, 4.0, 0.05) var tilt_max_vs_roll := 2.8
 ## Godot's project default is 0.1/s on both, which is drag no real ball has: ours are explicit, per ball, replace-mode.
 @export_range(0.0, 0.5, 0.005) var ball_linear_damp := 0.0
 @export_range(0.0, 0.5, 0.005) var ball_angular_damp := 0.0

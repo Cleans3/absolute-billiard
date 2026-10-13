@@ -78,6 +78,7 @@ func _run() -> void:
 	await _scratch()
 	await _off_table()
 	await _wedged()
+	await _ceiling()
 
 	print("probe: C5 tricks")
 	# kick: cue rails first, then hits the object — window ~3°..9° around 6°
@@ -246,6 +247,27 @@ func _wedged() -> void:
 # ---- C5 --------------------------------------------------------------------------------------
 
 ## One scripted shot, then `_expect`.
+## A runaway shot is stilled at SHOT_CEILING_SEC; on a tilted table (balls drift downhill) at SHOT_CEILING_TILTED_SEC.
+func _ceiling() -> void:
+	for tilt in [0.0, 4.0]:
+		table.sim.set_stat(&"table_tilt_deg", tilt)
+		table.sim.set_tilt_direction(Vector2(0.0, 1.0))
+		await _place(Vector2(-1.4, 0.0), [])
+		_reset_records()
+		var intent := ShotIntent.new()
+		intent.aim_dir = Vector2.RIGHT
+		intent.power = 0.8
+		cue_ball.strike(intent, CUE_SPEC)
+		for i in 20:
+			await physics_frame
+		director.set("_shot_time", RoundDirector.SHOT_CEILING_TILTED_SEC - 0.05)
+		for i in 30:
+			await physics_frame
+		_check(_ended.is_empty() == (tilt == 0.0), "at %.2f s a %s shot %s" % [RoundDirector.SHOT_CEILING_TILTED_SEC, "tilted" if tilt > 0.0 else "flat", "is stilled" if tilt > 0.0 else "still rolls"])
+		await _wait_shot()
+	table.sim.set_stat(&"table_tilt_deg", 0.0)
+
+
 func _trick(cue_pos: Vector2, obj_pos: Array, aim_deg: float, power: float, want: Array, pots := 0) -> void:
 	await _place(cue_pos, obj_pos)
 	_reset_records()

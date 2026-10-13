@@ -10,7 +10,6 @@ const CUE := preload("res://src/resources/cues/demo_cue.tres")
 
 const TAIL_FROM := 0.3  # m/s: below this nothing on screen is moving fast
 const TAIL_MAX_MEDIAN := 0.8  # s from the last ball over TAIL_FROM to the table at rest
-const SHOT_MAX_TILTED := 7.0  # s, the 4° tilt Event, median shot
 
 var fx: PerfFixture
 var _fail := 0
@@ -76,7 +75,7 @@ func _model() -> void:
 	var plain := _closed(TAIL_FROM, p)
 	print("creep model: a 0.3 m/s roll stops in %.2f s / %.2f m (constant drag: %.2f s / %.2f m)" % [slow[1], slow[0], plain[1], plain[0]])
 	_check(is_equal_approx(plain[0], TAIL_FROM * TAIL_FROM / (2.0 * a)) or absf(plain[0] - TAIL_FROM * TAIL_FROM / (2.0 * a)) < 0.002, "boost 0 is the old constant drag")
-	_check(slow[1] < 0.5 and plain[1] > 1.1, "the settle ramp stops a 0.3 m/s ball in under 0.5 s (was %.2f)" % plain[1])
+	_check(slow[1] < 0.8 and plain[1] > 1.1, "the settle ramp stops a 0.3 m/s ball in under 0.8 s (was %.2f)" % plain[1])
 	# viscous damping on top: still a closed form that matches
 	p = BallMotion.make_params(spec, r)
 	p.damp = 0.2
@@ -197,16 +196,18 @@ func _run() -> void:
 	_check(after.tail <= TAIL_MAX_MEDIAN, "median tail %.2f s over %.2f s" % [after.tail, TAIL_MAX_MEDIAN])
 	_check(before.tail > 2.0 * after.tail, "the settle drag and spin loss are what ended the tail (%.2f s without)" % before.tail)
 
-	# 4° tilt Event: the pull is capped under the rolling drag, so a tilted shot still ends
+	# 4° tilt Event: pulls with its own g·sin(4°) (below the cap, so balls drift downhill and pot); a steeper tilt saturates at the cap
+	var g := float(ProjectSettings.get_setting("physics/3d/default_gravity"))
+	var drag := g * spec.rolling_resistance
 	fx.table.sim.set_stat(&"table_tilt_deg", 4.0)
 	fx.table.sim.set_tilt_direction(Vector2(1.0, 0.5))
 	var pull := fx.table.sim.tilt_accel(spec)
-	var drag := 9.8 * spec.rolling_resistance
-	_check(pull <= spec.tilt_max_vs_roll * drag + 1e-4 and pull < drag, "tilt pull %.3f m/s² is capped under the %.3f m/s² rolling drag" % [pull, drag])
+	_check(absf(pull - minf(g * sin(deg_to_rad(4.0)), spec.tilt_max_vs_roll * drag)) < 1e-4, "the 4° tilt pulls %.3f m/s² (%.2f × the %.3f m/s² rolling drag)" % [pull, pull / drag, drag])
+	fx.table.sim.set_stat(&"table_tilt_deg", 12.0)
+	_check(absf(fx.table.sim.tilt_accel(spec) - spec.tilt_max_vs_roll * drag) < 1e-4, "a 12° tilt saturates at tilt_max_vs_roll × the drag (%.3f m/s²)" % fx.table.sim.tilt_accel(spec))
+	fx.table.sim.set_stat(&"table_tilt_deg", 4.0)
 	var tilted: Dictionary = await _breaks(8, 7)
-	print("creep tilted 4°: shot median %.1f s, max %.1f s, tail %.2f s (uncapped it ran 9 s median)" % [tilted.shot, tilted.shot_max, tilted.tail])
-	_check(tilted.shot <= SHOT_MAX_TILTED, "a 4° tilted break ends in %.1f s (median)" % tilted.shot)
-	_check(tilted.tail <= 2.0 * TAIL_MAX_MEDIAN, "and has no creep tail (%.2f s)" % tilted.tail)
+	print("creep tilted 4°: shot median %.1f s, max %.1f s, tail %.2f s (no ceiling here: RoundDirector.SHOT_CEILING_TILTED_SEC ends it, round_probe checks that)" % [tilted.shot, tilted.shot_max, tilted.tail])
 
 	print("CREEP OK" if _fail == 0 else "CREEP FAILED: %d" % _fail)
 	quit(1 if _fail > 0 else 0)

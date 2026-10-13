@@ -210,7 +210,13 @@ func _real_break() -> void:
 	var before := _kinds.duplicate()
 	var got := {ball = 0, rail = 0, kick = 0, ball_sum = 0.0, rail_sum = 0.0}
 	var shots := 0
+	var start := cue.global_position
 	for k in 5:
+		if k > 0:  # a cue ball resting within 4 radii of a cushion reads as a rail hit, not a strike (FxHitTap._solo): shoot each one from the open
+			cue.restore(start)
+			await physics_frame
+			while sim.awake > 0 or director.shot_in_progress:
+				await physics_frame
 		var target: Ball = null  # alternate nearest / farthest object ball so the shots differ
 		for b in director.get_balls():
 			if b.is_cue_ball or b.is_pocketed or b.retired:
