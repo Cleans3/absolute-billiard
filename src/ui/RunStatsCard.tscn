@@ -37,7 +37,7 @@ horizontal_alignment = 1
 
 [node name="Scroll" type="ScrollContainer" parent="Center/Panel/Column"]
 unique_name_in_owner = true
-custom_minimum_size = Vector2(0, 288)
+custom_minimum_size = Vector2(0, 312)
 layout_mode = 2
 horizontal_scroll_mode = 0
 
@@ -45,7 +45,7 @@ horizontal_scroll_mode = 0
 unique_name_in_owner = true
 layout_mode = 2
 size_flags_horizontal = 3
-theme_override_constants/separation = 8
+theme_override_constants/separation = 3
 
 [node name="Rule" type="HSeparator" parent="Center/Panel/Column"]
 layout_mode = 2
@@ -60,13 +60,21 @@ horizontal_alignment = 1
 unique_name_in_owner = true
 layout_mode = 2
 theme_type_variation = &"Title"
-theme_override_font_sizes/font_size = 120
+theme_override_font_sizes/font_size = 96
 text = "D"
 horizontal_alignment = 1
 
-[node name="Close" type="Button" parent="Center/Panel/Column"]
+[node name="Close" type="Button" parent="."]
 unique_name_in_owner = true
 visible = false
-custom_minimum_size = Vector2(0, 64)
-layout_mode = 2
+custom_minimum_size = Vector2(160, 64)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -184.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 88.0
+grow_horizontal = 0
 text = "Close"

@@ -242,6 +242,7 @@ func _rules() -> void:
 
 func _chaos() -> void:
 	econ.add_cash(5000 - econ.cash, &"test")
+	var bet := SlotMath.bets(NIGHT_1.quota)[1]  # the middle stake, tier 1, which _spin defaults to
 	# WILD: x3 and a free drink for the spinner
 	var cash0 := econ.cash
 	var live0 := fx.live_drinks().size()
@@ -251,7 +252,7 @@ func _chaos() -> void:
 	_check(fx.live_drinks().size() == live0, "the drink waits for the reveal")
 	house.flush()
 	var served: Array = fx.live_drinks().filter(func(d: Dictionary) -> bool: return d.peer_id == 1 and d.drink.id == chaos[0].id)
-	_check(served.size() == 1 and econ.cash == cash0 - 30 + 90, "the free drink is in effect and wild paid x3")
+	_check(served.size() == 1 and econ.cash == cash0 - bet + 3 * bet, "the free drink is in effect and wild paid x3")
 	_check(fx.live_count() > 0, "the drink's Effects are live (the only modifier path)")
 	_check(SlotScreen.chaos_text(chaos).begins_with("On the house: "), "the screen words it: %s" % SlotScreen.chaos_text(chaos))
 	machine._finish()
@@ -260,7 +261,7 @@ func _chaos() -> void:
 	var viewers0 := stream.viewers
 	p = _spin(&"jackpot", 1, true)
 	var kinds := (p[&"chaos"] as Array).map(func(c: Dictionary) -> StringName: return c.kind)
-	_check(kinds == [&"crew_round", &"hype"] and int(p[&"payout"]) == 120 * 30, "jackpot: x120, a crew round, hype: %s" % [kinds])
+	_check(kinds == [&"crew_round", &"hype"] and int(p[&"payout"]) == 120 * bet, "jackpot: x120, a crew round, hype: %s" % [kinds])
 	_check(stream.hype > hype0 or hype0 >= 1.0 - SlotHouse.HYPE_KICK, "hype kicked (%.2f -> %.2f)" % [hype0, stream.hype])
 	_check(stream.viewers >= viewers0 + SlotHouse.VIEWERS_KICK, "viewers +%d" % SlotHouse.VIEWERS_KICK)
 	machine._finish()

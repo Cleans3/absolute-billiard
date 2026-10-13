@@ -1,6 +1,7 @@
 class_name RunStatsCard
 extends Control
-## The end-of-run card (docs/plan/02 §3.11): at most MAX_ROWS stat rows in a scroll list, the D–S+ grade big at the bottom.
+## The end-of-run card (docs/plan/02 §3.11): at most MAX_ROWS stat rows in a scroll list (sized so they all fit; a longer
+## list scrolls), the D–S+ grade big at the bottom. About 620 px tall, so it clears a 720 px screen with margin.
 ## Shows a RunStats snapshot (`GameLoop.run_stats.to_dict()`); it opens nothing by itself: the ending that wants it
 ## instances this scene, calls show_stats() and frees it. Presentation only.
 
@@ -8,6 +9,9 @@ signal closed  ## the optional Close button
 
 const SCENE_PATH := "res://src/ui/RunStatsCard.tscn"  # loaded on demand: the scene references this script, so a preload would be a cycle
 const MAX_ROWS := 8
+const ROW_H := 36  # every row is this tall, so MAX_ROWS rows fill the list box exactly and nothing needs scrolling
+const ROW_GAP := 3
+const VALUE_FONT := 28
 const COMPACT_LIST_H := 140.0  ## the scroll box when compact
 const COMPACT_GRADE_SIZE := 64
 const GRADE_COLORS := {
@@ -29,6 +33,8 @@ var _shown := false
 
 
 func _ready() -> void:
+	_scroll.custom_minimum_size.y = MAX_ROWS * ROW_H + (MAX_ROWS - 1) * ROW_GAP  # a longer list would scroll
+	_rows.add_theme_constant_override(&"separation", ROW_GAP)
 	_close.pressed.connect(func() -> void: closed.emit())
 	if _shown:
 		_build()
@@ -86,6 +92,7 @@ func _build() -> void:
 		c.queue_free()
 	for r in rows(_stats):
 		var line := HBoxContainer.new()
+		line.custom_minimum_size.y = ROW_H
 		var name_label := Label.new()
 		name_label.text = r[0]
 		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -93,6 +100,7 @@ func _build() -> void:
 		value_label.text = r[1]
 		value_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 		value_label.theme_type_variation = &"Heading"
+		value_label.add_theme_font_size_override(&"font_size", VALUE_FONT)
 		line.add_child(name_label)
 		line.add_child(value_label)
 		_rows.add_child(line)

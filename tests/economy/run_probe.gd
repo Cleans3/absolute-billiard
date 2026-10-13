@@ -158,13 +158,22 @@ func _card() -> void:
 		var scroll: ScrollContainer = card.get_node("%Scroll")
 		var column: Control = card.get_node("Center/Panel/Column")
 		_check(rows_box.get_child_count() == 8 and scroll.horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED, "eight rows in a vertical scroll list")
-		_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "the list overflows its box, so it scrolls (%.0f > %.0f)" % [scroll.get_v_scroll_bar().max_value, scroll.get_v_scroll_bar().page])
-		_check((card.get_node("%Grade") as Label).text == s.grade() and column.get_child(column.get_child_count() - 2) == card.get_node("%Grade"), "the grade %s sits at the bottom" % s.grade())
-		_check(card.get_node("Center/Panel").get_combined_minimum_size().y <= 700.0 and card.get_node("Center/Panel").get_combined_minimum_size().x <= 640.0, "the card fits a 1280x720 screen: %s" % card.get_node("Center/Panel").get_combined_minimum_size())
+		_check(scroll.get_v_scroll_bar().max_value <= scroll.get_v_scroll_bar().page + 1.0, "all %d rows fit their box without scrolling (%.0f in %.0f)" % [rows_box.get_child_count(), scroll.get_v_scroll_bar().max_value, scroll.get_v_scroll_bar().page])
+		_check((card.get_node("%Grade") as Label).text == s.grade() and column.get_child(column.get_child_count() - 1) == card.get_node("%Grade"), "the grade %s sits at the bottom" % s.grade())
+		_check(card.get_node("Center/Panel").get_combined_minimum_size().y <= 650.0 and card.get_node("Center/Panel").get_combined_minimum_size().x <= 640.0, "the card fits a 1280x720 screen with margin: %s" % card.get_node("Center/Panel").get_combined_minimum_size())
 	_check((early.get_node("%Title") as Label).text == "You made it" and (early.get_node("%Close") as Button).visible and not (late.get_node("%Close") as Button).visible, "title and the optional Close button")
 	var closed := [false]
 	early.closed.connect(func() -> void: closed[0] = true)
 	(early.get_node("%Close") as Button).pressed.emit()
 	_check(closed[0], "Close raises closed")
+	# a longer list scrolls inside the same card instead of growing it
+	var panel_h: float = early.get_node("Center/Panel").get_combined_minimum_size().y
+	var extra := Label.new()
+	extra.custom_minimum_size.y = 400.0
+	early.get_node("%Rows").add_child(extra)
+	await process_frame
+	await process_frame
+	var bar: VScrollBar = (early.get_node("%Scroll") as ScrollContainer).get_v_scroll_bar()
+	_check(bar.max_value > bar.page and is_equal_approx(early.get_node("Center/Panel").get_combined_minimum_size().y, panel_h), "a 9th row scrolls and the card keeps its height")
 	early.free()
 	late.free()
