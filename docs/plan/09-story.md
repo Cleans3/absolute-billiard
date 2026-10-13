@@ -171,7 +171,9 @@ The endings need no cue: each peer starts them from the phase it already sees.
    tweens of the Player nodes and a tilt of each Humanoid about its middle: no ragdoll, no collision. The last one is through, the door slams (a
    bang), the bolt shoots with a clunk (a close-up of the lock), a beat of silence, and the shot cuts back to the local player's own eye as they
    stand. Camera: a wide shot from the south end looking at the door, the close-up, then the player's eye. Then Night 1's cards (the host starts the
-   campaign once everyone has acked). The door stays bolted for the rest of the session. Skip leaves the same end state (everyone home, upright).
+   campaign once everyone has acked). The door stays bolted for the rest of the session. The base tripod stands against the north wall dead in front of the door (`CameraRigs.SPOTS[0]`), so
+   its model is hidden for the beat (not moved) and shown again at the cut back to the player's eye. Skip leaves the same end state (everyone home,
+   upright, the tripod back).
 
 #### 3.8.2 Quota failure (both modes)
 1. **FailRoom**, 5.0 s, IN the bar: from the local player's own eye (input blocked). An `AlertLight` in the middle of the ceiling (one realtime

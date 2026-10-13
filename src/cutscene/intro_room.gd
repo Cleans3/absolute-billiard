@@ -29,6 +29,7 @@ const DOOR_OUT_Z := -7.4  ## where a body starts: outside, behind the doorway qu
 const FLIGHT_FROM_Y := 0.6
 
 var _door: EntranceDoor
+var _rigs: Array[Node3D] = []  ## the tripod models hidden for the beat (the base tripod stands against the north wall, dead in front of the door)
 
 
 func id() -> StringName:
@@ -57,6 +58,29 @@ func _build() -> void:
 	if _door != null:
 		_door.set_openness(0.0)
 		_door.set_bolt(1.0)
+	_hide_rigs()
+
+
+## The base tripod (CameraRigs.SPOTS[0]) stands in front of the door and in the bodies' way: its model is hidden for the beat (not moved: its
+## spot is the camera lane's) and shown again at the cut back to the player's eye, under the dip to black.
+func _hide_rigs() -> void:
+	var cams := _node(^"Cameras")
+	if cams == null:
+		return
+	for c in cams.get_children():
+		var model: Node3D = null
+		if c is CameraRig:
+			model = c.get_node_or_null(^"Model") as Node3D
+		if model != null and model.visible:
+			model.visible = false
+			_rigs.append(model)
+
+
+func _show_rigs() -> void:
+	for model in _rigs:
+		if is_instance_valid(model):
+			model.visible = true
+	_rigs.clear()
 
 
 func _fade_at(time: float) -> float:
@@ -70,6 +94,8 @@ static func _dip(time: float, at: float) -> float:
 
 
 func _update(time: float, _dt: float) -> void:
+	if time >= T_BACK:
+		_show_rigs()
 	_door_beat(time)
 	for i in members.size():
 		_pose_member(i, time)
@@ -140,6 +166,7 @@ func _camera(time: float) -> void:
 
 
 func _on_end(_skipped: bool) -> void:
+	_show_rigs()
 	if _door != null:
 		_door.set_openness(0.0)
 		_door.set_bolt(1.0)
