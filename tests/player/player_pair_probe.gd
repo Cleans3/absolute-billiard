@@ -111,10 +111,12 @@ func _host() -> void:
 	await _until(func() -> bool: return FileAccess.file_exists(_file("client_seated")), "client seated", 30.0)
 	var stool := level.get_node("Bar/stool_counter_1") as Interactable
 	await _until(func() -> bool: return puppet._puppet_seated and puppet.humanoid.stance == Humanoid.Stance.SIT, "the puppet sits", 10.0)
-	if puppet.global_position.distance_to(stool.global_position) > 0.05 or not is_equal_approx(puppet.humanoid._seat_top, Bar.STOOL_TOP):
+	await _until(func() -> bool: return puppet.global_position.distance_to(stool.global_position) < 0.05, "the puppet reaches the seat (it renders 100 ms behind the stream)", 10.0)
+	if not is_equal_approx(puppet.humanoid._seat_top, Bar.STOOL_TOP):
 		_fail("the puppet sits at %s on seat height %.3f, expected %s / %.3f" % [puppet.global_position, puppet.humanoid._seat_top, stool.global_position, Bar.STOOL_TOP])
 	_touch_file("host_saw_seat")
 	await _until(func() -> bool: return not puppet._puppet_seated and puppet.humanoid.stance == Humanoid.Stance.STAND, "the puppet stands up again", 10.0)
+	_touch_file("host_saw_stand")
 	await _until(func() -> bool: return FileAccess.file_exists(_file("client_done")), "client verdict", 30.0)
 	print("PLAYERPAIR HOST OK")
 	quit(0)
@@ -168,6 +170,7 @@ func _client() -> void:
 	_touch_file("client_seated")
 	await _until(func() -> bool: return FileAccess.file_exists(_file("host_saw_seat")), "the host saw the seat", 30.0)
 	player.stand_up()
+	await _until(func() -> bool: return FileAccess.file_exists(_file("host_saw_stand")), "the host saw me stand (the pose stream is 10 Hz: quitting now would drop it)", 30.0)
 	_touch_file("client_done")
 	print("PLAYERPAIR CLIENT OK")
 	quit(0)

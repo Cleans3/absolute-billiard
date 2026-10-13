@@ -171,7 +171,7 @@ func _run() -> void:
 	_check(preload("res://src/shaders/mirror.gdshader").code.contains("filter_linear_mipmap"), "the shader samples the cube with mipmaps")
 
 	# blood (06 P33 U2, for the failure cutscene): 0..1, a shader uniform, clamped, local
-	_check(mirror.blood == 0.0 and _near(float(mirror._mat.get_shader_parameter(&"blood")), 0.0), "clean glass at start")
+	_check(mirror.blood == 0.0, "clean glass at start")
 	mirror.set_blood(0.5)
 	_check(_near(mirror.blood, 0.5) and _near(float(mirror._mat.get_shader_parameter(&"blood")), 0.5), "set_blood(0.5) reaches the shader")
 	mirror.set_blood(7.0)

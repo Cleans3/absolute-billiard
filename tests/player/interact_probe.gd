@@ -109,6 +109,14 @@ func _idle() -> void:
 		_check(t == null or t.effective_kind() != kind, "Intermission: no %s prompt (got %s)" % [kind, t.effective_kind() if t != null else "none"])
 
 
+func _live_prop(kind: StringName, at: Vector3) -> bool:
+	for n in get_nodes_in_group(&"interactable"):
+		var it := n as Interactable
+		if it != null and it.effective_kind() == kind and _is_at(it, at):
+			return it.collision_layer != 0
+	return false
+
+
 func _prop_at(kind: StringName) -> Vector3:
 	for row: Array in Bar.PROPS:
 		if row[0] == kind:
@@ -124,6 +132,8 @@ func _facing() -> void:
 	var bad_away := 0
 	for row: Array in Bar.PROPS:
 		var at: Vector3 = row[1]
+		if not _live_prop(row[0], at):
+			continue  # an inert prop (the phone while it is not ringing has no collision layer) is not meant to be offered
 		for d in [0.5, 1.0, 1.95]:
 			if _target_at(at + Vector3(d, 0.0, 0.0), at) == null:
 				missing += 1

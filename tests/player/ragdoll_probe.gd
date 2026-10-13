@@ -285,6 +285,7 @@ func _player() -> void:
 	_check((hum._body_mi.layers & mirror_cam.cull_mask) != 0, "CUE: ...but the mirror's window pass still draws it")
 	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "CUE: ...and it keeps its shadow")
 	await process_frame
+	await process_frame  # (the timer that woke us runs after the nodes' _process: the controller's first frame is the next, we resume before its second)
 	_check(hum.has_cue_rig(), "CUE: the body is on the rig (the CueController posed it)")
 	player.knock(Vector3(1.0, 1.0, 0.0), 0.5)
 	await process_frame

@@ -854,12 +854,13 @@ func _show(a: PackedFloat64Array, b: PackedFloat64Array, w: float) -> void:
 	rotation.y = lerp_angle(a[4], b[4], w)
 	head.rotation.x = lerpf(a[5], b[5], w)
 	humanoid.set_look(0.0, head.rotation.x)
-	var sat := m == Mode.WALK and (b if w >= 0.5 else a)[7] > 0.5
+	var sample := b if w >= 0.5 else a
+	var sat := m == Mode.WALK and sample[7] > 0.5
 	if _avatar_cue != null and (m != _puppet_mode or sat != _puppet_seated):
 		_puppet_mode = m
 		_puppet_seated = sat
-		if sat:
-			humanoid.set_seat(_seat_top_here())
+		if sat:  # the sample's own position is the seat's floor point; ours is still on its way there
+			humanoid.set_seat(_seat_top_at(Vector3(sample[1], sample[2], sample[3])))
 		humanoid.stance = Humanoid.Stance.SIT if sat else (m as Humanoid.Stance)
 		_avatar_cue.visible = m == Mode.CUE
 		if m != Mode.CUE:
@@ -888,15 +889,15 @@ func _puppet_cue() -> void:
 	_tag.global_position = humanoid.bone_point(Humanoid.B.HEAD) + Vector3(0.0, TAG_Y - Humanoid.ORIGIN[Humanoid.B.HEAD].y, 0.0)
 
 
-## A seated puppet sits at a seat's floor point: that seat's height (a stool's if the stream names none we know).
-func _seat_top_here() -> float:
+## A seated sample is at a seat's floor point: that seat's height (a stool's if the stream names none we know).
+func _seat_top_at(floor_point: Vector3) -> float:
 	var top := Bar.STOOL_TOP
 	var nearest := 0.6
 	for n in get_tree().get_nodes_in_group(&"interactable"):
 		var it := n as Interactable
 		if it == null or it.effective_kind() != Interactable.SIT:
 			continue
-		var d := Vector2(it.global_position.x - global_position.x, it.global_position.z - global_position.z).length()
+		var d := Vector2(it.global_position.x - floor_point.x, it.global_position.z - floor_point.z).length()
 		if d < nearest:
 			nearest = d
 			top = it.seat_top
