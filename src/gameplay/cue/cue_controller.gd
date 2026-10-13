@@ -6,6 +6,9 @@ extends Node3D
 ## `set_elevation`, `call_pocket` and `release_power`, so the intent never learns the device (P1).
 
 signal fired(intent: ShotIntent)
+## The aim was turned by input (mouse, look pad), and the power pull began (the `shoot` press, or the slider leaving zero): the coach (src/ui/coach.gd) steps on them.
+signal aimed
+signal charge_started
 
 @export var cue_spec: CueSpec = preload("res://src/resources/cues/demo_cue.tres")
 @export var charge_time := 0.8   # seconds 0 -> 1 (desktop hold)
@@ -52,6 +55,7 @@ var _t := 0.0
 var _stat_wait := 0.0
 var _wobble_deg := 0.0
 var _spin_radius := 0.35        # CueSpec.spin_offset_radius as the shooter's stats resolve it (what Ball.strike offsets the tip by)
+var _pulling := false           # touch: the power slider is off zero
 var _guide_intent := ShotIntent.new()
 var _tip := Vector3.ZERO        # the posed stick: tip, the unit direction from the tip to the butt, and the bridge hand's distance from the tip
 var _butt := Vector3.BACK
@@ -77,6 +81,7 @@ func begin(cue_ball: Ball, yaw: float) -> void:
 	power = 0.0
 	charging = false
 	called_pocket = &""
+	_pulling = false
 	_t = 0.0
 	refresh_stats()
 	active = true
@@ -88,6 +93,11 @@ func begin(cue_ball: Ball, yaw: float) -> void:
 		controls.set_call_pockets(call_required)
 		controls.set_called_pocket(-1)
 	_push_ui()
+
+
+## A ball CUE can aim at: alive (a Round's clean-up frees every ball), in the tree and still in play.
+func _ball_ok(b: Variant) -> bool:  # Variant: a freed instance must reach is_instance_valid, a typed parameter would refuse it
+	return is_instance_valid(b) and b.is_inside_tree() and not b.retired and not b.is_pocketed
 
 
 func end() -> void:
@@ -119,6 +129,8 @@ func _stat(stat: StringName, base: float) -> float:
 
 func turn(rad: float) -> void:
 	aim_yaw = wrapf(aim_yaw + rad, -PI, PI)
+	if rad != 0.0:
+		aimed.emit()
 
 
 func set_spin(v: Vector2) -> void:
@@ -189,6 +201,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		charging = true
 		rising = true
 		power = 0.0
+		charge_started.emit()
 	elif event.is_action_released(&"shoot") and charging:
 		charging = false
 		var p := power
@@ -204,6 +217,11 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if not _ball_ok(ball):  # freed or put out of play under us (the Round ended, the table was re-racked): stop aiming, stand the player up
+		end()
+		if player != null:
+			player.call(&"exit_cue")
+		return
 	_t += delta
 	_stat_wait -= delta
 	if _stat_wait <= 0.0:
@@ -214,6 +232,9 @@ func _process(delta: float) -> void:
 			turn(-d.x * deg_to_rad(touch_aim_deg_per_px) * float(Settings.value(&"cue_aim_sens")) * (fine_aim_mult if controls.look.fine else 1.0))
 		if controls.touch:
 			power = controls.power.value
+			if power > 0.0 and not _pulling:
+				charge_started.emit()
+			_pulling = power > 0.0
 	if charging and UIRouter.blocking():  # a modal opened mid-charge: drop it, the release will never arrive
 		charging = false
 		power = 0.0

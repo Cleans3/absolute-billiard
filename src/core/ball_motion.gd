@@ -8,8 +8,16 @@ extends RefCounted
 ## jaw, landing) is NOT modelled — the host transmits those as events.
 
 const SLIP_EPS := 0.005  # m/s of contact-point slip below which the ball counts as rolling
-const AIR_TOL := 0.003  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne; below = micro-hop noise
+const AIRBORNE_EPS := 0.003  # m above rest_y before a ball counts as airborne (S3); below = micro-hop noise
+const AIR_TOL := AIRBORNE_EPS  # m above floor_y (and vy above AIR_VY) before a ball counts as airborne; below = micro-hop noise
 const AIR_VY := 0.25
+const TICK_DT := 1.0 / 120.0  # PhysicsSim.LIVE_TICK: the step Jolt flies a ball with (see `_fly`)
+## The cloth under a ball that comes down on it (a jump shot's stroke, every landing): `e` of the downward speed comes back up, nothing
+## below MIN_HOP_VY (a rebound that small is a settle), nothing past JUMP_VY_MAX off a stroke. Jolt's own cloth is dead (TableSpec.BASE_BOUNCE).
+const JUMP_E := 0.45
+const LAND_E := 0.4
+const MIN_HOP_VY := 0.30  # above AIR_VY: a rebound is always in the air
+const JUMP_VY_MAX := 3.0
 const DAMP_EPS := 1e-6  # below this the rolling closed form divides by ~0: use the damp-free one
 const MAX_PHASES := 600
 const SETTLE_SLIP := 0.05  # m/s of contact-point slip at which the settle drag is gone (a sliding ball is driven by cloth friction, not the nap)
@@ -77,6 +85,12 @@ static func cup_floor_y(spec: TableSpec, radius: float) -> float:
 	return spec.bed_height_m - spec.cup_depth_m + radius
 
 
+## S3 airborne rule (adhoc-1014a): a ball is airborne when its centre is more than AIRBORNE_EPS over `rest_y`. While it is, no cloth friction,
+## spin decay, water/sand term or tilt force acts on it, and pins and rails collide only if its centre is below their top.
+static func is_airborne(y: float, rest_y: float) -> bool:
+	return y > rest_y + AIRBORNE_EPS
+
+
 static func advance(s: State, dt: float, p: Params) -> void:
 	var t := dt
 	var phases := 0
@@ -84,14 +98,14 @@ static func advance(s: State, dt: float, p: Params) -> void:
 		phases += 1
 		if s.pos.y < p.floor_y - AIR_TOL and p.cup_floor_y > -INF:
 			t = _drop(s, t, p)  # under the cloth plane = over a hole: falling to the cup floor, which stops it
-		elif s.pos.y > p.floor_y + AIR_TOL or s.lin.y > AIR_VY:
+		elif s.pos.y > p.floor_y + AIR_TOL or absf(s.lin.y) > AIR_VY:  # up off the cloth, or still coming down on it (a touch-down lands inside the tolerance band)
 			t = _fly(s, t, p)
 		elif p.tilt == Vector2.ZERO:
 			t = _ground(s, t, p)
 		else:  # tilt is folded in per short step: first-order, like the slide drag
 			var step := minf(t, SLIDE_STEP)
 			t -= step - _ground(s, step, p)
-	if s.lin.length() < p.rest_speed and s.ang.length() < p.rest_ang:
+	if s.lin.length() < p.rest_speed and s.ang.length() < p.rest_ang and not is_airborne(s.pos.y, p.floor_y):  # the top of a hop is not a rest
 		s.lin = Vector3.ZERO
 		s.ang = Vector3.ZERO
 
@@ -120,20 +134,58 @@ static func _drop(s: State, t: float, p: Params) -> float:
 	return left
 
 
-## Ballistic; returns the time left after landing (0 if still in the air).
+## A ball meeting the cloth plane (`p.floor_y`) with `s.lin.y < 0`: Coulomb friction at the contact point works on the slip for as long as the
+## impact lasts (impulse μ·|vy|, or what stops the slip: u/3.5 for a solid sphere), and `e` of the downward speed comes back up (nothing below
+## MIN_HOP_VY, nothing past `vy_max`). A jump shot's stroke (the cue drives the ball into the cloth) and every landing are this one function,
+## which is also the one the host fires (`Ball.strike`, `Ball._air_step`), so Jolt and the model agree on both.
+static func cloth_impact(s: State, p: Params, e: float, vy_max := INF) -> void:
+	var down := -s.lin.y
+	if down <= 0.0:
+		return
+	var rc := Vector3(0.0, -p.radius, 0.0)
+	var u := s.lin + s.ang.cross(rc)
+	u.y = 0.0
+	var ul := u.length()
+	if ul > 1e-6:
+		var mu := p.slide_mu * p.friction_mult
+		var j := -u / ul * minf(mu * down, ul / 3.5)
+		s.lin += j
+		s.ang += rc.cross(j) / (0.4 * p.radius * p.radius)
+	var up := minf(e * down, vy_max)
+	s.lin.y = up if up >= MIN_HOP_VY else 0.0
+
+
+## Seconds until a ball in flight reaches the cloth plane (0 if it is not above it).
+static func time_to_land(s: State, p: Params) -> float:
+	var vy := s.lin.y - 0.5 * p.gravity * TICK_DT
+	return (vy + sqrt(vy * vy + 2.0 * p.gravity * maxf(s.pos.y - p.floor_y, 0.0))) / p.gravity
+
+
+## Ballistic; returns the time left after landing (0 if still in the air). Over the cloth (`floor_y` unset) the touch-down is a `cloth_impact`
+## (friction, then the bounce, which `advance` flies on as the next phase). `lin.y` is the velocity Jolt reports, and Jolt integrates the
+## velocity before the position (v += a·dt, x += v·dt), which flies the true parabola of `lin.y − g·dt/2`: that is the one drawn here, so a
+## hop is the host's to the millimetre and not 2 cm low after half a second.
 static func _fly(s: State, t: float, p: Params, floor_y := NAN) -> float:
 	var g := p.gravity
-	var floor_at := p.floor_y if is_nan(floor_y) else floor_y
+	var cloth := is_nan(floor_y)
+	var floor_at := p.floor_y if cloth else floor_y
+	var shift := 0.5 * g * TICK_DT if cloth else 0.0
 	var h := s.pos.y - floor_at
-	var vy := s.lin.y
+	var vy := s.lin.y - shift
 	var t_land := (vy + sqrt(vy * vy + 2.0 * g * maxf(h, 0.0))) / g
 	var step := minf(t, t_land)
 	s.pos += Vector3(s.lin.x * step, vy * step - 0.5 * g * step * step, s.lin.z * step)
-	s.lin.y = vy - g * step
+	s.lin.y = vy - g * step + shift
 	if t_land > t:
 		return 0.0
 	s.pos.y = floor_at
-	s.lin.y = 0.0
+	if cloth:
+		s.lin.y = vy - g * t_land  # the speed it meets the cloth with
+		cloth_impact(s, p, LAND_E)
+		if s.lin.y > 0.0:
+			s.lin.y += shift
+	else:
+		s.lin.y = 0.0
 	return t - t_land
 
 

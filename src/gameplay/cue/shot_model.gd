@@ -24,10 +24,6 @@ const OBJ_MAX_M := 1.2
 const MAX_STEPS := 900
 const POCKET_CORE_RADII := 1.5  # a ball is in a pocket once its centre is this many radii inside the hole's rim
 const CONTACT_LEAD_M := 0.0005  # a ball this close to a face and closing counts as touching
-## Share of the downward speed an elevated cue gives the ball that the cloth sends back up. The cloth is dead (TableSpec.BASE_BOUNCE
-## cancels its bounce), so a jump shot does not hop on its own: this is 0 until the probe shows the host lifting off.
-const JUMP_BOUNCE := 0.0
-
 # ---- result (valid after `trace`; arrays are reused, copy what outlives the next call)
 var plan: Ball.Plan
 var path := PackedVector3Array()      ## cue-ball centre, first stretch, world
@@ -43,7 +39,7 @@ var hit_rail := &""
 var obj_dir := Vector3.ZERO           ## the struck ball's direction after the impact (unit, horizontal)
 var obj_speed := 0.0
 var airborne := false                 ## some point of the first or second stretch is off the cloth
-var land_pos := Vector3.ZERO
+var land_pos := Vector3.ZERO          ## where the ball first meets the cloth again (a jump shot's first touch-down; the bounces after it are in `path`)
 var has_land := false
 var off_table := false
 var rest_pos := Vector3.ZERO          ## where the first stretch ended when it ended at rest (`hit == NONE`)
@@ -62,6 +58,7 @@ var _rail_e := PackedVector3Array()
 var _rail_len := PackedFloat32Array()
 var _rail_ids: Array[StringName] = []
 var _prev := BallMotion.State.new()
+var _land := BallMotion.State.new()
 var _c_kind := Hit.NONE
 var _c_ball: Ball
 var _c_rail := -1
@@ -178,27 +175,15 @@ func _add_face(a: Vector3, n: Vector3, e: Vector3, length: float, id: StringName
 	_rail_ids.append(id)
 
 
-## Velocity and spin the impulse gives (L = offset x J over I = 0.4 m R²), then the cloth's answer to a downward cue: it takes the
-## downward speed (`JUMP_BOUNCE` of it comes back up) and Coulomb friction at the contact point works on the slip for as long
-## as that impulse lasts, which is what turns an elevated stroke into forward roll.
+## The state the stroke leaves the ball in: `Ball.Plan.launch` - the velocity and spin the impulse gives (L = offset x J over I = 0.4 m R^2), then the
+## cloth's answer to a downward cue. A flat or locked stroke gets a dead cloth that takes the downward speed (Coulomb friction works the slip, which is
+## what turns an elevated stroke into forward roll); a jump shot gets `BallMotion.JUMP_E` of it back as an upward launch, and the arc, the touch-down and
+## the bounces after it are `BallMotion.advance`'s - the very state `Ball.strike` fires on the host.
 func _launch(s: BallMotion.State) -> void:
 	s.pos = _cue.global_position
-	s.lin = plan.aim3 * plan.speed
-	s.ang = plan.offset.cross(plan.aim3) * (plan.speed / (0.4 * _r * _r))
-	if s.lin.y >= 0.0:
-		return
-	var down := -s.lin.y
-	var rc := Vector3(0.0, -_r, 0.0)
-	var u := s.lin + s.ang.cross(rc)
-	u.y = 0.0
-	var ul := u.length()
-	if ul > 1e-6:
-		var mu := _cue.motion.slide_mu * _cue.motion.friction_mult
-		var jt := minf(mu * down, ul / 3.5)
-		var j := -u / ul * jt
-		s.lin += j
-		s.ang += rc.cross(j) / (0.4 * _r * _r)
-	s.lin.y = JUMP_BOUNCE * down
+	var l := plan.launch(_r, _cue.motion)
+	s.lin = l.lin
+	s.ang = l.ang
 
 
 ## Marches `s` along `params` until it touches a ball or a cushion (returns Hit.BALL / Hit.RAIL, `_c_*` says which), drops into a
@@ -215,12 +200,16 @@ func _march(s: BallMotion.State, params: BallMotion.Params, radius: float, pts: 
 		steps += 1
 		var dt := clampf(STEP_M / maxf(s.lin.length(), 0.3), DT_MIN, DT_MAX)
 		_prev.copy_from(s)
-		BallMotion.advance(s, dt, params)
-		if s.pos.y > params.floor_y + BallMotion.AIR_TOL:
+		if BallMotion.is_airborne(s.pos.y, params.floor_y) or s.lin.y > BallMotion.AIR_VY:
 			airborne = true
-		elif airborne and not has_land and s.lin.y == 0.0:
-			has_land = true
-			land_pos = s.pos
+			if not has_land:
+				var tl := BallMotion.time_to_land(s, params)
+				if tl <= dt:  # the first touch-down is inside this step: the ring goes where the ball meets the cloth, bounces follow it
+					_land.copy_from(s)
+					BallMotion.advance(_land, tl, params)
+					has_land = true
+					land_pos = _land.pos
+		BallMotion.advance(s, dt, params)
 		var f := _contact(_prev.pos, s.pos, radius, skip)
 		if f >= 0.0:
 			var kind := _c_kind
@@ -234,7 +223,7 @@ func _march(s: BallMotion.State, params: BallMotion.Params, radius: float, pts: 
 		moved += s.pos.distance_to(_prev.pos)
 		_push(pts, ts, s.pos, t)
 		var local := s.pos - _origin
-		if _in_pocket(local):
+		if _in_pocket(local) and not BallMotion.is_airborne(s.pos.y, params.floor_y):  # a ball flying over a mouth is not in it
 			_elapsed = t
 			return Hit.POCKET
 		if absf(local.x) > reach_x or absf(local.z) > reach_z:

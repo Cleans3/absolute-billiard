@@ -5,8 +5,9 @@ extends SceneTree
 ## together: same first contact (a ball, a cushion, or none), the contact time inside the host's step, and the cue ball's whole
 ## path up to the contact within a tolerance. Tolerances (01 §3): a flat stroke (no elevation, spin < 0.6) 12 mm / 15 ms; anything
 ## else (elevated, massé, hard side spin: the cloth's answer to a downward cue is modelled, not measured) 40 mm / 40 ms; the
-## struck ball's direction 6 degrees. Prints the worst error of each class, the hop height of the elevated strokes (the model
-## assumes the dead cloth gives none: ShotModel.JUMP_BOUNCE) and the failing cases.
+## struck ball's direction 6 degrees. An elevated stroke at 0.40+ power is a real jump (adhoc-1014a V4): the guide's arc, its touch-down
+## and the bounces after it are held to the host like any other path, and a jump that clears the object ball must agree that nothing is
+## touched. Prints the worst error of each class (and which stroke), the hop height of the elevated strokes and the failing cases.
 ##   godot --path . --headless -s tests/physics/shot_guide_probe.gd        prints GUIDE OK
 
 const BALL := preload("res://src/gameplay/balls/Ball.tscn")
@@ -91,6 +92,7 @@ var model := ShotModel.new()
 var y := 0.0
 var _fail := 0
 var _worst := {flat = [0.0, 0.0, 0.0], special = [0.0, 0.0, 0.0]}  # position m, time s, object degrees
+var _worst_at := ""
 var _hop := 0.0
 var _runs := {flat = 0, special = 0}
 
@@ -121,8 +123,8 @@ func _run() -> void:
 			for power in POWERS:
 				await _case(cue, obj, spin, elev, power, true)
 				await _case(cue, obj, spin, elev, power, false)
-	print("guide: %d flat + %d special strokes; worst flat %.1f mm %.1f ms %.1f deg, worst special %.1f mm %.1f ms %.1f deg; highest hop of an elevated stroke %.0f mm" % [
-		_runs.flat, _runs.special, _worst.flat[0] * 1000.0, _worst.flat[1] * 1000.0, _worst.flat[2], _worst.special[0] * 1000.0, _worst.special[1] * 1000.0, _worst.special[2], _hop * 1000.0])
+	print("guide: %d flat + %d special strokes; worst flat %.1f mm %.1f ms %.1f deg, worst special %.1f mm %.1f ms %.1f deg (%s); highest hop of an elevated stroke %.0f mm" % [
+		_runs.flat, _runs.special, _worst.flat[0] * 1000.0, _worst.flat[1] * 1000.0, _worst.flat[2], _worst.special[0] * 1000.0, _worst.special[1] * 1000.0, _worst.special[2], _worst_at, _hop * 1000.0])
 	if _fail > 0:
 		printerr("GUIDE FAILED: %d" % _fail)
 		quit(1)
@@ -163,7 +165,7 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 	var m_dir := model.obj_dir
 	var m_ts := model.path_t.duplicate()
 	var window := minf(m_end + 0.25, WINDOW_SEC)
-	var borderline := with_ball and model.hit != ShotModel.Hit.BALL and _closest(model.path, obj.global_position) - 2.0 * r < BORDERLINE_M
+	var borderline := with_ball and not model.plan.jump and model.hit != ShotModel.Hit.BALL and _closest(model.path, obj.global_position) - 2.0 * r < BORDERLINE_M  # a jump over the ball is no near miss: the arc is above it
 	rec.arm()
 	cue.strike(intent, CUE)
 	while rec.t < window and table.sim.awake > 0:
@@ -206,7 +208,10 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 			break
 		var e := (rec.ps[i] - _at(m_pos, m_ts, rec.ts[i])).length()
 		worst = maxf(worst, e)
-	_worst[cls][0] = maxf(_worst[cls][0], worst)
+	if worst > _worst[cls][0]:
+		_worst[cls][0] = worst
+		if cls == "special":
+			_worst_at = label
 	_check(worst <= tol_m, "%s: the path is %.1f mm off the host's (tolerance %.0f mm), model contact '%s', hop %.0f mm" % [label, worst * 1000.0, tol_m * 1000.0, m_kind, hop * 1000.0])
 	# 4. the struck ball leaves in the direction the guide draws
 	if with_ball and host_kind == &"BALL" and m_dir != Vector3.ZERO:

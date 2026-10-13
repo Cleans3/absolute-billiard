@@ -7,7 +7,7 @@ extends Resource
 ## 10 m/s feel and spends the extra range on the top (a half-charge shot is no faster than before, a full charge is twice as fast).
 @export_range(0.0, 1.0, 0.01) var power_top_boost := 0.5
 @export var spin_offset_radius := 0.35
-@export var jump_unlocked := false
+@export var jump_unlocked := true  # from the start (adhoc-1014a V4); massé is the shop unlock
 @export var masse_unlocked := false
 @export var wobble_reduction := 0.0
 @export var miscue_threshold := 0.92
