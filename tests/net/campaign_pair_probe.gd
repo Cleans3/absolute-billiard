@@ -5,7 +5,7 @@ extends SceneTree
 ## at real balls so pots happen), a checkpoint lands on both peers each Round, the client buys a shop item
 ## (magnetic_pockets) and a drink (bar_nuts) through request_purchase, both vote on the Events, the next
 ## Round applies the item on both peers. At every Round boundary round_state / cash / viewers / shooter /
-## owned / live effects are equal on both peers. pair.sh fails the run on any SCRIPT ERROR in either log.
+## owned / live effects / the run's mode + tally are equal on both peers. pair.sh fails the run on any SCRIPT ERROR in either log.
 ##   tests/net/pair.sh tests/net/campaign_pair_probe.gd
 ## Prints `CAMPAIGN HOST OK` / `CAMPAIGN CLIENT OK`.
 
@@ -263,9 +263,11 @@ func _state() -> String:
 	for id in eco.owned:
 		owned.append("%s=%d" % [id, eco.owned[id]])
 	owned.sort()
-	return "phase=%d night=%d round=%d shots=%d pts=%d cash=%d viewers=%d shooter=%d owned=%s fx=%d" % [
+	var rs := gl.run_stats  # GameLoop.run_state: mode + tally ride every phase change (02 §3.11)
+	return "phase=%d night=%d round=%d shots=%d pts=%d cash=%d viewers=%d shooter=%d owned=%s fx=%d mode=%s run=%d/%d/%d/%d/%d/%d/%d" % [
 		gl.phase, gl.night_index, gl.round_index, gl.shots_left, gl.round_points, eco.cash, stream.viewers,
-		rd.current_shooter_id, ",".join(owned), fx.live_count()]
+		rd.current_shooter_id, ",".join(owned), fx.live_count(), gl.mode,
+		rs.pots, rs.scratches, rs.fouls, rs.shots, rs.cash_earned, rs.best_combo, rs.nights_cleared]
 
 
 func _boundary(n: int) -> void:

@@ -1,6 +1,10 @@
-[gd_resource type="Resource" script_class="NightConfig" load_steps=3 format=3]
+[gd_resource type="Resource" script_class="NightConfig" load_steps=7 format=3]
 
 [ext_resource type="Script" path="res://src/gameplay/economy/night_config.gd" id="1"]
+[ext_resource type="Script" path="res://src/resources/racks/rack_layout.gd" id="rl"]
+[ext_resource type="Resource" path="res://src/resources/racks/finale_r1.tres" id="r2"]
+[ext_resource type="Resource" path="res://src/resources/racks/finale_r2.tres" id="r3"]
+[ext_resource type="Resource" path="res://src/resources/racks/finale_r3.tres" id="r4"]
 [ext_resource type="Resource" path="res://src/resources/story/night_3.tres" id="story"]
 
 [resource]
@@ -8,10 +12,12 @@ script = ExtResource("1")
 night_number = 3
 quota = 1350
 rounds_count = 3
-round_time_limit_sec = 120.0
+round_time_limit_sec = 180.0
+fine_rate = 0.08
 shots_per_round = 10
 object_ball_count = 10
 base_viewers = 450
 hazard_tiers = Array[int]([0, 1, 2])
 unlocked_ball_types = Array[StringName]([&"red_basic", &"black_penalty", &"stone_ball"])
+finale_racks = Array[ExtResource("rl")]([ExtResource("r2"), ExtResource("r3"), ExtResource("r4")])
 story = ExtResource("story")

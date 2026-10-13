@@ -89,7 +89,7 @@ func _catalog() -> void:
 		_check(not it.display_name.is_empty() and not it.description.is_empty(), "row %s has a name and a description" % id)
 	_check(ShopCatalog.item(&"beer").cost_cash == 50 and ShopCatalog.item(&"beer").category == &"drink", "drinks come from the 03 catalog")
 	_check(ShopCatalog.item(&"bomb_ball").min_night == 2 and ShopCatalog.item(&"split_ball").min_night == 3
-		and ShopCatalog.item(&"joker_ball").min_night == 4, "gimmick balls gate on min_night 2/3/4")
+		and ShopCatalog.item(&"joker_ball").min_night == 3, "gimmick balls gate on min_night 2/3/3 (the Campaign has three Nights)")
 	_check(ShopCatalog.item(&"lens_t2").persistent and not ShopCatalog.item(&"heavy_shaft").persistent, "persistent flags")
 	for d in FxCatalog.DRINKS:
 		_check(not d.display_name.is_empty() and not d.description.is_empty() and d.cost_cash > 0, "drink %s has name, description, price" % d.id)
@@ -157,8 +157,21 @@ func _stock_rolls() -> void:
 
 
 func _fine_math() -> void:
-	for pair: Array in [[600, 60], [900, 90], [1350, 135], [2000, 200], [3000, 300], [100, 25], [130, 25], [520, 50], [1000, 100]]:
-		_check(EconomyManager.fine_for(pair[0]) == pair[1], "fine for Quota %d is $%d (got %d)" % [pair[0], pair[1], EconomyManager.fine_for(pair[0])])
+	# 06 P37: the fine climbs with the Night (rate per NightConfig, one field each); the old flat 10% was $60 on Night 1
+	var fines := []
+	var cfgs: Array[NightConfig] = [load("res://src/resources/nights/night_1.tres"), load("res://src/resources/nights/night_2.tres"), load("res://src/resources/nights/night_3.tres")]
+	cfgs.append(NightConfig.endless(cfgs[2], 4))
+	for c in cfgs:
+		fines.append(EconomyManager.fine_for(c))
+	_check(fines == [15, 55, 110, 215], "scratch fines for Nights 1-3 and Endless 4: %s" % [fines])
+	_check(fines[0] * 3 < 60 and fines[0] < fines[1] and fines[1] < fines[2] and fines[2] < fines[3], "Night 1's fine is a fraction of the old $60 and rises every Night")
+	var tiny := NightConfig.new()
+	tiny.quota = 100
+	tiny.fine_rate = 0.04
+	_check(EconomyManager.fine_for(tiny) == EconomyManager.FINE_MIN, "a tiny Quota still fines the minimum")
+	tiny.quota = 520
+	tiny.fine_rate = 0.10
+	_check(EconomyManager.fine_for(tiny) == 50, "10%% of $520 rounds to the nearest $5")
 
 
 # --- the live shelf -----------------------------------------------------------------------------
@@ -314,21 +327,23 @@ func _scratch_fine() -> void:
 	var fines: Array = []
 	eco.fined.connect(func(reason: StringName, amount: int) -> void: fines.append([reason, amount]))
 	loop.phase = GameLoop.Phase.ROUND_LIVE
+	var night := loop.current_night()
+	var fine := EconomyManager.fine_for(night)
 	eco.cash = 500
 	rd.cue_respawned.emit(&"scratch")
-	_check(loop.current_night().quota == 600 and eco.cash == 440 and fines == [[&"scratch", 60]], "Night 1 scratch: Quota 600 → $60 fine (cash %d, %s)" % [eco.cash, fines])
+	_check(night.night_number == 1 and fine == 15 and eco.cash == 500 - fine and fines == [[&"scratch", fine]], "Night 1 scratch: Quota %d at %.0f%% → $%d fine (cash %d, %s)" % [night.quota, night.fine_rate * 100.0, fine, eco.cash, fines])
 	rd.cue_respawned.emit(&"off_table")
-	_check(eco.cash == 380 and fines.size() == 2, "off the table costs the same fine")
+	_check(eco.cash == 500 - 2 * fine and fines.size() == 2, "off the table costs the same fine")
 	rd.cue_respawned.emit(&"wedged")
-	_check(eco.cash == 380 and fines.size() == 2, "a wedged cue ball is freed for nothing")
-	eco.cash = 20
+	_check(eco.cash == 500 - 2 * fine and fines.size() == 2, "a wedged cue ball is freed for nothing")
+	eco.cash = 5
 	rd.cue_respawned.emit(&"scratch")
-	_check(eco.cash == -40, "the fine may push Cash negative (%d)" % eco.cash)
+	_check(eco.cash == 5 - fine, "the fine may push Cash negative (%d)" % eco.cash)
 	_check(eco.can_buy(&"ice_water") == &"cant_afford" or eco.can_buy(&"ice_water") == &"not_stocked", "in debt nothing is affordable")
-	_check(not eco.try_spend_cash(1, &"test") and eco.try_spend_cash(0, &"test") and eco.cash == -40, "in debt: a positive spend is refused, a free action is not")
+	_check(not eco.try_spend_cash(1, &"test") and eco.try_spend_cash(0, &"test") and eco.cash == 5 - fine, "in debt: a positive spend is refused, a free action is not")
 	var results: Array = []
 	eco.quota_evaluated.connect(func(paid: int, demand: int, over: bool) -> void: results.append([paid, demand, over]))
-	_check(not eco.evaluate_quota(loop.current_night()) and results == [[0, 600, true]], "a negative purse fails the Night's Quota")
+	_check(not eco.evaluate_quota(loop.current_night()) and results == [[0, night.quota, true]], "a negative purse fails the Night's Quota")
 	loop.phase = GameLoop.Phase.INTERMISSION
 	eco.cash = 500
 	rd.cue_respawned.emit(&"scratch")

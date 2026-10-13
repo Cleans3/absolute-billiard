@@ -9,6 +9,8 @@ extends SceneTree
 ##   tests/net/pair.sh tests/net/slot_pair_probe.gd
 ## Prints `SLOT HOST OK` / `SLOT CLIENT OK`.
 
+const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")  # the stakes read off Night 1's Quota
+
 var role := ""
 var port := 0
 var nm: Node
@@ -117,7 +119,7 @@ func _run() -> void:
 	else:
 		await _read("host_ready")
 	await _until(func() -> bool: return econ.cash == 2000, "the mirrored Cash to read $2000")
-	var bet := SlotMath.bets(600)[1]
+	var bet := SlotMath.bets(NIGHT_1.quota)[1]
 
 	# 1. WILD 8-BALLS
 	if role == "host":
@@ -161,7 +163,7 @@ func _run() -> void:
 	await _until(func() -> bool: return landed.size() == 2, "the second spin to land", 15.0)
 	await create_timer(0.5).timeout
 	await _check(applied.size() == 2 and applied[1][&"win"] == &"miss", "exactly one more spin ran: %d" % applied.size())
-	var cash_now := 2000 - bet + 3 * bet - SlotMath.bets(600)[0]
+	var cash_now := 2000 - bet + 3 * bet - SlotMath.bets(NIGHT_1.quota)[0]
 	await _check(econ.cash == cash_now, "one more stake taken, nothing paid (cash %d vs %d)" % [econ.cash, cash_now])
 	await create_timer(SlotMath.SETTLE_SEC + 0.3).timeout
 

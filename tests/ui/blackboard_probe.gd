@@ -80,19 +80,23 @@ func _run() -> void:
 	_check(bb._hazard.text == "none" and bb._drinks.text == "DRINKS  none", "the Round ending clears the Hazard and the Drinks: %s / %s" % [bb._hazard.text, bb._drinks.text])
 	_check(not bb._hazard_icon.visible, "the Round ending hides the Hazard icon")
 	# 09 §3.5: the debt line is Moe's ledger
-	_check(bb._footer.text.ends_with("\nMOE WANTS $600 · PAID SO FAR %s" % Blackboard.money(econ.cash)), "Nights 1-4: Moe's ledger, with the purse: %s" % bb._footer.text)
+	var ask1 := Blackboard.money(loop.nights[0].quota)
+	_check(bb._footer.text.ends_with("\nMOE WANTS %s · PAID SO FAR %s" % [ask1, Blackboard.money(econ.cash)]), "Nights before the Buyout: Moe's ledger, with the purse: %s" % bb._footer.text)
 	econ.add_cash(-(econ.cash + 25), &"scratch")  # a scratch fine can leave the purse negative
-	_check(econ.cash == -25 and bb._footer.text.ends_with("\nMOE WANTS $600 · PAID SO FAR -$25"), "a negative purse shows as it is: %s" % bb._footer.text)
+	_check(econ.cash == -25 and bb._footer.text.ends_with("\nMOE WANTS %s · PAID SO FAR -$25" % ask1), "a negative purse shows as it is: %s" % bb._footer.text)
 	loop.night_started.emit(2, 1350)
 	_check(bb._footer.text.ends_with("\nMOE WANTS $1,350 · PAID SO FAR -$25") and bb._footer.text.contains("LAST ROUND  none yet"), "a new Night: its demand, and no Round played yet: %s" % bb._footer.text)
 	econ.add_cash(1500, &"shot")
 	_check(bb._footer.text.ends_with("PAID SO FAR $1,475"), "the ledger follows the purse: %s" % bb._footer.text)
 	loop.night_index = loop.nights.size() - 1
-	loop.night_started.emit(5, 4500)
-	_check(bb._footer.text.ends_with("\nTHE BUYOUT · $4,500 · LAST CALL"), "Night 5 is the Buyout: %s" % bb._footer.text)
+	loop.night_started.emit(3, 2025)
+	_check(loop.nights.size() == 3 and bb._footer.text.ends_with("\nTHE BUYOUT · $2,025 · LAST CALL"), "Night 3 is the Buyout: %s" % bb._footer.text)
+	loop.mode = GameLoop.MODE_ENDLESS  # Endless has no Buyout: the same Night is a plain ask
+	loop.night_started.emit(3, 1350)
+	_check(bb._footer.text.ends_with("\nMOE WANTS $1,350 · PAID SO FAR $1,475"), "Endless Night 3 is no Buyout: %s" % bb._footer.text)
 	loop.night_index = loop.nights.size()
-	loop.night_started.emit(6, 7200)
-	_check(bb._footer.text.ends_with("\nMOE RAISED THE RATE · $7,200"), "Endless: Moe raised the rate: %s" % bb._footer.text)
+	loop.night_started.emit(4, 2160)
+	_check(bb._footer.text.ends_with("\nMOE RAISED THE RATE · $2,160"), "Endless: Moe raised the rate: %s" % bb._footer.text)
 	_check(Blackboard.money(0) == "$0" and Blackboard.money(999) == "$999" and Blackboard.money(1000) == "$1,000" and Blackboard.money(-25) == "-$25" and Blackboard.money(1234567) == "$1,234,567", "money groups thousands and puts the sign first")
 
 	for n in [lobby, level]:

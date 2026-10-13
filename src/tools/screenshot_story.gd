@@ -1,7 +1,7 @@
 extends SceneTree
 ## One-shot (REQ#adhoc-1011a:story S7): the story on screen. Presses Solo, then drives the game state the way the story probes do
 ## (tests/story/*) and saves a PNG per scene: the Night 1 cards, the ringing phone, Moe's call, the vote card with its story line,
-## the blackboard on Night 2 and Night 5, the Reckoning / Game over lines, the three ending cards, the Endless card, velvet's toast.
+## the blackboard on Night 2 and Night 3 (the Buyout), the Reckoning / Game over lines, the Campaign won screen, the Endless card, velvet's toast.
 ## Needs a display (it renders): DISPLAY=:0 godot --path . -s src/tools/screenshot_story.gd
 ## Output: ~/work/.herdr/adhoc-1011a/story-shots/
 
@@ -96,7 +96,7 @@ func _run() -> void:
 	await _shot("06_vote_card_story_lines")
 	vote.close()
 
-	# the blackboard, Night 2 then Night 5
+	# the blackboard, Night 2 then Night 3 (the Buyout)
 	_look(Vector3(3.4, 1.95, -3.5), Vector3(6.95, 1.95, -3.5), 40.0)
 	loop.night_index = 1
 	loop._begin_night()
@@ -111,10 +111,10 @@ func _run() -> void:
 	level.get_node("UILayer/HUD").visible = false
 	await _shot("08_blackboard_night2")
 	loop._end_round(&"timer")
-	loop.night_index = 4
+	loop.night_index = 2
 	loop._begin_night()
 	await _until(func() -> bool: return cards.is_open(), 3.0)
-	await _shot("09_cards_night5_card1")
+	await _shot("09_cards_night3_card1")
 	cards.close()
 	loop.advance()
 	await _frames(4)
@@ -122,7 +122,7 @@ func _run() -> void:
 	for id in [&"beer", &"flaming_shot", &"neighbours_round"]:
 		fx.serve_drink(id, 1)
 	econ.add_cash(-(econ.cash + 25), &"scratch")  # a negative purse, as a scratch fine leaves it
-	await _shot("10_blackboard_night5_buyout")
+	await _shot("10_blackboard_night3_buyout")
 	econ.add_cash(300, &"shot")
 	loop._end_round(&"timer")
 	level.get_node("UILayer/HUD").visible = true
@@ -138,16 +138,11 @@ func _run() -> void:
 	econ.quota_evaluated.emit(0, 600, true)
 	loop._set_phase(GameLoop.Phase.GAME_OVER)
 	await _shot("12_game_over_night1_short_line")
-	loop.night_index = 4
+	loop.night_index = 2
 	loop._set_phase(GameLoop.Phase.CAMPAIGN_WON)
-	await _shot("13_ending_card1")
-	cards.advance()
-	await _shot("14_ending_card2")
-	cards.advance()
-	await _shot("15_ending_card3_velvet")
-	cards.advance()
-	await _shot("16_campaign_won_after_cards")
-	loop.night_index = 5
+	await _shot("16_campaign_won")
+	loop.mode = GameLoop.MODE_ENDLESS
+	loop.night_index = 3
 	loop._begin_night()
 	await _until(func() -> bool: return cards.is_open(), 3.0)
 	await _shot("17_endless_card")

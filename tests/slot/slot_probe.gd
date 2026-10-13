@@ -4,6 +4,8 @@ extends SceneTree
 ## Effects; every refusal names its reason and costs nothing; the reels land on the host's stops; the screen follows.
 ## `godot --path . --headless -s tests/slot/slot_probe.gd`
 
+const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")  # the stakes read off Night 1's Quota
+
 var _fails := 0
 var level: Node
 var world: WorldInteractions
@@ -160,7 +162,7 @@ const FACE_WAIT := 0.5
 # --- host rules: charge once, pay once, refuse without cost -------------------------------------------------------------
 
 func _rules() -> void:
-	var bets := SlotMath.bets(600)
+	var bets := SlotMath.bets(NIGHT_1.quota)
 	econ.add_cash(1000 - econ.cash, &"test")
 	# a miss: the stake goes at the spin, nothing comes back
 	var cash0 := econ.cash
@@ -325,7 +327,7 @@ func _live_round() -> void:
 	# a phase change pays a pending spin at once: the win is never lost to the Round ending
 	cash0 = econ.cash
 	_spin(&"cherries", 0, false)
-	var bet := SlotMath.bets(600)[0]
+	var bet := SlotMath.bets(NIGHT_1.quota)[0]
 	_check(econ.cash == cash0 - bet, "stake taken")
 	loop.call(&"_end_round", &"timer")
 	_check(econ.cash == cash0 - bet + 4 * bet, "ending the Round flushed the reveal: the win is paid (%d)" % econ.cash)
@@ -373,7 +375,7 @@ func _screen() -> void:
 	econ.add_cash(1000 - econ.cash, &"test")
 	screen.open()
 	await process_frame
-	var bets := SlotMath.bets(600)
+	var bets := SlotMath.bets(NIGHT_1.quota)
 	_check(screen._tier_buttons.size() == 3 and screen._tier_buttons[0].text == "$%d" % bets[0] and screen._tier_buttons[2].text == "$%d" % bets[2], "the three stakes read off the Night's Quota")
 	_check(screen._tier_buttons[1].button_pressed and screen._spin.text == "PULL THE LEVER  $%d" % bets[1], "the middle stake is picked: %s" % screen._spin.text)
 	for b in screen._tier_buttons:

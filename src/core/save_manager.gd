@@ -3,8 +3,9 @@ extends RefCounted
 ## Static save I/O (docs/plan/04 §2.6, 02 §3.7): Round checkpoints every peer keeps, plus the run-surviving
 ## persistent-unlock file. Not an autoload. `root` is swappable so probes never touch the real user dir.
 
-const SAVE_VERSION := 2
-const KEEP_CHECKPOINTS := 10  # newest files kept; an older campaign falls off the Resume list  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them
+const SAVE_VERSION := 3  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them; v3 adds mode + run stats
+const KEEP_CHECKPOINTS := 10  # newest files kept; an older campaign falls off the Resume list
+const CAMPAIGN_NIGHTS := 3  # a v2 file past this Night was an old 5-Night campaign: it resumes as Endless at the same index
 
 static var root := "user://"
 static var last_error := &""  # why the last decode() refused
@@ -63,6 +64,10 @@ static func migrate(d: Dictionary) -> Dictionary:
 		d["viewers"] = -1
 		d["hype"] = 0.0
 		d["save_version"] = 2
+	if v < 3:  # v2 had no mode and no tally: the stats start empty from here
+		d["mode"] = "campaign" if int(d.get("current_night", 1)) <= CAMPAIGN_NIGHTS else "endless"
+		d["run"] = {}
+		d["save_version"] = 3
 	return d
 
 
@@ -112,7 +117,7 @@ static func load_checkpoint(path: String) -> SaveProfile:
 	return decode(FileAccess.get_file_as_bytes(path))
 
 
-## Newest first: [{path, key, modified, night, round_index, cash, crew}] for the Lobby's "Resume" list.
+## Newest first: [{path, key, modified, night, round_index, cash, crew, mode}] for the Lobby's "Resume" list.
 static func list_checkpoints() -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	for file in DirAccess.get_files_at(checkpoint_dir()):
@@ -120,7 +125,7 @@ static func list_checkpoints() -> Array[Dictionary]:
 		var p := load_checkpoint(path)
 		if p != null:
 			out.append({path = path, key = file.get_basename(), modified = FileAccess.get_modified_time(path),
-				night = p.current_night, round_index = p.round_index, cash = p.crew_cash, crew = p.crew_size})
+				night = p.current_night, round_index = p.round_index, cash = p.crew_cash, crew = p.crew_size, mode = p.mode})
 	out.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.modified > b.modified)
 	return out
 

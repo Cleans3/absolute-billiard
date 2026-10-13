@@ -10,9 +10,10 @@
 [resource]
 script = ExtResource("1")
 night_number = 1
-quota = 600
+quota = 400
 rounds_count = 3
-round_time_limit_sec = 120.0
+round_time_limit_sec = 300.0
+fine_rate = 0.04
 shots_per_round = 10
 object_ball_count = 10
 base_viewers = 100

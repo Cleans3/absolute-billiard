@@ -160,7 +160,7 @@ func is_holding() -> bool:
 
 ## The Buyout Night: the sarcasm is off (09 §3.3).
 func is_final_night() -> bool:
-	return _loop != null and not _loop.nights.is_empty() and _loop.night_index == _loop.nights.size() - 1
+	return _loop != null and _loop.is_final_night()
 
 
 func _campaign() -> int:

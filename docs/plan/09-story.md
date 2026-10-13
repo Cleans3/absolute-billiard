@@ -114,9 +114,9 @@ a new campaign and survives a Resume.
 The blackboard's footer stops saying "TONIGHT OWE $600" and becomes Moe's ledger. Its old "NEXT
 NIGHT" line gives its space to the hazard's story line (§3.4): the ledger shows each Night's ask as
 soon as that Night starts. Text only, same data:
-- Nights 1–4: `MOE WANTS $600 · PAID SO FAR $X`
-- Night 5: `THE BUYOUT · $4,500 · LAST CALL`
-- Endless: `MOE RAISED THE RATE · $4,800`
+- Plain Nights (06 P39: Campaign Nights 1–2, and Endless Nights 1–3): `MOE WANTS $400 · PAID SO FAR $X`
+- The Campaign's last Night (Night 3, mode Campaign only): `THE BUYOUT · $2,025 · LAST CALL`
+- Endless Night 4+: `MOE RAISED THE RATE · $2,160`
 
 Cash can be negative after a scratch fine (P16); the ledger shows it as it is (`-$25`).
 
@@ -277,7 +277,7 @@ Every chat line below is shown as `velvet: <text>`.
 - Short: "So close. People always are, on the fourth Night."
 - Chat: "page one. then forty more"
 
-**Night 5 — "Last Call"** (Buyout $4,500)
+**Night 5 — "Last Call"** (Buyout $4,500) *(06 P39: the Campaign is three Nights now and the finale is Night 3, Buyout $2,025; the Night 3–5 texts below and the "$4,500" in them wait for the story rewrite, F3)*
 - Intro cards:
   1. "The Buyout. Four and a half thousand, and you're free. Moe promised. On air."
   2. "Gus isn't joking tonight. That's how you know it's real."

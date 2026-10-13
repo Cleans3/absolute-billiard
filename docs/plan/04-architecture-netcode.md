@@ -101,7 +101,9 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
 
 ```json
 {
-  "save_version": 2,
+  "save_version": 3,
+  "mode": "campaign",
+  "run": { "pots": 41, "scratches": 2, "fouls": 5, "fines_paid": 70, "best_combo": 6, "trick_shots": 7, "shots": 53, "best_shot": 420, "cash_earned": 5230, "nights_cleared": 2, "play_time": 1812.5 },
   "crew_cash": 1500,
   "current_night": 3,
   "round_index": 2,
@@ -118,7 +120,7 @@ Allocate `channel_count = 8` in `create_server` / `create_client` for headroom.
 
 `round_index` = Rounds finished this Night (`0` = Night start); after a passed Night the resume point is the next Night's start. `owned_items` (Shop id → count) is the truth; `unlocked` is a per-category read-only view of it. `viewers = -1` means "start from the Night's `base_viewers`". `bar_stock` is the Bartender's Drinks shelf (02 §3.6): `key` = `GameLoop.stock_key()` (campaign seed + Night + Round), `ids`/`left` the offers and the units each has left. `EconomyManager.restore` puts it back and the Intermission that follows keeps it when the key matches; a missing, torn or stale (unknown drink id) shelf is rerolled from the key instead. Built by `GameLoop.build_profile()`, resumed by `GameLoop.resume_from(profile)`.
 
-`save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
+`mode` (`"campaign"` | `"endless"`, `GameLoop.mode`) and `run` (`RunStats.to_dict()`, 02 §3.11) are v3: a Resume restores both. `save_version` gates migration: on load, an older version runs through `SaveManager.migrate(profile)` (v1 = the first sketch, ids per category and no `owned_items`/`viewers`/`hype`; v2 = no `mode`/`run`: a v2 file migrates to `"campaign"` when its `current_night` is 1–3 and to `"endless"` (same index) when it is 4+, i.e. it was an old 5-Night run, with an empty tally); a newer version returns `null` with `SaveManager.last_error = &"newer_version"` rather than silently dropping fields.
 
 **Rules (implemented).** One file per session key, overwritten at every Round end; a finished run (game over or campaign won) deletes it on the host and, through an empty-blob `push_save_checkpoint`, on every client; only the newest `SaveManager.KEEP_CHECKPOINTS` (10) files are kept. Checkpoints are JSON only, never `bytes_to_var`. Resuming reads the picked file and leaves it in place; the resumed session writes under its own new key (a fresh Noray code / LAN seed) at its first Round end, so the old file just ages out. **Any peer can re-host** from its own copy: the crew size need not match `crew_size` (informational) — nobody is seat-locked, seats are reassigned by join order, and the checkpoint carries the shared purse, not per-player state.
 
@@ -211,10 +213,11 @@ MainLevel.tscn
 | `reroll_ball(net_id, type, tick)` — `_reroll_rpc`: shuffle, in place | RoundDirector | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `shot_clock(seconds)` — `_shot_clock_rpc`: the shooter's clock armed | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `request_full_state()` — `_request_full_state_rpc`: a client back from the background asks for everything | RoundDirector | C→H | `any_peer` | `call_remote` | `reliable` | 3 |
-| `full_state(round_id, seed, shot_index, shooter_id, active, live, clock_left, rack_blob, ball_frame, host_pocket_t)` — `_full_state_rpc`: `rack_blob` is the `push_rack` blob, `ball_frame` a `BallEventCodec` frame of every ball (lifecycle in the event flags) at the host's current tick. Then the host calls `resync_peer(peer)` on GameLoop (`round_state`), EconomyManager (`update_cash` + `update_stock` + `update_owned`), EffectManager (`_resync_effects_rpc`: adds missing Effects, syncs remaining time), StoryDirector (replays an answered phone, 09 §4.2) | RoundDirector | H→C | `authority` | `call_remote` | `reliable` | 3 |
+| `full_state(round_id, seed, shot_index, shooter_id, active, live, clock_left, rack_blob, ball_frame, host_pocket_t)` — `_full_state_rpc`: `rack_blob` is the `push_rack` blob, `ball_frame` a `BallEventCodec` frame of every ball (lifecycle in the event flags) at the host's current tick. Then the host calls `resync_peer(peer)` on GameLoop (`run_state` + `round_state` + `ready_state`), EconomyManager (`update_cash` + `update_stock` + `update_owned`), EffectManager (`_resync_effects_rpc`: adds missing Effects, syncs remaining time), StoryDirector (replays an answered phone, 09 §4.2) | RoundDirector | H→C | `authority` | `call_remote` | `reliable` | 3 |
 | `host_away(away)` — `_host_away_rpc`: the host's app paused / resumed; clients show "host away" (`NetManager.host_away`). The host's resume also sends `full_state` to every client | NetManager | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `set_shooter(peer_id)` — `_set_shooter_rpc` | RoundDirector | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `round_state(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, end_reason, campaign_seed)` — `campaign_seed` keys every peer's per-player story state (09 §2.3) | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
+| `run_state(mode, stats)` — the run's mode (`&"campaign"` or `&"endless"`, 02 §3.4) and `RunStats.to_dict()` (02 §3.11); sent at every phase change (just **before** that phase's `round_state`, so a client reacting to the phase already holds them) and to a peer back from the background; never on the 1 Hz heartbeat | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `ready_state(ready_ids, waiting_ids)` — GO LIVE (02 §3.1): who pressed and who the start still waits on; sent at every change, at every phase change (cleared) and to a peer back from the background | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `push_shot_settled(shot_id, cash, trick_id, foul)` | GameLoop | H→A | `authority` | `call_remote` | `reliable` | 3 |
 | `update_cash(absolute_balance, delta, reason)` | EconomyManager | H→A | `authority` | `call_local` | `reliable` | 3 |

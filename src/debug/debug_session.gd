@@ -560,6 +560,19 @@ func advance() -> void:
 		changed.emit()
 
 
+## The end-of-run card over everything with the live tally; its Close button dismisses it (02 §3.11).
+func show_stats_card() -> void:
+	if game_loop == null:
+		return
+	var layer := CanvasLayer.new()
+	layer.layer = 100
+	var card := RunStatsCard.make()
+	layer.add_child(card)
+	add_child(layer)
+	card.show_stats(game_loop.run_stats.to_dict(), "Run so far", true)
+	card.closed.connect(layer.queue_free)
+
+
 func add_cash(amount: int) -> void:
 	if economy != null and is_host():
 		economy.add_cash(amount, &"debug")

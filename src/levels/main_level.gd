@@ -6,9 +6,7 @@ const NIGHTS: Array[NightConfig] = [
 	preload("res://src/resources/nights/night_1.tres"),
 	preload("res://src/resources/nights/night_2.tres"),
 	preload("res://src/resources/nights/night_3.tres"),
-	preload("res://src/resources/nights/night_4.tres"),
-	preload("res://src/resources/nights/night_5.tres"),
-]
+]  # the Campaign; Endless continues past them (GameLoop.night_at)
 
 @onready var game_loop: GameLoop = $GameLoop
 @onready var round_director: RoundDirector = $RoundDirector
@@ -31,13 +29,13 @@ func _on_local_player(player: CharacterBody3D) -> void:
 	cue.set(&"cue_spec", $EconomyManager.build_cue_spec())
 
 
-## Host: a Lobby-chosen checkpoint resumes the campaign (SaveManager.pending_resume), else a fresh one.
+## Host: a Lobby-chosen checkpoint resumes the run (SaveManager.pending_resume, with its own mode), else a fresh one in the Lobby's mode.
 func _start() -> void:
 	var resume := SaveManager.take_resume()
 	if resume != null:
 		game_loop.resume_from(resume)
 	else:
-		game_loop.start_campaign()
+		game_loop.start_campaign(GameLoop.pending_mode)
 
 
 ## Shop cue upgrades reach this peer's cue until PhysicsSim.active_cue is the strike's source.

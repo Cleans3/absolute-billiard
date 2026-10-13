@@ -266,6 +266,7 @@ func _build_table(page: VBoxContainer) -> void:
 func _build_game(page: VBoxContainer) -> void:
 	_game_label = DebugWidgets.label(page, "", true)
 	DebugWidgets.button(page, "Advance (GO LIVE / next Night)", session.advance)
+	DebugWidgets.button(page, "Run stats card", session.show_stats_card)
 	var cash := DebugWidgets.row(page)
 	DebugWidgets.button(cash, "Cash −1k", func() -> void: session.add_cash(-1000))
 	DebugWidgets.button(cash, "Cash +1k", func() -> void: session.add_cash(1000))

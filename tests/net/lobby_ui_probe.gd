@@ -19,6 +19,11 @@ func _run() -> void:
 	await process_frame
 	var ui: Control = lobby.get_node("LobbyUI")
 	assert(not ui.get_node("%Resume").visible, "Resume hidden with no checkpoints")
+	assert(ui.get_node("%ModeBox").visible and ui.get_node("%ModeCampaign").button_pressed and GameLoop.pending_mode == GameLoop.MODE_CAMPAIGN, "the Lobby opens on Campaign")
+	ui.get_node("%ModeEndless").button_pressed = true
+	assert(GameLoop.pending_mode == GameLoop.MODE_ENDLESS and not ui.get_node("%ModeCampaign").button_pressed and "Never ends" in ui.get_node("%ModeHint").text, "Endless is the pick")
+	ui.get_node("%ModeCampaign").button_pressed = true
+	assert(GameLoop.pending_mode == GameLoop.MODE_CAMPAIGN, "and back to Campaign")
 	_resume_flow(ui, nm)
 	assert(nm.steam_available() or not ui.get_node("%Steam").visible, "Steam button must be hidden without Steam")
 	ui.get_node("%HostLan").pressed.emit()
@@ -26,6 +31,7 @@ func _run() -> void:
 	assert(ui.get_node("%Roster").visible and not ui.get_node("%Solo").visible, "room state")
 	assert("(host)" in ui.get_node("%Roster").text and "(you)" in ui.get_node("%Roster").text, "roster line")
 	assert(ui.get_node("%Start").visible, "host sees Start")
+	assert(ui.get_node("%ModeBox").visible, "the host still picks the mode in the room")
 	assert(not ui.get_node("%Share").visible, "no share link without a lobby code")
 	assert(DeepLink.code_from_url("absolutebilliard://j/ab3k7q") == "AB3K7Q", "scheme link")
 	assert(DeepLink.code_from_url("http://1.2.3.4:8892/j/AB3K7Q") == "AB3K7Q", "share link")
@@ -50,7 +56,7 @@ func _run() -> void:
 
 ## The main menu, host controls gone: nothing of the room is left on screen and every entry button works again.
 func _assert_home(ui: Control, when: String) -> void:
-	for n in ["Host", "Solo", "Footer"]:
+	for n in ["Host", "Solo", "Footer", "ModeBox"]:
 		assert(ui.get_node("%" + n).visible, "%s: %s is back" % [when, n])
 	for n in ["Roster", "Start", "Leave", "RoomCode", "Share", "Cancel"]:
 		assert(not ui.get_node("%" + n).visible, "%s: %s is gone" % [when, n])
@@ -145,5 +151,6 @@ func _resume_flow(ui: Control, nm: Node) -> void:
 	assert(SaveManager.pending_resume != null and SaveManager.pending_resume.crew_cash == entries[0].cash, "pending_resume set from the pick")
 	assert(nm.is_host() and ui.get_node("%Roster").visible, "picking hosts and opens the room")
 	assert("Resuming" in ui.get_node("%Status").text, "room says it is a resume")
+	assert(not ui.get_node("%ModeBox").visible, "a resume brings its own mode: no pick")
 	ui.get_node("%Leave").pressed.emit()
 	assert(SaveManager.pending_resume == null, "Leave drops the pick")

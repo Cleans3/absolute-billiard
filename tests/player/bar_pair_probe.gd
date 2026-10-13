@@ -118,12 +118,13 @@ func _host() -> void:
 		_fail("host Cash %d after the serve" % econ.cash)
 	if econ.stock_left(0) != 2:
 		_fail("beer has %d units left on the host's shelf, expected 2" % econ.stock_left(0))
-	# scratch fine (06 P16): Quota 600 → $60, taken from a thin purse so Cash goes negative everywhere
+	# scratch fine (06 P16, P37): Night 1's own rate, taken from a thin purse so Cash goes negative everywhere
+	var fine := EconomyManager.fine_for(econ.game_loop.current_night())
 	var fines: Array = []
 	econ.fined.connect(func(reason: StringName, amount: int) -> void: fines.append([reason, amount]))
 	econ.add_cash(-940, &"test")
 	rd.cue_respawned.emit(&"scratch")
-	if econ.cash != -50 or fines != [[&"scratch", 60]]:
+	if econ.cash != 10 - fine or fines != [[&"scratch", fine]]:
 		_fail("host fine: cash %d, fined %s" % [econ.cash, fines])
 	_flag("host_fined")
 	# camera rig: the host carries it, the client cannot take it, then it is placed and the client can
@@ -167,9 +168,10 @@ func _client() -> void:
 	menu.drink_button(&"beer").pressed.emit()
 	await _until(func() -> bool: return econ.stock_left(0) == 2, "the sale mirrored to this shelf", 10.0)
 	await _wait_flag("host_fined")
-	await _until(func() -> bool: return econ.cash == -50, "the negative balance mirrored", 10.0)
-	if fines != [[&"scratch", 60]]:
-		_fail("client fined signals %s, expected one $60 scratch" % [fines])
+	var fine := EconomyManager.fine_for(econ.game_loop.current_night())
+	await _until(func() -> bool: return econ.cash == 10 - fine, "the negative balance mirrored", 10.0)
+	if fines != [[&"scratch", fine]]:
+		_fail("client fined signals %s, expected one $%d scratch" % [fines, fine])
 	menu.close()
 	# rig: the host is carrying rig 1; ours is a request the host ignores
 	await _wait_flag("host_carrying")
