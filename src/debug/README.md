@@ -24,7 +24,7 @@ Close shut it. The strip stays above the drawer; a saved physics tuning is appli
 | Shots | every shot is recorded with the table it started from (positions, shots left, points, clock, Cash): **Rewind** puts it all back, **Replay** rewinds and fires the recorded intent again through the normal shot path, **From here** replays that shot and every later one; a test shot (aim, power, spin, elevation, "aim at nearest") |
 | Table | stop the balls, cue ball to the head spot, clear the table, rack presets (break, straight-in, cut, stun) dealt onto the Round's own balls, re-rack the live Round (same or new seed) |
 | Game | the Phase / Night / shots / clock / Cash line, Advance (GO LIVE, next Night), Cash, shots, time, any Drink or Event |
-| View | stats HUD, gizmos, net graph, free camera (not on touch), time scale |
+| View | stats HUD, gizmos, net graph, free camera (not on touch), time scale; **Glare hypotheses** (adhoc-1014a, folded away by default): one switch per candidate cause of the phone glare plus AA / MSAA overrides, applied live (`GlareFlags`, 07 §7.7), "Baseline" / "Shipped" / "All on", saved on the device |
 
 **Host only.** Everything that changes the game or the physics is the host's (`DebugSession.is_host()`); a client's panel
 locks those pages and shows its own numbers. A physics edit reaches the clients with the next `shot_started` stats (04 §5),

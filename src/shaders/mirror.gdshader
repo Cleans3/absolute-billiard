@@ -10,6 +10,7 @@ const vec3 U[6] = { vec3(0, 1, 0), vec3(0, 1, 0), vec3(0, 0, 1), vec3(0, 0, -1),
 uniform sampler2DArray room : source_color, filter_linear_mipmap, repeat_disable;  // mipmapped: the faces are minified from a distance
 uniform sampler2D avatars : source_color, filter_linear, repeat_disable;
 uniform bool has_room = false;
+uniform bool avatars_on = true;  // Mirror.has_window_pass: tier 2 shows the room cube alone
 uniform vec3 cap_pos;      // where the faces were captured from (world)
 uniform vec3 box_min;      // the room's interior (world)
 uniform vec3 box_max;
@@ -93,7 +94,7 @@ void fragment() {
 		float t = min(min(tf.x, tf.y), tf.z);
 		c = room_at(world_pos + rd * t - cap_pos);
 	}
-	vec4 av = texture(avatars, vec2(1.0 - UV.x, UV.y));
+	vec4 av = avatars_on ? texture(avatars, vec2(1.0 - UV.x, UV.y)) : vec4(0.0);
 	c = mix(c, av.rgb, av.a) * tint * gain;
 	vec2 e = abs(UV - 0.5) * 2.0;
 	float edge = smoothstep(0.78, 1.0, max(e.x, e.y));  // the silvering darkens toward the frame

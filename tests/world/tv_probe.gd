@@ -161,7 +161,7 @@ func _run() -> void:
 				alternates = alternates and seq[i] != seq[i - 1]
 			_check(alternates, "tier %d: tripod and ceiling take turns" % tier)
 		else:
-			_check(a == 0 and b >= want - 1, "tier 2: only the ceiling feed draws (10 Hz): %d / %d" % [a, b])
+			_check(a == 0 and b >= want - 1, "tier 2: only the ceiling feed draws (5 Hz, one slow feed): %d / %d" % [a, b])
 		_check(tv._lit == Vector2(1.0, 1.0) if tier < 2 else tv._lit.y == 1.0, "tier %d: a feed shows once it has drawn (lit %s)" % [tier, tv._lit])
 		var expect := StreamTv.feed_size(tier)
 		_check(tv._vp[1].size == expect and (tier == 2 or tv._vp[0].size == expect), "tier %d: sub viewports are %s" % [tier, expect])
@@ -177,7 +177,7 @@ func _run() -> void:
 	QualityManager.current_tier = 0
 
 	# --- sizes: aspect and pixel budget (07 §2 / A7) ---
-	_check(StreamTv.feed_size(0) == Vector2i(640, 427) and StreamTv.feed_size(1) == Vector2i(480, 320) and StreamTv.feed_size(2) == Vector2i(640, 213), "feed sizes 640x427 / 480x320 / 640x213")
+	_check(StreamTv.feed_size(0) == Vector2i(640, 427) and StreamTv.feed_size(1) == Vector2i(400, 267) and StreamTv.feed_size(2) == Vector2i(512, 171), "feed sizes 640x427 / 400x267 / 512x171")
 	_check(_near(float(StreamTv.feed_size(0).x) / StreamTv.feed_size(0).y, StreamTv.HALF_ASPECT, 0.005) and _near(float(StreamTv.feed_size(1).x) / StreamTv.feed_size(1).y, StreamTv.HALF_ASPECT, 0.005),
 		"tier 0 and 1 pictures have the half-screen aspect")
 	_check(_near(float(StreamTv.feed_size(2).x) / StreamTv.feed_size(2).y, StreamTv.WIDE_ASPECT, 0.02), "tier 2's picture has the whole glass's aspect")
@@ -185,7 +185,7 @@ func _run() -> void:
 	var px1 := 2 * StreamTv.feed_size(1).x * StreamTv.feed_size(1).y
 	var px2 := StreamTv.feed_size(2).x * StreamTv.feed_size(2).y
 	_check(px0 <= 560000 and px1 < px0 * 0.6 and px2 <= px0 * 0.3, "pixels per refresh pair fall by tier: %d / %d / %d" % [px0, px1, px2])
-	_check(StreamTv.PERIOD.size() == 3 and StreamTv.PERIOD[0] >= 1.0 / 30.0 - 1e-6 and StreamTv.PERIOD[1] >= 1.0 / 20.0 - 1e-6 and StreamTv.PERIOD[2] >= 1.0 / 10.0 - 1e-6, "passes at most 30 / 20 / 10 per second")
+	_check(StreamTv.PERIOD.size() == 3 and StreamTv.PERIOD[0] >= 1.0 / 30.0 - 1e-6 and StreamTv.PERIOD[1] >= 1.0 / 16.0 - 1e-6 and StreamTv.PERIOD[2] >= 1.0 / 5.0 - 1e-6, "passes at most 30 / 16 / 5 per second")
 
 	# --- set_feeds_on: a black glass, nothing drawn ---
 	QualityManager.current_tier = 0

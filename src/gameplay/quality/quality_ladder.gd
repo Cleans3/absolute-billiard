@@ -13,6 +13,9 @@ const MAX_DWELL_S := 480.0
 const UNDO_WINDOW_S := 30.0
 
 var tier := 0
+## The best tier this device may recover to: a measured one (DeviceClass, a first-run benchmark) is a ceiling, so a low-end phone does not
+## climb back into a tier it was just measured too slow for and bounce. 0 = no ceiling.
+var floor_tier := 0
 var _changed_at_s := -1e9
 var _dwell_s := BASE_DWELL_S
 var _last_was_recovery := false
@@ -24,7 +27,7 @@ func on_window(mean_fps: float, target_fps: float, now_s: float) -> int:
 			if _last_was_recovery and now_s - _changed_at_s < UNDO_WINDOW_S:
 				_dwell_s = minf(_dwell_s * 2.0, MAX_DWELL_S)
 			_move(tier + 1, now_s, false)
-	elif tier > 0 and mean_fps >= target_fps * RECOVER_RATIO and now_s - _changed_at_s >= _dwell_s:
+	elif tier > floor_tier and mean_fps >= target_fps * RECOVER_RATIO and now_s - _changed_at_s >= _dwell_s:
 		_move(tier - 1, now_s, true)
 	return tier
 
