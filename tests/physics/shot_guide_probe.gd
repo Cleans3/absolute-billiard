@@ -127,6 +127,9 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 	var flat := elev <= 0.0 and spin.length() < Ball.MASSE_MIN_SPIN
 	var label := "%s elev %.0f spin (%.1f, %.1f) power %.2f" % ["ball" if with_ball else "bank", elev, spin.x, spin.y, power]
 	model.trace(cue, intent, CUE, table)
+	if model.path_t.is_empty():
+		_check(false, "%s: the guide traced nothing" % label)
+		return
 	var m_kind := &""
 	match model.hit:
 		ShotModel.Hit.BALL: m_kind = &"BALL"
