@@ -62,7 +62,7 @@ func _run() -> void:
 	var is_host: bool = role == "host"
 	await _until(func() -> bool: return loop.phase == GameLoop.Phase.INTERMISSION, "Intermission")
 	if is_host:
-		assert(loop.nights.size() == 5)
+		assert(loop.nights.size() == 3)
 		eco.add_cash(1000, &"test")
 	await _until(func() -> bool: return eco.cash == 1000, "cash 1000 mirrored")
 	if not is_host:

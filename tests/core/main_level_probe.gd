@@ -27,7 +27,7 @@ func _run() -> void:
 	var walker: Player = current_scene.get_node("PlayerSpawner").get_local_player()
 	assert(walker != null and root.get_viewport().get_camera_3d() == walker.cam, "local headCam must be the view, got %s" % root.get_viewport().get_camera_3d())
 	assert(loop.phase == GameLoop.Phase.INTERMISSION, "expected INTERMISSION, got %s" % loop.phase)
-	assert(loop.nights.size() == 5, "5 NightConfigs expected")
+	assert(loop.nights.size() == 3 and loop.mode == GameLoop.MODE_CAMPAIGN, "3 NightConfigs, Campaign by default")
 	loop.advance()
 	await _frames(30)
 	assert(loop.phase == GameLoop.Phase.ROUND_LIVE, "expected ROUND_LIVE, got %s" % loop.phase)

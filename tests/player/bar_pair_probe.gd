@@ -58,11 +58,11 @@ func _wait_flag(name: String, sec := 30.0) -> void:
 	await _until(func() -> bool: return FileAccess.file_exists(_file(name)), name, sec)
 
 
-func _stand_at(pos: Vector3) -> void:
+func _stand_at(pos: Vector3, yaw := 0.0) -> void:
 	player.collision_mask |= 1  # the level floor is still on layer 1 (PERF moves it to 4); without it the walker falls through
 	player.global_position = pos
 	player.velocity = Vector3.ZERO
-	player.rotation.y = 0.0
+	player.rotation.y = yaw  # a prompt needs the player facing the prop unless it is within 0.6 m (06 P33 U8)
 
 
 func _run() -> void:
@@ -118,18 +118,19 @@ func _host() -> void:
 		_fail("host Cash %d after the serve" % econ.cash)
 	if econ.stock_left(0) != 2:
 		_fail("beer has %d units left on the host's shelf, expected 2" % econ.stock_left(0))
-	# scratch fine (06 P16): Quota 600 → $60, taken from a thin purse so Cash goes negative everywhere
+	# scratch fine (06 P16, P37): Night 1's own rate, taken from a thin purse so Cash goes negative everywhere
+	var fine := EconomyManager.fine_for(econ.game_loop.current_night())
 	var fines: Array = []
 	econ.fined.connect(func(reason: StringName, amount: int) -> void: fines.append([reason, amount]))
 	econ.add_cash(-940, &"test")
 	rd.cue_respawned.emit(&"scratch")
-	if econ.cash != -50 or fines != [[&"scratch", 60]]:
+	if econ.cash != 10 - fine or fines != [[&"scratch", fine]]:
 		_fail("host fine: cash %d, fined %s" % [econ.cash, fines])
 	_flag("host_fined")
 	# camera rig: the host carries it, the client cannot take it, then it is placed and the client can
 	world.clock = func() -> int: return _fake_ms
 	var rig := cams.rigs[0]
-	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
+	_stand_at(rig.global_position + Vector3(-0.1, 0.05, 0.4))  # the base tripod stands at the north wall: in front of it, in the room
 	await _until(func() -> bool: return player.prompt == "Grab camera", "host sees the grab prompt", 5.0)
 	player.interact()
 	await _until(func() -> bool: return player.mode == Player.Mode.CARRY and rig.held_by == 1, "host CARRY", 5.0)
@@ -156,7 +157,7 @@ func _client() -> void:
 	await _wait_flag("host_ready")
 	await _until(func() -> bool: return econ.cash >= 1000, "mirrored Cash", 10.0)
 	await _until(func() -> bool: return econ.stock_size() == 3 and econ.stock_left(2) == 1, "the host's shelf mirrored", 10.0)
-	_stand_at(COUNTER)
+	_stand_at(COUNTER, -PI / 2.0)
 	await _until(func() -> bool: return player.prompt == "Bartender", "Bartender prompt", 5.0)
 	_flag("client_at_bar")
 	await _wait_flag("host_saw_bar")
@@ -167,9 +168,10 @@ func _client() -> void:
 	menu.drink_button(&"beer").pressed.emit()
 	await _until(func() -> bool: return econ.stock_left(0) == 2, "the sale mirrored to this shelf", 10.0)
 	await _wait_flag("host_fined")
-	await _until(func() -> bool: return econ.cash == -50, "the negative balance mirrored", 10.0)
-	if fines != [[&"scratch", 60]]:
-		_fail("client fined signals %s, expected one $60 scratch" % [fines])
+	var fine := EconomyManager.fine_for(econ.game_loop.current_night())
+	await _until(func() -> bool: return econ.cash == 10 - fine, "the negative balance mirrored", 10.0)
+	if fines != [[&"scratch", fine]]:
+		_fail("client fined signals %s, expected one $%d scratch" % [fines, fine])
 	menu.close()
 	# rig: the host is carrying rig 1; ours is a request the host ignores
 	await _wait_flag("host_carrying")
@@ -186,7 +188,7 @@ func _client() -> void:
 	_flag("client_tried")
 	await _wait_flag("host_placed")
 	await _until(func() -> bool: return rig.held_by == 0, "mirrored: rig free", 5.0)
-	_stand_at(rig.global_position + Vector3(-0.1, 0.05, -0.4))
+	_stand_at(rig.global_position + Vector3(-0.1, 0.05, 0.4))  # the base tripod stands at the north wall: in front of it, in the room
 	await _until(func() -> bool: return player.prompt == "Grab camera", "grab prompt on the placed rig", 5.0)
 	# The host judges reach from this peer's streamed pose, and ENet throttles unreliable packets for seconds once the
 	# idle 30 fps downclock raises the round trip: ask again until the host has seen us (a refusal is `too_far`).

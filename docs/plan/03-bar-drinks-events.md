@@ -125,6 +125,8 @@ Guard, four layers, all cheap. Gate order on the host: toggle → live Round →
 3. **`exclusive_group` on every hostile Effect** (`heckle`, `bump`, `blind`) — three players cannot stack the same harassment, and `shot_clock_sec` never resolves below `4.0 [tune]`.
 4. **Host toggle** `hostile_world_interactions: {on, friends_only, off}` (default `on`; `off` leaves every non-hostile interaction working; `friends_only` lets the host and a host-managed peer list act). Shooter-side mute of a named peer is a Player-module concern — deferred, noted.
 
+The prompt for a hostile prop is not offered where the host would refuse it for a fact every peer already knows: no live Round, the table staged, or the player is the shooter (`Player._hostile_ok`, 08 §4; adhoc-1013c U6). Every other refusal (cap, cooldown, reach, toggle) still comes back as a toast.
+
 Payoff is the other half: a bumped shot that still drops is drama, and the stream pays for drama. That is why the costs are refundable-with-interest on `shot_potted` rather than flat.
 
 ### 3.5 Drink catalog (content for 02's `ShopItem`s)

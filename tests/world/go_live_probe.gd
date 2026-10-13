@@ -53,6 +53,7 @@ func _run() -> void:
 	assert(WaitText.interaction(&"go_live", &"too_far") == "Too far away: step closer", "and it says what to do")
 
 	player.global_position = Bar.GO_LIVE_AT + Vector3(-0.8, 0.05, 0.0)
+	player.rotation.y = -PI / 2.0  # facing the pedestal (+X): a prompt needs facing beyond 0.6 m (06 P33 U8)
 	player.velocity = Vector3.ZERO
 	await _until(func() -> bool: return player.prompt == "GO LIVE", "the GO LIVE prompt at the pedestal", 5.0)
 	player.interact()

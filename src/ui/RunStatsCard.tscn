@@ -1,0 +1,91 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://src/ui/run_stats_card.gd" id="1_card"]
+
+[node name="RunStatsCard" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("1_card")
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Panel" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(600, 0)
+layout_mode = 2
+
+[node name="Column" type="VBoxContainer" parent="Center/Panel"]
+layout_mode = 2
+
+[node name="Title" type="Label" parent="Center/Panel/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"Heading"
+text = "Run over"
+horizontal_alignment = 1
+
+[node name="Body" type="BoxContainer" parent="Center/Panel/Column"]
+unique_name_in_owner = true
+layout_mode = 2
+vertical = true
+
+[node name="Scroll" type="ScrollContainer" parent="Center/Panel/Column/Body"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 312)
+layout_mode = 2
+size_flags_horizontal = 3
+horizontal_scroll_mode = 0
+
+[node name="Rows" type="GridContainer" parent="Center/Panel/Column/Body/Scroll"]
+unique_name_in_owner = true
+layout_mode = 2
+size_flags_horizontal = 3
+
+[node name="GradeBox" type="VBoxContainer" parent="Center/Panel/Column/Body"]
+custom_minimum_size = Vector2(190, 0)
+layout_mode = 2
+alignment = 1
+
+[node name="Rule" type="HSeparator" parent="Center/Panel/Column/Body/GradeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="GradeCaption" type="Label" parent="Center/Panel/Column/Body/GradeBox"]
+layout_mode = 2
+theme_type_variation = &"Caption"
+text = "GRADE"
+horizontal_alignment = 1
+
+[node name="Grade" type="Label" parent="Center/Panel/Column/Body/GradeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"Title"
+theme_override_font_sizes/font_size = 96
+text = "D"
+horizontal_alignment = 1
+
+[node name="Close" type="Button" parent="."]
+unique_name_in_owner = true
+visible = false
+custom_minimum_size = Vector2(160, 64)
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -184.0
+offset_top = 24.0
+offset_right = -24.0
+offset_bottom = 88.0
+grow_horizontal = 0
+text = "Close"

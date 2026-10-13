@@ -4,17 +4,20 @@ extends Node3D
 ## the room shell (ROOM_LAYER) is captured once into a 6-face cube from CAPTURE_AT and box-projected per pixel from the live eye
 ## in the glass shader (re-captured on a bar skin change); the table and the avatars (LAYER + the local head) are a per-frame
 ## window pass (the table is too near the capture point for a box projection): a frustum camera mirrored through the glass whose near plane IS the glass, transparent background.
-## The window pass runs every frame from the *interpolated* eye (a throttled or tick-time eye is what made the old mirror swim).
+## The window pass runs every frame from the *interpolated* eye (a throttled or tick-time eye is what made the old mirror swim), at any
+## distance in front of the glass (a range cut-off froze the avatars and the table over the live room, 06 P33 U2); what it costs is
+## scaled instead: the pass is sized to the glass's size on the viewer's screen, and not drawn at all off screen or behind the glass.
 ## Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
 
 const LAYER := Humanoid.MIRROR_LAYER      ## the window pass: avatars (Humanoid puts every body on it) and the table
 const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (the room shell)
 const SIZE := Vector2(3.6, 2.4)
-const VIEW_PX := Vector2i(576, 384)       ## same 3:2 as the glass
-const FACE_PX := 512                      ## cube face size; halved from SLOW_TIER
+const ASPECT := SIZE.x / SIZE.y           ## the window pass keeps the glass's 3:2
+const VIEW_MAX_H: Array[int] = [1024, 768, 384]  ## tallest window pass per QualityManager tier (px), reached only when the glass fills the screen
+const VIEW_MIN_H := 128
+const VIEW_STEP := 64                     ## the pass is resized in steps of this height, and shrinks only 2 steps late (no thrash at a boundary)
+const FACE_PX: Array[int] = [1024, 768, 512]  ## cube face size per tier; mipmapped (the room is minified from a distance)
 const CAPTURE_AT := Vector3(0.0, 0.2, 2.5) ## local: in front of the glass at about eye height
-const RANGE_M := 8.0
-const SLOW_TIER := 2                      ## QualityManager tier from which the window pass and the faces halve
 const FAR_M := 40.0
 const NEAR_MIN_M := 0.05
 const FRAME_M := 0.14                     ## width of the wood frame
@@ -34,6 +37,7 @@ const FACES: Array[Array] = [
 
 var renders := 0                          ## window-pass frames so far (probes, perf notes)
 var captures := 0                         ## room captures so far
+var blood := 0.0                          ## `set_blood`: 0 clean glass .. 1 smeared and dripping
 
 var _mat: ShaderMaterial
 var _capturing := false
@@ -47,7 +51,7 @@ var _recapture := false
 
 
 func _ready() -> void:
-	_view.size = VIEW_PX
+	_view.size = view_size(VIEW_MIN_H)
 	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_view.transparent_bg = true
 	_view.use_hdr_2d = false              # 8-bit sRGB like the faces: the shader reads both as source_color
@@ -87,26 +91,60 @@ func tag(root: Node, layer: int) -> void:
 
 
 func _process(_delta: float) -> void:
-	var cam := get_viewport().get_camera_3d()
-	tick(cam.get_global_transform_interpolated().origin if cam != null and _notifier.is_on_screen() else Vector3.INF)
+	var vp := get_viewport()
+	var cam := vp.get_camera_3d()
+	if cam == null or not _notifier.is_on_screen():
+		tick(Vector3.INF)
+		return
+	tick(cam.get_global_transform_interpolated().origin, focal_px(cam, vp))
 
 
-## One frame for a viewer at `eye` (Vector3.INF = glass off screen): the window pass draws this frame only while the
-## viewer is in front of the glass and in range. Returns whether it drew.
-func tick(eye: Vector3) -> bool:
-	if not eye.is_finite() or not in_range(eye):
+## Pixels one metre covers at one metre from the viewer's eye on the 3D render target (its height over twice the tangent of the
+## vertical half angle, at the viewport's 3D scale): the glass `d` metres away is `SIZE.y * focal / d` pixels tall.
+static func focal_px(cam: Camera3D, vp: Viewport) -> float:
+	var half := deg_to_rad(cam.fov) * 0.5
+	if cam.keep_aspect == Camera3D.KEEP_WIDTH:  # `fov` is then horizontal
+		half = atan(tan(half) / maxf(vp.get_visible_rect().size.aspect(), 0.1))
+	return vp.get_visible_rect().size.y * vp.scaling_3d_scale / (2.0 * tan(half))
+
+
+## One frame for a viewer at `eye` (Vector3.INF = glass off screen): the window pass draws this frame whenever the viewer is in front
+## of the glass, however far, sized to the glass on their screen (`focal` from `focal_px`; 0 = the tier's tallest). Returns whether it drew.
+func tick(eye: Vector3, focal := 0.0) -> bool:
+	if not eye.is_finite() or not in_front(eye):
 		_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 		return false
-	var px := VIEW_PX / 2 if QualityManager.current_tier >= SLOW_TIER else VIEW_PX
-	if _view.size != px:
-		_view.size = px
+	var h := window_height(maxf((eye - global_position).dot(global_basis.z), NEAR_MIN_M), focal)
+	var cur := _view.size.y
+	if h > cur or h <= cur - 2 * VIEW_STEP:
+		_view.size = view_size(h)
 	render_for(eye)
 	return true
 
 
-## In front of the glass and within RANGE_M of it on the floor plan.
-func in_range(eye: Vector3) -> bool:
-	return (eye - global_position).dot(global_basis.z) >= NEAR_MIN_M and Vector2(eye.x - global_position.x, eye.z - global_position.z).length() <= RANGE_M
+## In front of the glass plane (a viewer behind it, in the wall, sees no reflection).
+func in_front(eye: Vector3) -> bool:
+	return (eye - global_position).dot(global_basis.z) >= NEAR_MIN_M
+
+
+## The window pass's height (px) for a viewer `dist` m from the glass plane: the glass's height on screen rounded up to VIEW_STEP,
+## between VIEW_MIN_H and the tier's tallest. `focal` <= 0: the tallest.
+func window_height(dist: float, focal: float) -> int:
+	var tallest := VIEW_MAX_H[clampi(QualityManager.current_tier, 0, VIEW_MAX_H.size() - 1)]
+	if focal <= 0.0:
+		return tallest
+	return clampi(ceili(SIZE.y * focal / dist / VIEW_STEP) * VIEW_STEP, VIEW_MIN_H, tallest)
+
+
+static func view_size(h: int) -> Vector2i:
+	return Vector2i(roundi(h * ASPECT), h)
+
+
+## 0 = clean glass, 1 = smeared and dripping (the failure cutscene animates it; local presentation, nothing on the wire).
+func set_blood(amount: float) -> void:
+	blood = clampf(amount, 0.0, 1.0)
+	if _mat != null:
+		_mat.set_shader_parameter(&"blood", blood)
 
 
 ## Aim the window camera for a viewer at `eye` and draw this frame.
@@ -134,7 +172,7 @@ func capture() -> void:
 	if DisplayServer.get_name() == "headless":
 		return
 	_capturing = true
-	var px := FACE_PX / 2 if QualityManager.current_tier >= SLOW_TIER else FACE_PX
+	var px := FACE_PX[clampi(QualityManager.current_tier, 0, FACE_PX.size() - 1)]
 	var vp := SubViewport.new()
 	vp.size = Vector2i(px, px)
 	vp.use_hdr_2d = false
@@ -159,6 +197,7 @@ func capture() -> void:
 		await RenderingServer.frame_post_draw
 		var img := vp.get_texture().get_image()
 		img.convert(Image.FORMAT_RGBA8)
+		img.generate_mipmaps()
 		images.append(img)
 	vp.queue_free()
 	var faces := Texture2DArray.new()

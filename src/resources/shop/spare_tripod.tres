@@ -17,4 +17,4 @@ cost_cash = 500
 payload = SubResource("Delta_1")
 min_night = 1
 persistent = false
-max_owned = 2
+max_owned = 3

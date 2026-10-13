@@ -1,17 +1,16 @@
 extends Node3D
 ## Session root (docs/plan/04 §4). Owns nothing but the kick-off: NetManager has already installed
-## the peer when this scene loads, so the host starts the campaign. "New campaign" = reload this scene.
+## the peer when this scene loads, so the host starts the campaign (after the intro cutscene, 09 §3.8.1). "New campaign" = reload this scene.
 
 const NIGHTS: Array[NightConfig] = [
 	preload("res://src/resources/nights/night_1.tres"),
 	preload("res://src/resources/nights/night_2.tres"),
 	preload("res://src/resources/nights/night_3.tres"),
-	preload("res://src/resources/nights/night_4.tres"),
-	preload("res://src/resources/nights/night_5.tres"),
-]
+]  # the Campaign; Endless continues past them (GameLoop.night_at)
 
 @onready var game_loop: GameLoop = $GameLoop
 @onready var round_director: RoundDirector = $RoundDirector
+@onready var cutscenes: CutsceneDirector = $CutsceneDirector
 
 
 func _ready() -> void:
@@ -31,13 +30,14 @@ func _on_local_player(player: CharacterBody3D) -> void:
 	cue.set(&"cue_spec", $EconomyManager.build_cue_spec())
 
 
-## Host: a Lobby-chosen checkpoint resumes the campaign (SaveManager.pending_resume), else a fresh one.
+## Host: a Lobby-chosen checkpoint resumes the run (SaveManager.pending_resume, with its own mode; no intro), else a fresh one in the Lobby's
+## mode: the intro plays on every peer first and the campaign starts when they have all seen it (CutsceneDirector.start_run).
 func _start() -> void:
 	var resume := SaveManager.take_resume()
 	if resume != null:
 		game_loop.resume_from(resume)
 	else:
-		game_loop.start_campaign()
+		cutscenes.start_run(func(seed_value: int) -> void: game_loop.start_campaign(GameLoop.pending_mode, seed_value))
 
 
 ## Shop cue upgrades reach this peer's cue until PhysicsSim.active_cue is the strike's source.

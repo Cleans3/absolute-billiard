@@ -4,7 +4,8 @@ extends UIModal
 ## has no screen: players stay in the bar and press GO LIVE at the table (02 §3.1); its news (last Round, Cash, the
 ## next ask) arrives as two toasts. It opens and closes itself from GameLoop.phase_changed (keep_on_phase, so the router
 ## leaves it alone) and has the lowest priority: the Bartender menu, Pause, Settings, Controls and the vote all displace
-## it and it comes back when they close, while the phase still holds, so the host can always still press Next.
+## it and it comes back when they close, while the phase still holds, so the host can always still press Next. Game over and Campaign won
+## are cutscenes in play (CutsceneDirector, 09 §3.8): this screen shows them only with the cutscenes skipped (a headless run, the tools).
 
 const NEWS_GAP_SEC := 2.8  ## a little over UIRouter.TOAST_SEC: the second line replaces the first once it has been read
 
@@ -95,6 +96,13 @@ func _on_quota_evaluated(paid: int, demand: int, is_game_over: bool) -> void:
 
 func _on_phase_changed(phase: GameLoop.Phase) -> void:
 	var host := game_loop.is_host()
+	if (phase == GameLoop.Phase.GAME_OVER or phase == GameLoop.Phase.CAMPAIGN_WON) and CutsceneDirector.plays_endings():
+		_wanted = false  # the failure / win cutscene owns the ending (09 §3.8); this screen is the skipped-cutscene (probes, tools) path
+		_news.clear()
+		_gap.stop()
+		_waiting = false
+		close()
+		return
 	_wanted = true
 	_news.clear()
 	_gap.stop()

@@ -69,7 +69,8 @@ func _ready() -> void:
 	elevation = _add(root, ElevationPad.new())
 	power = _add(root, PowerSlider.new())
 	power.caption = "power"
-	_btn_jump = _button(root, "Jump", jump_pressed)
+	_btn_jump = _button(root, "", jump_pressed)
+	_btn_jump.icon = load("res://assets/ui/icon_jump.svg")  # arrow up
 	_btn_interact = _button(root, "Use", interact_pressed)
 	_btn_shoot = _button(root, "Shoot", shoot_pressed)
 	_btn_back = _button(root, "", back_pressed)

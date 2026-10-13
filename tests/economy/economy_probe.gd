@@ -1,12 +1,14 @@
 extends SceneTree
 
-## Headless economy probe (M1 C6/C7; docs/plan/02 §3.2–3.5): the Shot_Cash arithmetic against the
-## income sheet, viewer/hype/tip rules, and a full Night driven through GameLoop with a fake RoundDirector.
+## Headless economy probe (M1 C6/C7; docs/plan/02 §3.2–3.5, §3.11): the Shot_Cash arithmetic against the
+## income sheet, viewer/hype/tip rules, a full Night driven through GameLoop with a fake RoundDirector, the Campaign /
+## Endless gating of the final Night, and the run tally the loop's signals feed.
 ##   godot --path . --headless -s tests/economy/economy_probe.gd
 ## Prints ECONOMY OK, or the failing checks and ECONOMY FAIL (exit 1).
 
 const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")
 const NIGHT_2 := preload("res://src/resources/nights/night_2.tres")
+const RED := preload("res://src/resources/ball_types/red_basic.tres")
 const HUD_SCENE := preload("res://src/ui/HUD.tscn")
 const PHASE_SCENE := preload("res://src/ui/PhaseScreen.tscn")
 const COMBO: Array[StringName] = [&"Combo"]
@@ -51,6 +53,8 @@ func _run() -> void:
 	_arithmetic()
 	_stream()
 	await _loop()
+	await _modes()
+	await _run_stats()
 	for ball in _balls:
 		ball.free()
 	finished = true
@@ -98,9 +102,10 @@ func _arithmetic() -> void:
 	# reckoning: pay, bank the overpay; final Night demand = 1.5 x quota
 	economy = _rig(0, 0.0)
 	economy.add_cash(700, &"shot")
-	_check(economy.evaluate_quota(NIGHT_1) and economy.cash == 100, "quota 600 paid from 700, $100 banks")
-	_check(economy.demand_for(NIGHT_1, true) == 900, "final-night demand == 1.5 x 600")
-	_check(not economy.evaluate_quota(NIGHT_2) and economy.cash == 100, "short of quota: nothing paid, run ends")
+	_check(economy.evaluate_quota(NIGHT_1) and economy.cash == 700 - NIGHT_1.quota, "Night 1's quota paid from 700, the rest banks")
+	_check(economy.demand_for(NIGHT_1, true) == roundi(NIGHT_1.quota * 1.5), "final-night demand == 1.5 x quota")
+	var banked_after := economy.cash
+	_check(not economy.evaluate_quota(NIGHT_2) and economy.cash == banked_after, "short of quota: nothing paid, run ends")
 
 
 func _stream() -> void:
@@ -217,3 +222,157 @@ func _loop() -> void:
 	_check(phase_screen.get_node("%Menu").visible, "PhaseScreen: game over offers Back to menu")
 	for node in [hud, phase_screen, loop, economy, stream, director]:
 		node.free()
+
+
+## Loop + fake director + economy + stream for one run, `nights` as the Campaign.
+func _rig_loop(nights: Array[NightConfig]) -> Dictionary:
+	var director := FakeDirector.new()
+	var economy := EconomyManager.new()
+	var stream := StreamManager.new()
+	var loop := GameLoop.new()
+	economy.stream = stream
+	loop.round_director = director
+	loop.economy = economy
+	loop.stream = stream
+	loop.nights = nights
+	for node in [director, stream, economy, loop]:
+		root.add_child(node)
+	return {loop = loop, director = director, economy = economy, stream = stream}
+
+
+func _free_rig(rig: Dictionary) -> void:
+	for k in ["loop", "economy", "stream", "director"]:
+		(rig[k] as Node).free()
+
+
+## One Round ended by a cleared table (the cheapest way through): GO LIVE, a dead shot, table_cleared.
+func _clear_round(rig: Dictionary) -> void:
+	rig.loop.advance()
+	rig.director.shot(0)
+	rig.director.table_cleared.emit("r")
+	await process_frame  # end_round is deferred out of the director's own emit
+
+
+## 02 §3.11: only the Campaign has a Buyout and a win; Endless plays the same Nights, then generated ones, forever.
+func _modes() -> void:
+	var nights: Array[NightConfig] = [NIGHT_1, NIGHT_2]
+	for endless in [false, true]:
+		var rig := _rig_loop(nights)
+		var loop: GameLoop = rig.loop
+		var economy: EconomyManager = rig.economy
+		var tag := "Endless" if endless else "Campaign"
+		loop.start_campaign(GameLoop.MODE_ENDLESS if endless else GameLoop.MODE_CAMPAIGN)
+		_check(loop.mode == (GameLoop.MODE_ENDLESS if endless else GameLoop.MODE_CAMPAIGN), "%s: start_campaign sets the mode" % tag)
+		economy.add_cash(100000, &"test")
+		for r in 3:
+			await _clear_round(rig)
+		_check(loop.phase == GameLoop.Phase.RECKONING and loop.run_stats.nights_cleared == 1, "%s: Night 1 passes, one Night cleared" % tag)
+		loop.advance()
+		_check(loop.is_final_night() == (not endless), "%s: Night 2 %s the Buyout" % [tag, "is not" if endless else "is"])
+		_check(loop.ask_for(1) == (NIGHT_2.quota if endless else roundi(NIGHT_2.quota * 1.5)), "%s: Night 2's ask (%d)" % [tag, loop.ask_for(1)])
+		for r in 3:
+			await _clear_round(rig)
+		if endless:
+			_check(loop.phase == GameLoop.Phase.RECKONING, "Endless: the last authored Night passed is only a Reckoning, never a win")
+			loop.advance()
+			var n3 := loop.current_night()
+			_check(loop.night_index == 2 and n3.night_number == 3 and n3.quota == roundi(NIGHT_2.quota * NightConfig.ENDLESS_QUOTA_MULT)
+				and not loop.is_final_night(), "Endless: Night 3 is generated from the last Night's plain numbers, no Buyout")
+			_check(n3.finale_racks.is_empty() and n3.authored_racks.is_empty() and n3.fine_rate == NightConfig.ENDLESS_FINE_RATE, "Endless: no finale racks, the full fine rate")
+		else:
+			_check(loop.phase == GameLoop.Phase.CAMPAIGN_WON and loop.run_stats.nights_cleared == 2, "Campaign: the Buyout paid is the win")
+			loop.advance()  # the won-screen's Endless button
+			_check(loop.mode == GameLoop.MODE_ENDLESS and loop.night_index == 2 and not loop.is_final_night(), "Campaign: Endless carries on from the win and flips the mode")
+		_free_rig(rig)
+	# a missed Buyout ends the Campaign, and a missed Night ends Endless the same way
+	var miss := _rig_loop(nights)
+	miss.loop.start_campaign(GameLoop.MODE_ENDLESS)
+	for r in 3:
+		await _clear_round(miss)
+	_check(miss.loop.phase == GameLoop.Phase.GAME_OVER and miss.loop.run_stats.nights_cleared == 0, "Endless: a missed quota is Game over")
+	_free_rig(miss)
+	# the finale plays the finale racks; Endless (same Night, same index) plays the plain ones
+	var finale := NightConfig.new()
+	var finale_racks: Array[RackLayout] = [RackLayout.new()]
+	finale.finale_racks = finale_racks
+	var pair: Array[NightConfig] = [NIGHT_1, finale]
+	for endless in [false, true]:
+		var rig := _rig_loop(pair)
+		rig.loop.start_campaign(GameLoop.MODE_ENDLESS if endless else GameLoop.MODE_CAMPAIGN)
+		rig.economy.add_cash(100000, &"test")
+		for r in 3:
+			await _clear_round(rig)
+		rig.loop.advance()
+		rig.loop.advance()
+		var played: NightConfig = rig.director.started[-1][0]
+		_check(played.authored_racks.size() == (0 if endless else 1), "%s: the Night after Night 1 plays %s racks" % ["Endless" if endless else "Campaign", "its plain" if endless else "the finale"])
+		_free_rig(rig)
+
+
+## 02 §3.11: the tally the loop's signals feed, the mirror, and the shot-by-shot combo.
+func _run_stats() -> void:
+	var nights: Array[NightConfig] = [NIGHT_1, NIGHT_2]
+	var rig := _rig_loop(nights)
+	var loop: GameLoop = rig.loop
+	var director: FakeDirector = rig.director
+	var economy: EconomyManager = rig.economy
+	loop.start_campaign()
+	loop.advance()
+	var stats := loop.run_stats
+	_check(stats.pots == 0 and stats.shots == 0 and stats.grade() == "D", "a new run starts empty")
+	# shot 1: two pots and a Combo trick pay; the chain is 2
+	director.ball_potted.emit(_typed_ball(), "s1", &"corner")
+	director.ball_potted.emit(_typed_ball(), "s1", &"corner")
+	director.ball_potted.emit(_ball(true), "s1", &"corner")  # a scratched cue ball is not a pot
+	director.shot(200, COMBO)
+	_check(stats.pots == 2 and stats.best_combo == 2 and stats.trick_shots == 1 and stats.shots == 1, "pots, chain and trick counted (%s)" % [stats.to_dict()])
+	_check(stats.cash_earned > 0 and stats.best_shot == stats.cash_earned, "the payout is cash earned and the best shot")
+	# shot 2: one pot continues the streak (1 + 1 earlier Shot = 2 -> no new best); shot 3: two pots chain to 2 + 2 = 4
+	director.ball_potted.emit(_typed_ball(), "s2", &"corner")
+	director.shot(100)
+	_check(stats.best_combo == 2 and stats.trick_shots == 1, "a lone pot after a pot shot stays at 2")
+	director.ball_potted.emit(_typed_ball(), "s3", &"corner")
+	director.ball_potted.emit(_typed_ball(), "s3", &"corner")
+	director.shot(200)
+	_check(stats.best_combo == 4 and stats.pots == 5, "two pots after two potting Shots chain to 4 (%d)" % stats.best_combo)
+	# a scratch: the cue ball respawns (counted), the foul breaks the chain, the fine is paid (economy signal)
+	var earned := stats.cash_earned
+	director.cue_respawned.emit(&"scratch")
+	director.cue_respawned.emit(&"wedged")  # freed for nothing: not a scratch
+	economy.fined.emit(&"scratch", 15)
+	director.shot(0, [], true)
+	_check(stats.scratches == 1 and stats.fouls == 1 and stats.fines_paid == 15 and stats.cash_earned == earned, "scratch, foul and fine counted; a foul earns nothing")
+	director.ball_potted.emit(_typed_ball(), "s5", &"corner")
+	director.shot(100)
+	_check(stats.best_combo == 4, "the foul broke the streak: the next pot starts a chain of 1")
+	var before_tip := stats.cash_earned
+	loop._on_tip_received(40)
+	_check(stats.cash_earned == before_tip + 40, "a tip counts as cash earned")
+	loop._process(2.5)
+	_check(is_equal_approx(stats.play_time, 2.5), "play time runs while the run does")
+	# the mirror: a client adopts the host's mode and tally
+	var snap := stats.to_dict()
+	var echo := RunStats.from_dict(snap)
+	_check(echo.to_dict() == snap and echo.grade() == stats.grade() and echo.score() == stats.score(), "to_dict/from_dict round-trip")
+	loop.mode = GameLoop.MODE_CAMPAIGN
+	stats.apply({})
+	loop.run_state(GameLoop.MODE_ENDLESS, snap)
+	_check(loop.mode == GameLoop.MODE_ENDLESS and loop.run_stats.to_dict() == snap, "run_state carries mode + tally to a client")
+	loop.run_state(&"bogus", snap)
+	_check(loop.mode == GameLoop.MODE_CAMPAIGN, "an unknown mode on the wire falls back to Campaign")
+	# the profile carries both, and a resume restores them
+	loop.mode = GameLoop.MODE_ENDLESS
+	var profile := loop.build_profile()
+	_check(profile.mode == GameLoop.MODE_ENDLESS and profile.run_stats == snap, "the checkpoint holds the mode + tally")
+	var back := SaveManager.decode(SaveManager.encode(profile))
+	loop.mode = GameLoop.MODE_CAMPAIGN
+	loop.run_stats.apply({})
+	loop.resume_from(back)
+	_check(loop.mode == GameLoop.MODE_ENDLESS and loop.run_stats.to_dict() == snap, "resume restores the mode + tally")
+	_free_rig(rig)
+
+
+func _typed_ball() -> Ball:
+	var ball := _ball()
+	ball.ball_type = RED
+	return ball

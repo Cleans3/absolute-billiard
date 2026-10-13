@@ -1,11 +1,13 @@
 class_name CameraRig
 extends Node3D
-## A grabbable tripod camera (docs/plan/02 §2). A prop: the view is scored by math, never rendered.
-## Looks along -Z rotated by its yaw, tilted down PITCH; the friend who last placed it chose the angle.
+## A grabbable tripod camera (docs/plan/02 §2). A prop: the view is scored by math; only the first rig is also rendered, live, on
+## the wall TV (StreamTv, 06 P33 U5). Looks along -Z rotated by its yaw, tilted down PITCH; the friend who last placed it chose the angle.
 
 const TIER_MULT: Array[float] = [1.0, 1.25, 1.5]  # tier 1 / 2 / 3 [tune]
 const EYE_HEIGHT := 1.5
 const PITCH := 0.35  # rad down
+const FEED_FOV := 58.0  # vertical degrees of the picture the TV shows (scoring ignores it)
+const LENS_FRONT := 0.36  # the feed camera sits this far along the lens axis: just in front of the glass, so the body never fills it
 const FOOT_RADIUS := 0.55  # tripod splay on the floor
 const HUB_Y := 1.1  # where the three legs meet
 const HEAD_Y := 1.4  # top of the pan plate; the body sits on it
@@ -43,6 +45,12 @@ func forward() -> Vector3:
 	return Vector3(-sin(yaw) * cos(PITCH), -sin(PITCH), -cos(yaw) * cos(PITCH))
 
 
+## Where the TV's feed camera stands: the lens, looking along `forward()` (a carried rig follows its holder, so does the picture).
+func feed_transform() -> Transform3D:
+	var f := forward()
+	return Transform3D(Basis.looking_at(f, Vector3.UP), eye() + f * LENS_FRONT)
+
+
 func aim_at(point: Vector3) -> void:
 	var d := point - global_position
 	rotation.y = atan2(-d.x, -d.z)
@@ -53,7 +61,9 @@ func aim_at(point: Vector3) -> void:
 static func _model() -> ArrayMesh:
 	if _mesh != null:
 		return _mesh
-	var metal := _surface(_material(Color(0.2, 0.21, 0.24), 0.4, 0.85))
+	# Dark painted aluminium, not bare metal: at metallic 0.85 / rough 0.4 a 3 cm strut is all grazing Fresnel, so the room probe's
+	# bright pixels outline it in white while its body stays black (adhoc-1013c U4).
+	var metal := _surface(_material(Color(0.2, 0.21, 0.24), 0.65, 0.15))
 	var matte := _surface(_material(Color(0.06, 0.06, 0.07), 0.92, 0.0))
 	var optic := _surface(_optic_material())
 	var hub := Vector3(0, HUB_Y, 0)

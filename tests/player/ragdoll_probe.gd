@@ -181,7 +181,7 @@ func _player() -> void:
 	var head_shadow := false
 	var lid_seen := false
 	for mi: MeshInstance3D in [hum._body_mi, hum._head_mi]:
-		var shown := (mi.layers & player.cam.cull_mask) != 0 and mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY
+		var shown := (mi.layers & player.cam.cull_mask) != 0
 		var casts := mi.cast_shadow != GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and (mi.layers & 0xFFFFF) != 0
 		var arrays := (mi.mesh as ArrayMesh).surface_get_arrays(0)
 		var bones: PackedInt32Array = arrays[Mesh.ARRAY_BONES]
@@ -278,18 +278,27 @@ func _player() -> void:
 	rd.current_shooter_id = me
 	await _wait(0.3)
 	_check(player.enter_cue() and player.mode == Player.Mode.CUE, "entered CUE")
-	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY, "CUE: the local body is shadow-only, out of the aiming view")
+	# 06 P33 U1: in CUE the local body leaves the player's camera by the HEAD_LAYER trick (not shadow-only, which hid it from the mirror too):
+	# the aiming view is clear, the mirror's window pass and the room's other cameras still draw it, and it still casts its shadow
+	var mirror_cam: Camera3D = level.get_node("Mirror/View/Cam")
+	_check(hum._body_mi.layers == Humanoid.HEAD_LAYER and (hum._body_mi.layers & player.cam.cull_mask) == 0, "CUE: the local body is out of the aiming view (HEAD_LAYER)")
+	_check((hum._body_mi.layers & mirror_cam.cull_mask) != 0, "CUE: ...but the mirror's window pass still draws it")
+	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "CUE: ...and it keeps its shadow")
+	await process_frame
+	await process_frame  # (the timer that woke us runs after the nodes' _process: the controller's first frame is the next, we resume before its second)
+	_check(hum.has_cue_rig(), "CUE: the body is on the rig (the CueController posed it)")
 	player.knock(Vector3(1.0, 1.0, 0.0), 0.5)
 	await process_frame
 	_check(player.mode == Player.Mode.RAGDOLL and not player.cue.active, "knocked out of CUE")
-	_check(hum._body_mi.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON, "limp: the body shows again")
+	_check(hum._body_mi.layers == (1 | Humanoid.MIRROR_LAYER) and (hum._body_mi.layers & player.cam.cull_mask) != 0, "limp: the body shows again")
+	_check(not hum.has_cue_rig() and hum.transform == Transform3D.IDENTITY, "limp: the CUE rig is off and the body hangs from the Player again")
 	await _until(func() -> bool: return player.mode == Player.Mode.WALK, 4.0)
 	_check(player.mode == Player.Mode.WALK and not player.cue.active, "back in WALK, not CUE")
 
 	# CARRY is left too (the rig is asked down at the feet through the usual path)
 	var cams: CameraRigs = level.get_node("Cameras")
 	var rig := cams.rigs[0]
-	player.global_position = rig.global_position + Vector3(-0.1, 0.05, -0.4)
+	player.global_position = rig.global_position + Vector3(-0.1, 0.05, 0.4)  # the base tripod stands at the north wall: in front of it, in the room
 	await _wait(0.3)
 	var world: WorldInteractions = level.get_node("WorldInteractions")
 	var fake_ms := [Time.get_ticks_msec()]

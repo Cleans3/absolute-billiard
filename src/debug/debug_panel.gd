@@ -21,7 +21,7 @@ const STAT_RANGES := {
 	&"cue_ball_mass_mult": Vector3(0.2, 5.0, 0.05), &"table_tilt_deg": Vector3(0.0, 8.0, 0.1),
 }
 const CUE_RANGES := {
-	&"power_cap_speed_mps": Vector3(2.0, 25.0, 0.5), &"spin_offset_radius": Vector3(0.0, 0.6, 0.01), &"miscue_threshold": Vector3(0.5, 1.0, 0.01),
+	&"power_cap_speed_mps": Vector3(2.0, 40.0, 0.5), &"power_top_boost": Vector3(0.0, 1.0, 0.01), &"spin_offset_radius": Vector3(0.0, 0.6, 0.01), &"miscue_threshold": Vector3(0.5, 1.0, 0.01),
 }
 const TIMESCALES := [1.0, 0.5, 0.25, 0.1, 2.0]
 
@@ -47,6 +47,8 @@ var _test_spin_y: HSlider
 var _test_elev: HSlider
 var _refresh_queued := false
 var _view_toggles := {}
+var _staging_toggle: CheckButton
+var _cutscene_toggle: CheckButton
 
 
 func _init() -> void:
@@ -266,6 +268,7 @@ func _build_table(page: VBoxContainer) -> void:
 func _build_game(page: VBoxContainer) -> void:
 	_game_label = DebugWidgets.label(page, "", true)
 	DebugWidgets.button(page, "Advance (GO LIVE / next Night)", session.advance)
+	DebugWidgets.button(page, "Run stats card", session.show_stats_card)
 	var cash := DebugWidgets.row(page)
 	DebugWidgets.button(cash, "Cash −1k", func() -> void: session.add_cash(-1000))
 	DebugWidgets.button(cash, "Cash +1k", func() -> void: session.add_cash(1000))
@@ -289,6 +292,8 @@ func _build_view(page: VBoxContainer) -> void:
 		_view_toggles[v[0]] = DebugWidgets.toggle(page, v[1], false, func(on: bool) -> void: debug_root.set_view(v[0], on))
 	if not DisplayServer.is_touchscreen_available():
 		_view_toggles["freecam"] = DebugWidgets.toggle(page, "Free camera (WASD, mouse, Q/E)", false, func(on: bool) -> void: debug_root.set_view("freecam", on))
+	_staging_toggle = DebugWidgets.toggle(page, "Skip Round set-up / clean-up (this peer: no saucer, no wait)", RoundDirector.skip_staging, func(on: bool) -> void: RoundDirector.skip_staging = on)
+	_cutscene_toggle = DebugWidgets.toggle(page, "Skip cutscenes (this peer: no intro, Game over / Campaign won as screens)", CutsceneDirector.skip_cutscenes, func(on: bool) -> void: CutsceneDirector.skip_cutscenes = on)
 	DebugWidgets.label(page, "Time scale")
 	var row := DebugWidgets.row(page)
 	for t: float in TIMESCALES:
@@ -316,6 +321,8 @@ func _refresh() -> void:
 	_tuning_label.text = "default numbers" if changed_text == "" else "changed:  " + changed_text.replace("\n", ",  ")
 	_rebuild_shots()
 	_game_label.text = _game_text()
+	_staging_toggle.set_pressed_no_signal(RoundDirector.skip_staging)
+	_cutscene_toggle.set_pressed_no_signal(CutsceneDirector.skip_cutscenes)
 
 
 func _game_text() -> String:

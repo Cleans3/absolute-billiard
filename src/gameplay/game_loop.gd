@@ -3,6 +3,8 @@ extends Node
 ## Night/Round state machine, Round clock and shot budget (docs/plan/02 §3.1, §3.4).
 ## RoundDirector owns the table; this node only starts/ends Rounds and settles each Shot.
 ## Host runs the rules; clients mirror round_state (04 §5) and re-emit the same signals for the HUD.
+## `mode` picks the run's end: Campaign = the `nights` array, the last one the Buyout finale; Endless = those Nights,
+## then generated ones, never a win (02 §3.11). `run_stats` is the run's tally for the end card.
 
 enum Phase { NIGHT_START, INTERMISSION, ROUND_SETUP, ROUND_LIVE, ROUND_END, RECKONING, GAME_OVER, CAMPAIGN_WON }
 
@@ -16,7 +18,10 @@ signal shot_settled(shot_id: String, cash: int, trick_id: StringName, foul: bool
 signal cue_respawned(reason: StringName)  # relayed from RoundDirector for the HUD
 signal state_changed()  # time/shots/round/night fields changed (host after a rule, client after a mirror)
 signal ready_changed()  # GO LIVE: someone (un)pressed it, or the crew changed (host after a rule, client after a mirror)
+signal staging_changed(on: bool)  # relayed from RoundDirector: the table is being set up / cleared (06 P33 A4); the pedestal reads it
 
+const MODE_CAMPAIGN := &"campaign"
+const MODE_ENDLESS := &"endless"
 const SYNC_PERIOD := 1.0  # live-Round round_state heartbeat; phase changes are sent at once
 const STOCK_SALT := 0x5701  # keeps the shelf's seed apart from round_seed's hash of the same three numbers
 
@@ -27,7 +32,13 @@ const STOCK_SALT := 0x5701  # keeps the shelf's seed apart from round_seed's has
 @export var hud: Control  # kept for the frozen contract; the HUD pulls from this node, not the reverse
 @export var nights: Array[NightConfig]
 
+## The Lobby's pick (Solo, or the host's room); MainLevel hands it to start_campaign on the host. Clients learn the run's
+## mode from run_state, never from this.
+static var pending_mode := MODE_CAMPAIGN
+
 var phase := Phase.NIGHT_START
+var mode := MODE_CAMPAIGN
+var run_stats := RunStats.new()  # host-written from the signals wired in _ready; clients adopt run_state
 var campaign_seed := 0
 var round_seed := 0
 var night_index := 0  # into `nights`
@@ -39,7 +50,7 @@ var ready_peers := PackedInt32Array()  # GO LIVE (02 §3.1): peers who pressed i
 var waiting_peers := PackedInt32Array()  # ... and the peers whose press the start still waits for
 
 var _timer_expired := false  # timer hit 0 mid-shot: end the Round when that shot resolves
-var _endless: Array[NightConfig] = []  # generated Nights 6+, index 0 = Night nights.size()+1
+var _endless: Array[NightConfig] = []  # generated Endless Nights, index 0 = Night nights.size()+1
 var _best_pot := -1  # base_value of the best ball potted this Shot, and the pocket it fell in
 var _best_pocket := &""
 var _end_reason := &""
@@ -52,12 +63,15 @@ func _ready() -> void:
 	if round_director != null:
 		round_director.connect(&"shot_ended", _on_shot_ended)
 		round_director.connect(&"table_cleared", _on_table_cleared)
-		round_director.connect(&"cue_respawned", func(reason: StringName) -> void: cue_respawned.emit(reason))
+		round_director.connect(&"cue_respawned", _on_cue_respawned)
 		round_director.connect(&"ball_potted", _on_ball_potted)
+		if round_director.has_signal(&"staging_changed"):
+			round_director.connect(&"staging_changed", func(on: bool) -> void: staging_changed.emit(on))
 	if stream != null:
 		stream.tip_received.connect(_on_tip_received)
 	if economy != null:
 		economy.quota_evaluated.connect(func(paid: int, _demand: int, game_over: bool) -> void: _last_passed = not game_over)
+		economy.fined.connect(_on_fined)
 	var net := get_node_or_null(^"/root/NetManager")
 	if net != null:  # a peer joining the crew, leaving, or backgrounding changes who GO LIVE waits for
 		net.connect(&"roster_changed", _on_crew_changed)
@@ -65,10 +79,14 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
+	if phase != Phase.GAME_OVER and phase != Phase.CAMPAIGN_WON and is_host():
+		run_stats.play_time += delta
 	if phase != Phase.ROUND_LIVE:
 		return
+	var waiting := is_staging()  # the Round's clock starts when the set-up has played (06 P33 A4)
 	if not is_host():
-		time_left = maxf(time_left - delta, 0.0)  # cosmetic between round_state packets
+		if not waiting:
+			time_left = maxf(time_left - delta, 0.0)  # cosmetic between round_state packets
 		return
 	_sync_accum += delta
 	if _sync_accum >= SYNC_PERIOD:
@@ -76,7 +94,7 @@ func _process(delta: float) -> void:
 		_push_state()
 		if stream != null:
 			stream.resend()
-	if _timer_expired:
+	if _timer_expired or waiting:
 		return
 	time_left = maxf(time_left - delta, 0.0)
 	if time_left == 0.0:
@@ -85,7 +103,8 @@ func _process(delta: float) -> void:
 			_end_round(&"timer")
 
 
-## Nights 1–5 are authored; 6+ come from Night 5 (02 §3.4 Endless) and are cached.
+## `nights` (the Campaign's three) are authored; Endless Nights past them come from the last one's plain numbers
+## (02 §3.4) and are cached.
 func current_night() -> NightConfig:
 	return night_at(night_index)
 
@@ -100,15 +119,23 @@ func night_at(index: int) -> NightConfig:
 
 ## The demand of the Night at `index` (Buyout on the final one), for a board that looks past the current Night.
 func ask_for(index: int) -> int:
-	return economy.demand_for(night_at(index), index == nights.size() - 1)
+	return economy.demand_for(night_at(index), _is_final_at(index))
 
 
-func start_campaign() -> void:
+## The Buyout Night: the Campaign's last. Endless has none (02 §3.4).
+func is_final_night() -> bool:
+	return _is_final_at(night_index)
+
+
+## `p_seed` 0 draws a fresh campaign seed; the intro passes the one it dressed the crew with (every peer already holds it, 09 §3.8).
+func start_campaign(p_mode: StringName = MODE_CAMPAIGN, p_seed := 0) -> void:
 	if nights.is_empty():
 		push_error("GameLoop.start_campaign: `nights` is empty")
 		return
-	campaign_seed = randi()
+	campaign_seed = p_seed if p_seed != 0 else randi()
 	night_index = 0
+	mode = p_mode
+	run_stats.apply({})
 	economy.wipe()  # keeps the persistent unlocks only (02 §3.7)
 	_begin_night()
 
@@ -116,6 +143,8 @@ func start_campaign() -> void:
 ## Host only. Rebuilds a checkpoint's Round boundary: Cash, Shop, viewers, then the Intermission before the next Round.
 func resume_from(profile: SaveProfile) -> void:
 	campaign_seed = profile.campaign_seed
+	mode = profile.mode
+	run_stats.apply(profile.run_stats)
 	night_index = maxi(profile.current_night - 1, 0)
 	economy.restore(profile)
 	if profile.round_index <= 0:
@@ -124,20 +153,23 @@ func resume_from(profile: SaveProfile) -> void:
 	round_index = profile.round_index
 	var config := current_night()
 	_set_phase(Phase.NIGHT_START)
-	night_started.emit(config.night_number, economy.demand_for(config, _is_final_night()))
+	night_started.emit(config.night_number, economy.demand_for(config, is_final_night()))
 	stream.restore(profile.viewers, profile.hype, config)
 	_set_phase(Phase.INTERMISSION)
 	intermission_started.emit()
 
 
-## Host only. Intermission → next Round; Reckoning → next Night; a won campaign → Endless Night 6.
+## Host only. Intermission → next Round; Reckoning → next Night; a won Campaign → Endless Night 4 (the run carries on as Endless).
 func advance() -> void:
 	if not is_host():
 		return
 	match phase:
 		Phase.INTERMISSION:
-			_start_round()
+			if not is_staging():  # the last Round's clean-up is still playing
+				_start_round()
 		Phase.RECKONING, Phase.CAMPAIGN_WON:
+			if phase == Phase.CAMPAIGN_WON:
+				mode = MODE_ENDLESS
 			night_index += 1
 			_begin_night()
 
@@ -145,7 +177,7 @@ func advance() -> void:
 ## Host. The GO LIVE pedestal (WorldInteractions `go_live`): a press toggles the presser's ready flag; the Round
 ## starts once every peer the crew waits on has pressed. A peer that left is dropped, one in the background is not waited on.
 func toggle_ready(peer_id: int) -> void:
-	if not is_host() or phase != Phase.INTERMISSION:
+	if not is_host() or phase != Phase.INTERMISSION or is_staging():
 		return
 	var at := ready_peers.find(peer_id)
 	if at >= 0:
@@ -160,6 +192,11 @@ func stock_key() -> int:
 	return hash([campaign_seed, current_night().night_number, round_index, STOCK_SALT])
 
 
+## The table is being set up or cleared (RoundDirector.staging): no clock runs, no strike, no GO LIVE (06 P33 A4).
+func is_staging() -> bool:
+	return round_director != null and round_director.get(&"staging") == true
+
+
 func is_host() -> bool:
 	# by path, not the `NetManager` identifier: `-s` probes compile scripts before autoload names exist
 	var net := get_node_or_null(^"/root/NetManager")
@@ -172,7 +209,7 @@ func _begin_night() -> void:
 	if stream != null:
 		stream.reset_for_night(config, hash([campaign_seed, config.night_number]))
 	_set_phase(Phase.NIGHT_START)
-	night_started.emit(config.night_number, economy.demand_for(config, _is_final_night()))
+	night_started.emit(config.night_number, economy.demand_for(config, is_final_night()))
 	_set_phase(Phase.INTERMISSION)
 	intermission_started.emit()
 
@@ -189,7 +226,10 @@ func _start_round() -> void:
 	_timer_expired = false
 	_set_phase(Phase.ROUND_SETUP)
 	round_director.set(&"ball_overrides", economy.ball_overrides())  # Shop tier upgrades: value(ball_type)
-	round_director.call(&"start_round", economy.round_config(config), round_index, round_seed)
+	var rack_config := economy.round_config(config)
+	if is_final_night() and not config.finale_racks.is_empty():
+		rack_config.authored_racks = config.finale_racks  # the Campaign's finale plays its own racks
+	round_director.call(&"start_round", rack_config, round_index, round_seed)
 	stream.set_live(true)
 	_sync_accum = 0.0
 	_set_phase(Phase.ROUND_LIVE)
@@ -211,8 +251,10 @@ func _end_round(reason: StringName) -> void:
 
 
 func _reckon() -> void:
-	var is_final := _is_final_night()
+	var is_final := is_final_night()
 	var passed := economy.evaluate_quota(current_night(), is_final)
+	if passed:
+		run_stats.on_night_cleared()
 	_set_phase(Phase.RECKONING)
 	night_ended.emit(passed, economy.demand_for(current_night(), is_final))
 	if not passed:
@@ -232,10 +274,11 @@ func _on_shot_ended(shot_id: String, _shooter_id: int, raw_points: int, trick_id
 	var cash := economy.award_shot_reward(points, ids, &"" if foul else _best_pocket)
 	_best_pot = -1
 	_best_pocket = &""
+	var trick: StringName = ids[0] if not ids.is_empty() else &""
+	run_stats.on_shot(cash, trick, foul)
 	stream.on_shot_ended(points, ids, foul)
 	round_points += points
 	shots_left -= 1
-	var trick: StringName = ids[0] if not ids.is_empty() else &""
 	shot_settled.emit(shot_id, cash, trick, foul)
 	push_shot_settled.rpc(shot_id, cash, trick, foul)
 	_push_state()
@@ -259,9 +302,23 @@ func _on_ball_potted(ball: Ball, shot_id: String, pocket_id: StringName) -> void
 		var value: int = 0
 		if ball.ball_type != null:
 			value = int(round_director.call(&"value_of", ball.ball_type)) if round_director.has_method(&"value_of") else ball.ball_type.base_value
+		if value > 0:
+			run_stats.on_pot()
 		if value > _best_pot:
 			_best_pot = value
 			_best_pocket = pocket_id
+
+
+## The cue ball was put back; a Shot that scratched or went off the table is a stat (the fine is EconomyManager's).
+func _on_cue_respawned(reason: StringName) -> void:
+	if is_host() and phase == Phase.ROUND_LIVE and EconomyManager.FINE_REASONS.has(reason):
+		run_stats.on_scratch()
+	cue_respawned.emit(reason)
+
+
+func _on_fined(_reason: StringName, amount: int) -> void:
+	if is_host():
+		run_stats.on_fine(amount)
 
 
 func _on_table_cleared(_round_id: String) -> void:
@@ -271,10 +328,11 @@ func _on_table_cleared(_round_id: String) -> void:
 
 func _on_tip_received(amount: int) -> void:
 	economy.add_cash(amount, &"tip")
+	run_stats.on_tip(amount)
 
 
-func _is_final_night() -> bool:
-	return night_index == nights.size() - 1  # the Buyout is Night 5 only; Endless has plain quotas
+func _is_final_at(index: int) -> bool:
+	return mode == MODE_CAMPAIGN and index == nights.size() - 1
 
 
 func _table_cleared() -> bool:
@@ -289,6 +347,7 @@ func _set_phase(p: Phase) -> void:
 	phase = p
 	phase_changed.emit(p)
 	state_changed.emit()
+	_push_run()  # before round_state: a client reacting to the new phase already holds this run's mode + stats
 	_push_state()
 	_reset_ready()
 
@@ -350,6 +409,11 @@ func _push_state() -> void:
 		round_state.rpc(night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason, campaign_seed)
 
 
+func _push_run() -> void:
+	if is_inside_tree() and multiplayer.is_server():
+		run_state.rpc(mode, run_stats.to_dict())
+
+
 func _push_ready() -> void:
 	if is_inside_tree() and multiplayer.is_server():
 		ready_state.rpc(ready_peers, waiting_peers)
@@ -357,8 +421,16 @@ func _push_ready() -> void:
 
 ## Host: a client came back from the background (RoundDirector.send_full_state); it just needs the numbers.
 func resync_peer(peer_id: int) -> void:
+	run_state.rpc_id(peer_id, mode, run_stats.to_dict())
 	round_state.rpc_id(peer_id, night_index, round_index, phase, time_left, shots_left, round_points, round_seed, _end_reason, campaign_seed)
 	ready_state.rpc_id(peer_id, ready_peers, waiting_peers)
+
+
+## Clients: the run's mode and tally, on every phase change and in the resync (not the heartbeat; nothing reads it mid-Round).
+@rpc("authority", "call_remote", "reliable", 3)
+func run_state(p_mode: StringName, p_stats: Dictionary) -> void:
+	mode = p_mode if p_mode == MODE_ENDLESS else MODE_CAMPAIGN
+	run_stats.apply(p_stats)
 
 
 ## Clients: adopt the host's numbers and re-emit the signals the host raised, in the host's order.
@@ -380,7 +452,7 @@ func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p
 		return
 	if new_night:
 		_announced_night = night_index
-		night_started.emit(config.night_number, economy.demand_for(config, _is_final_night()))
+		night_started.emit(config.night_number, economy.demand_for(config, is_final_night()))
 	if (p_phase == Phase.INTERMISSION or p_phase == Phase.RECKONING) and (was == Phase.ROUND_LIVE or was == Phase.ROUND_END):
 		round_ended.emit(p_reason, p_points)
 	phase = p_phase as Phase
@@ -391,7 +463,7 @@ func round_state(p_night: int, p_round: int, p_phase: int, p_time_left: float, p
 		Phase.ROUND_LIVE:
 			round_started.emit(round_index, time_left, config.hazard_tiers[round_index - 1])
 		Phase.RECKONING:
-			night_ended.emit(_last_passed, economy.demand_for(config, _is_final_night()))
+			night_ended.emit(_last_passed, economy.demand_for(config, is_final_night()))
 
 
 ## Clients: who has pressed GO LIVE and who the start still waits on (the pedestal shows both).
@@ -419,7 +491,7 @@ func build_profile() -> SaveProfile:
 	if round_index >= config.rounds_count:
 		p.current_night += 1
 		p.round_index = 0
-	p.quota_target = economy.demand_for(night_at(p.current_night - 1), p.current_night == nights.size())
+	p.quota_target = economy.demand_for(night_at(p.current_night - 1), _is_final_at(p.current_night - 1))
 	p.viewers = stream.viewers
 	p.hype = stream.hype
 	p.owned_items = economy.owned.duplicate()
@@ -429,6 +501,8 @@ func build_profile() -> SaveProfile:
 		p.stock_ids.append(economy.stock_id(i))
 		p.stock_left.append(economy.stock_left(i))
 	p.campaign_seed = campaign_seed
+	p.mode = mode
+	p.run_stats = run_stats.to_dict()
 	var net := get_node_or_null(^"/root/NetManager")
 	p.crew_size = int(net.call(&"get_roster").size()) if net != null else 1
 	return p

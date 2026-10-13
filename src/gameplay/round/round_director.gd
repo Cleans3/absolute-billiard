@@ -18,6 +18,8 @@ signal cue_respawned(reason: StringName)
 signal shooter_changed(peer_id: int)
 ## Every peer: the shooter's clock started with `seconds` on it (03 `shot_clock_sec`; never emitted at 0).
 signal shot_clock_started(seconds: float)
+## Every peer: the Round's set-up or clean-up picture started (`true`) or ended (`false`). See `staging`.
+signal staging_changed(on: bool)
 
 const CUE_TYPE := preload("res://src/resources/ball_types/cue.tres")
 ## Wire ids for `push_rack`: the index. Append new BallTypes at the end, never reorder.
@@ -53,6 +55,14 @@ var current_shooter_id := 1
 var ball_overrides: Array[BallTypeOverride] = []
 ## Seconds left on the shooter's clock; 0 = no clock (03 `shot_clock_sec`). Host counts, clients mirror.
 var shot_clock_left := 0.0
+## True while the table is being set up (the saucer beams the rack in) or cleared (the bed opens under the balls), 06 P33 A4. Nothing is struck,
+## no shot clock or Round clock runs, GO LIVE is refused and the Shoot button / hostile prompts are off until it ends. Per peer, from the same
+## data: the host starts it with the rack, a client when the pushed rack arrives, each ends it when its own sequence has played.
+var staging := false: set = _set_staging
+
+## Probes, tools and headless runs skip the pictures (06 P33 A4): no saucer, no waiting, the rack is on the table at once. A probe about the
+## staging itself sets it false; the debug panel's View page toggles it; a windowed run (a player) keeps it false.
+static var skip_staging := DisplayServer.get_name() == "headless"
 
 var _config: NightConfig
 var _fx: Node  # ../EffectManager, duck-typed: probes run without one
@@ -67,6 +77,7 @@ var _seed := 0
 var _shot_index := 0
 var _round_active := false
 var _balls: Array[Ball] = []
+var _stager: RoundStaging  # ../Staging, null where there is none (the `-s` probes): then there is nothing to wait for
 var _cue_ball: Ball
 var _log := ContactLog.new()
 var _shot_id := ""
@@ -100,17 +111,25 @@ func _ready() -> void:
 	var events := get_node_or_null(^"../EventScheduler")
 	if events != null:
 		events.ball_shuffle_requested.connect(_on_shuffle_requested)
+	_stager = get_node_or_null(^"../Staging") as RoundStaging
+	if _stager != null:
+		_stager.finished.connect(_on_staging_finished)
+	var loop := get_node_or_null(^"../GameLoop")
+	if loop != null and loop.has_signal(&"round_ended"):
+		loop.connect(&"round_ended", _on_loop_round_ended)
 
 
 ## A strike is legal on the cue ball only, and only between shots.
 func can_strike(ball: Ball) -> bool:
-	return _round_active and not shot_in_progress and _balls.has(ball) and ball.is_cue_ball
+	return _round_active and not staging and not shot_in_progress and _balls.has(ball) and ball.is_cue_ball
 
 
 ## PhysicsSim.shot_validator: `&""` = ok. Host-side; is the sender the current shooter, is a Round live.
 func _validate_shot(peer_id: int, intent: ShotIntent) -> StringName:
 	if not _round_active:
 		return &"no_round"
+	if staging:
+		return &"staging"
 	if shot_in_progress:
 		return &"balls_moving"
 	if peer_id != current_shooter_id:
@@ -194,6 +213,7 @@ func get_balls() -> Array[Ball]:
 
 func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 	assert(not shot_in_progress, "start_round during a live shot")
+	_abort_staging()  # a clean-up still playing snaps to its end (which clears the table), a set-up to its own
 	_clear_balls()
 	_round_id = "n%d-r%d" % [config.night_number, round_index]
 	_seed = seed
@@ -209,10 +229,12 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 		_spawn(entry.type, entry.pos, _next_net_id)
 		_next_net_id += 1
 	_round_active = true
+	var staged := _begin_setup()
 	var order := _seat_order()
 	if not order.is_empty() and not order.has(current_shooter_id):
 		_set_shooter_rpc.rpc(order[0])
-	_begin_turn()
+	if not staged:
+		_begin_turn()  # staged: the shooter's clock is armed when the set-up ends (`_on_staging_finished`)
 	if not multiplayer.get_peers().is_empty():
 		_push_rack_rpc.rpc(_round_id, seed, _rack_blob(), table.sim.pocket_time())
 	rack_ready.emit(seed)
@@ -238,11 +260,13 @@ func _push_rack_rpc(round_id: String, seed: int, blob: PackedByteArray, host_poc
 	table.sim.sync_pocket_clock(host_pocket_t)
 	_apply_rack(round_id, seed, blob)
 	_round_active = true
+	_begin_setup()
 	rack_ready.emit(seed)
 
 
 ## Client: rebuild the ball set from a rack blob (also the ball-set half of a full state).
 func _apply_rack(round_id: String, seed: int, blob: PackedByteArray) -> void:
+	_abort_staging()
 	_clear_balls()
 	_round_id = round_id
 	_seed = seed
@@ -298,17 +322,23 @@ func _full_state_rpc(round_id: String, seed: int, shot_index: int, shooter_id: i
 	shot_in_progress = live
 	shot_clock_left = clock_left
 	table.sim.apply_snapshot(frame, host_pocket_t)
+	if not active and _stager != null and not skip_staging:
+		_clear_balls()  # a Round that has ended is cleared by its clean-up (it may be playing on the host right now): no frozen rack through Intermission
 	if current_shooter_id != shooter_id:
 		current_shooter_id = shooter_id
 		shooter_changed.emit(shooter_id)
 
 
-## Freezes the table where it stands (visible through Intermission); start_round clears it.
+## Freezes the table where it stands, then (06 P33 U15) clears it: the bed opens under the balls and they fall into the pit, `staging` for the
+## `StagingPlan.CLEANUP_SEC` that takes. Where nothing is staged (`skip_staging`, no Staging node) the frozen table stays visible through
+## Intermission and start_round clears it.
 func end_round() -> void:
 	assert(not shot_in_progress, "end_round during a live shot")
+	_abort_staging()
 	_round_active = false
 	for b in _balls:
 		b.freeze = true
+	_begin_cleanup()
 
 
 ## True when the resting cue ball cannot move in any of 16 sampled directions (01 §3).
@@ -572,6 +602,56 @@ func _respawn_cue(reason: StringName) -> void:
 	_off_table.erase(_cue_ball)
 	_cue_ball.restore(_world(spot, _cue_ball))
 	cue_respawned.emit(reason)
+
+
+# ---------------------------------------------------------------- staging (06 P33 A4, U15, U16)
+
+func _set_staging(on: bool) -> void:
+	if staging == on:
+		return
+	staging = on
+	staging_changed.emit(on)
+
+
+## The new rack is hidden and revealed ball by ball by the saucer's beam (RoundStaging), in net_id order: the same order on every peer.
+## Returns whether a set-up is playing. The balls already exist, frozen where they stand: only the picture waits.
+func _begin_setup() -> bool:
+	if skip_staging or _stager == null or _balls.is_empty():
+		return false
+	_stager.play_setup(_balls)  # first, so `staging_changed(true)` finds the balls hidden and the stager in its kind
+	staging = true
+	return true
+
+
+## The Round is over: the bed opens and the balls fall into the pit. They are cleared when it has played.
+func _begin_cleanup() -> void:
+	if skip_staging or _stager == null or _balls.is_empty() or staging:
+		return
+	_stager.play_cleanup(_balls)
+	staging = true
+
+
+## Snaps a playing sequence to its end state (a new rack, a full state, a re-rack: nobody waits for a picture of the old one).
+func _abort_staging() -> void:
+	if _stager != null and _stager.is_playing():
+		_stager.finish()
+	staging = false
+
+
+func _on_staging_finished(kind: StringName) -> void:
+	if kind == RoundStaging.KIND_CLEANUP:
+		_clear_balls()
+	staging = false
+	if kind == RoundStaging.KIND_SETUP and _round_active and multiplayer.is_server():
+		_begin_turn()
+
+
+## Clients: the host cleared its table, so this peer's picture of it plays too, once the playback clock has shown the last shot
+## (the Round's final pot is still rolling in on a client's screen when `round_state` arrives).
+func _on_loop_round_ended(_reason: StringName, _points: int) -> void:
+	if multiplayer.is_server():
+		return  # the host's end_round() starts its own
+	table.sim.at_playback(table.sim.after_shot_tick(), _begin_cleanup)
 
 
 # ---------------------------------------------------------------- rules: value, score, gimmicks (01 §2)

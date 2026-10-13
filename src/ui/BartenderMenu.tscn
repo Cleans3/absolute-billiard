@@ -83,6 +83,7 @@ layout_mode = 2
 metadata/_tab_index = 0
 
 [node name="Modes" type="HBoxContainer" parent="Panel/Box/Tabs/Drinks"]
+custom_minimum_size = Vector2(0, 56)
 layout_mode = 2
 
 [node name="Serve" type="Button" parent="Panel/Box/Tabs/Drinks/Modes"]
@@ -98,6 +99,11 @@ custom_minimum_size = Vector2(120, 56)
 layout_mode = 2
 toggle_mode = true
 text = "Throw"
+
+[node name="Hint" type="Label" parent="Panel/Box/Tabs/Drinks/Modes"]
+unique_name_in_owner = true
+layout_mode = 2
+vertical_alignment = 1
 
 [node name="Targets" type="HBoxContainer" parent="Panel/Box/Tabs/Drinks/Modes"]
 unique_name_in_owner = true

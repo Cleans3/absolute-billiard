@@ -139,12 +139,10 @@ func _refresh_footer() -> void:
 ## Moe's ledger (09 §3.5): the Night's demand and what the crew has paid so far; the Buyout and the Endless rate worded as Moe would.
 ## Cash can be negative after a scratch fine, and the ledger shows it as it is.
 func ledger() -> String:
-	var index := game_loop.night_index if game_loop != null else 0
-	var last_night := game_loop.nights.size() - 1 if game_loop != null and not game_loop.nights.is_empty() else 4
-	if index > last_night:
-		return "MOE RAISED THE RATE · %s" % money(_ask)
-	if index == last_night:
+	if game_loop != null and game_loop.is_final_night():
 		return "THE BUYOUT · %s · LAST CALL" % money(_ask)
+	if game_loop != null and not game_loop.nights.is_empty() and game_loop.night_index >= game_loop.nights.size():
+		return "MOE RAISED THE RATE · %s" % money(_ask)
 	return "MOE WANTS %s · PAID SO FAR %s" % [money(_ask), money(economy.cash if economy != null else 0)]
 
 

@@ -215,10 +215,11 @@ def icons():
     teeth = "".join(f'<rect x="28" y="2" width="8" height="12" rx="2" transform="rotate({a} 32 32)" fill="{BRASS}"/>' for a in range(0, 360, 45))
     icon("gear", teeth + f'<circle cx="32" cy="32" r="19" fill="{BRASS}" stroke="{BRASS_D}" stroke-width="3"/>'
          f'<circle cx="32" cy="32" r="8" fill="#22130C" stroke="{BRASS_L}" stroke-width="2.5"/>')
-    # pause / close / back
+    # pause / close / back / jump (arrow up)
     icon("pause", f'<rect x="14" y="10" width="13" height="44" rx="4" fill="{CREAM}"/><rect x="37" y="10" width="13" height="44" rx="4" fill="{CREAM}"/>')
     icon("close", f'<path d="M14 14 L50 50 M50 14 L14 50" stroke="{CREAM}" stroke-width="9" stroke-linecap="round"/>')
     icon("back", f'<path d="M40 10 L16 32 L40 54" stroke="{CREAM}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
+    icon("jump", f'<path d="M32 54 V12 M14 30 L32 12 L50 30" stroke="{CREAM}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round" fill="none"/>')
     # controls: gamepad
     icon("controls", f'<path d="M16 16 H48 Q60 16 60 34 Q60 52 52 52 Q46 52 42 44 H22 Q18 52 12 52 Q4 52 4 34 Q4 16 16 16 Z" fill="#3B2316" stroke="{CREAM}" stroke-width="4" stroke-linejoin="round"/>'
          f'<path d="M19 26 V40 M12 33 H26" stroke="{CYAN}" stroke-width="4.5" stroke-linecap="round"/>'

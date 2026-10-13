@@ -1,14 +1,14 @@
 class_name Humanoid
 extends Node3D
 ## Low-poly person built in code (06 P15, 08 §2.7): 11 bones, one vertex-coloured material, two skinned
-## meshes (body: trunk and its lid, arms, legs; head: head, face, hat, neck) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE and
-## CARRY stances, hand targets). `ragdoll()` hands the bones to a PhysicalBoneSimulator3D; its 11 bodies are
+## meshes (body: trunk and its lid, arms, legs; head: head, face, hat, neck) = 2 draw calls. Animated procedurally (breath, walk from measured speed, CUE,
+## CARRY and SIT stances, hand targets, the CUE rig that puts both hands on the real stick). `ragdoll()` hands the bones to a PhysicalBoneSimulator3D; its 11 bodies are
 ## on no layer and not simulated until then, and `get_up()` blends back to the pose.
 ## Rests facing -Z with the feet at this node's origin, like the CharacterBody3D it hangs from.
 
 signal got_up  ## simulation stopped (the blend back to the pose starts); `pelvis_at_getup` is where the body lay
 
-enum Stance { STAND, CUE, CARRY }  ## same order as Player.Mode
+enum Stance { STAND, CUE, CARRY, SIT }  ## STAND..CARRY in Player.Mode's order; SIT is a WALK sub-state (Player.seated, 06 P33 U7)
 enum B { PELVIS, TORSO, HEAD, UARM_R, LARM_R, UARM_L, LARM_L, THIGH_R, SHIN_R, THIGH_L, SHIN_L }
 
 const HEAD_LAYER := 1 << 19    ## render layer 20: the local player's camera culls it, shadows still fall
@@ -59,6 +59,22 @@ const FORE := 0.295     ## elbow → hand centre
 const THIGH := 0.43
 const SHIN := 0.42
 const ANKLE := 0.08
+## CUE rig (06 P33 U1). Stance legs (right, left): thigh swing, knee flex; a lean past RIG_LEAN.x crouches both knees by up to CROUCH_KNEE.
+const CUE_THIGH := Vector2(-0.25, 0.30)
+const CUE_KNEE := Vector2(0.08, 0.45)
+const CROUCH_KNEE := 0.7
+const RIG_LEAN := Vector2(0.65, 1.0)  ## trunk pitch (rad) searched for hands on their spots: the stance's lean .. the deepest lean that is still a stance
+const RIG_LEAN_MAX := 1.25            ## ... and, when no lean in that range reaches, the deepest the body will bend while the hands slide along the stick
+const RIG_STEP := 0.05
+const RIG_REACH := UPPER + FORE - 0.02  ## the arm stops short of fully straight
+const RIG_SHIFT := 0.2                ## the body stands this far left of the stick so it passes the right shoulder
+const GRIP_FROM_BUTT_M := Vector2(0.15, 0.6)  ## the rear hand holds the stick between these distances from its butt end
+const HAND_MIN_M := 0.1               ## ... and either hand stays this far from the tip
+const RIG_NEAR_M := 0.25              ## ... and holds it at least this far from its own shoulder (a stick passing by the shoulder would put the hand in it)
+## SIT (06 P33 U7): thighs level on the seat, shins hanging, hands on the thighs.
+const SIT_THIGH := 1.45
+const SIT_SHIN := 0.1                 ## shins hang this much forward of vertical
+const SEAT_LIFT := 0.075              ## hip joint above the seat surface
 
 static var _material: ShaderMaterial  ## every Humanoid shares it: colours live in the vertices (humanoid.gdshader)
 
@@ -89,6 +105,17 @@ var _rot: Array[Quaternion] = []
 var _pelvis_pos := ORIGIN[0]
 var _t_rot: Array[Quaternion] = []
 var _t_pelvis := ORIGIN[0]
+var _rig_on := false            ## CUE rig: this node stands at a floor point of its own and both hands follow the stick
+var _rig_home := Transform3D.IDENTITY
+var _rig_tip := Vector3.ZERO    ## world: the stick's tip,
+var _rig_butt := Vector3.BACK   ## ... the unit direction from the tip to the butt,
+var _rig_len := 1.45
+var _rig_bridge := 0.36         ## ... and the bridge hand's distance from the tip
+var _cue_lean := 0.65           ## solved by the rig each frame, else the plain stance's
+var _cue_crouch := 0.0
+var _rig_hand: Array[Vector3] = [Vector3.ZERO, Vector3.ZERO]  ## right, left: where the rig holds the stick, this node's space
+var _rig_gap: Array[float] = [0.0, 0.0]                        ## how far short of it each arm falls (m)
+var _seat_top := 0.8            ## SIT: the seat surface, this node's space
 
 
 func _ready() -> void:
@@ -143,9 +170,10 @@ func set_first_person(on: bool) -> void:
 	_head_mi.layers = HEAD_LAYER if on else 1 | MIRROR_LAYER  # the mirror camera draws HEAD_LAYER too
 
 
-## Local player in CUE: the leaning trunk would fill the aiming view, so the body only casts its shadow.
+## Local player in CUE: the leaning trunk and arms would fill the aiming view, so the body joins the head on HEAD_LAYER: the
+## player's camera culls it, the mirror's window pass and every other camera still draw it, and it keeps its shadow.
 func set_body_hidden(on: bool) -> void:
-	_body_mi.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_SHADOWS_ONLY if on else GeometryInstance3D.SHADOW_CASTING_SETTING_ON
+	_body_mi.layers = HEAD_LAYER if on else 1 | MIRROR_LAYER
 
 
 ## Lean on a rail: the trunk pitches toward `world_point` and both hands rest on it for `seconds`, or until the body
@@ -177,6 +205,81 @@ func set_hand(side: int, point: Vector3) -> void:
 
 func clear_hand(side: int) -> void:
 	_hand[side] = null
+
+
+## CUE rig (06 P33 U1, 08 §2.7): the body stands at the floor point `origin` facing `yaw` and holds the real stick, whose tip is at
+## `tip` (world) and whose butt lies along the unit vector `butt_dir`; the bridge hand rests `bridge_s` back from the tip. Call it every
+## frame while the stance is CUE: the trunk bends the least it needs to for the hands to hold the stick, the hands slide along it when
+## the table is too wide to reach, the feet stay where `origin` is. `clear_cue_rig` puts the node back where it hung.
+func set_cue_rig(origin: Vector3, yaw: float, tip: Vector3, butt_dir: Vector3, length: float, bridge_s: float) -> void:
+	var first := not _rig_on
+	if first:
+		_rig_home = transform
+	_rig_on = true
+	global_transform = Transform3D(Basis(Vector3.UP, yaw), origin)
+	_rig_tip = tip
+	_rig_butt = butt_dir.normalized()
+	_rig_len = length
+	_rig_bridge = bridge_s
+	if first:
+		_speed = 0.0
+		snap_pose()
+
+
+func clear_cue_rig() -> void:
+	if not _rig_on:
+		return
+	_rig_on = false
+	transform = _rig_home
+	_cue_lean = RIG_LEAN.x
+	_cue_crouch = 0.0
+
+
+func has_cue_rig() -> bool:
+	return _rig_on
+
+
+## How far short of its spot on the stick each arm falls after the last solve (0 right, 1 left), metres: 0 = holding it.
+func rig_gap(side: int) -> float:
+	return _rig_gap[side]
+
+
+## The trunk pitch the rig solved (rad).
+func rig_lean() -> float:
+	return _cue_lean
+
+
+## Settles the animated pose at once instead of easing toward it (a teleport, a probe).
+func snap_pose() -> void:
+	if _skel == null or _ragdoll:
+		return
+	_compute_pose()
+	_rot = _t_rot.duplicate()
+	_pelvis_pos = _t_pelvis
+	_blend = 1.0
+	_write_pose(1.0)
+
+
+## World position of a hand's centre (0 right, 1 left), read back from the skeleton's pose.
+func hand_world(side: int) -> Vector3:
+	var fore := B.LARM_R if side == 0 else B.LARM_L
+	return _skel.global_transform * (_skel.get_bone_global_pose(fore) * Vector3(0.0, -FORE, 0.0))
+
+
+## World position of `local` in a bone's frame (default: the bone's origin, the joint), read back from the skeleton's pose
+## (`bone_world` reads the ragdoll's bodies instead).
+func bone_point(bone: int, local := Vector3.ZERO) -> Vector3:
+	return _skel.global_transform * (_skel.get_bone_global_pose(bone) * local)
+
+
+## SIT: the seat surface's height in this node's space. Set it before the stance.
+func set_seat(top_y: float) -> void:
+	_seat_top = top_y
+
+
+## Where the hip joint rides on a seat whose surface is `top_y` high (the sitter's camera lowers by the same amount).
+static func sit_hip_y(top_y: float) -> float:
+	return top_y + SEAT_LIFT
 
 
 ## Limp: the bones are handed to physics. `impulse` is a velocity change (m/s) of the body, on top of the speed it
@@ -245,7 +348,7 @@ func _physics_process(delta: float) -> void:
 	var p := global_position
 	var v := (p - _last_pos) / maxf(delta, 0.0001)
 	_last_pos = p
-	if v.length() > 9.0:  # a teleport (CUE pin, respawn), not walking
+	if v.length() > 9.0 or _rig_on or stance == Stance.SIT:  # a teleport (CUE pin, respawn), the rig sliding its feet, a seat: not walking
 		v = Vector3.ZERO
 	_vel = v
 	_speed = lerpf(_speed, Vector2(v.x, v.z).length(), 1.0 - exp(-10.0 * delta))
@@ -288,16 +391,25 @@ func _compute_pose() -> void:
 	var c := cos(_phase)
 	var cue := stance == Stance.CUE
 	var carry := stance == Stance.CARRY
+	var sit := stance == Stance.SIT
 	var reaching := _hand[0] != null or _hand[1] != null
 	var th_r := 0.0
 	var th_l := 0.0
 	var fl_r := 0.05
 	var fl_l := 0.05
-	if cue:  # bridge leg forward and bent, back leg long
-		th_r = -0.30
-		fl_r = 0.08
-		th_l = 0.42
-		fl_l = 0.45
+	if cue:  # bridge leg forward and bent, back leg long; a deeper lean bends both knees (the pelvis drops with them)
+		if _rig_on:
+			_solve_rig()
+		var bend := CROUCH_KNEE * _cue_crouch
+		th_r = CUE_THIGH.x
+		fl_r = CUE_KNEE.x + bend
+		th_l = CUE_THIGH.y
+		fl_l = CUE_KNEE.y + bend
+	elif sit:  # thighs level, shins hanging
+		th_r = SIT_THIGH
+		th_l = SIT_THIGH
+		fl_r = SIT_THIGH - SIT_SHIN
+		fl_l = SIT_THIGH - SIT_SHIN
 	else:
 		th_r = 0.45 * k * s
 		th_l = -th_r
@@ -308,7 +420,7 @@ func _compute_pose() -> void:
 	var ext_l := THIGH * cos(th_l) + SHIN * cos(th_l - fl_l) + ANKLE
 	var breath := sin(_time * 1.7)
 	var sway := sin(_time * 0.45) * 0.006
-	var pelvis := Vector3(sway + 0.012 * k * s, maxf(ext_r, ext_l) + 0.003 * breath, 0.0)
+	var pelvis := Vector3(sway + 0.012 * k * s, (sit_hip_y(_seat_top) if sit else maxf(ext_r, ext_l)) + 0.003 * breath, 0.0)
 	var lean := 0.0
 	var lean_axis := Vector3.RIGHT  # the trunk pitches about this (right = forward)
 	if _lean_left > 0.0:
@@ -317,8 +429,10 @@ func _compute_pose() -> void:
 			lean_axis = flat.normalized().cross(Vector3.UP)
 		lean = LEAN_RAD
 	elif cue:
-		lean = 0.65
-		pelvis.x -= 0.2  # stands left of the cue line so the stick passes the right shoulder
+		lean = _cue_lean
+		pelvis.x -= RIG_SHIFT  # stands left of the cue line so the stick passes the right shoulder
+	elif sit:
+		lean = 0.1
 	elif carry:
 		lean = 0.08
 	elif reaching:
@@ -341,7 +455,9 @@ func _compute_pose() -> void:
 		var ua := B.UARM_R if side == 0 else B.UARM_L
 		var target: Variant = _hand[side]
 		if target == null and cue:
-			target = Vector3(0.0, 0.957, -0.28) if side == 0 else Vector3(0.0, 0.93, -0.78)
+			target = _rig_hand[side] if _rig_on else (Vector3(0.0, 0.957, -0.28) if side == 0 else Vector3(0.0, 0.93, -0.78))
+		elif target == null and sit:
+			target = Vector3(0.16 * sgn, pelvis.y + 0.12, -0.30)  # hands on the thighs
 		elif target == null and carry:
 			target = Vector3(0.14 * sgn, 1.10, -0.40)
 		if target != null:
@@ -355,6 +471,90 @@ func _compute_pose() -> void:
 			var swing := -0.5 * k * s * sgn
 			_t_rot[ua] = Quaternion(Vector3.BACK, 0.10 * sgn) * Quaternion(Vector3.RIGHT, swing)
 			_t_rot[ua + 1] = Quaternion(Vector3.RIGHT, 0.15 + 0.35 * k)
+
+
+## CUE rig: fills `_cue_lean`, `_cue_crouch`, `_rig_hand` and `_rig_gap` for this frame's stick. The least trunk pitch from RIG_LEAN
+## at which the rear hand holds the butt end under its shoulder and the bridge hand its spot wins; if none does by RIG_LEAN.y, the body
+## bends no less than that and a hand that cannot reach its spot slides along the stick to the nearest point it can (the stick is the
+## only thing the hands are bound to), bending on toward RIG_LEAN_MAX only while a hand still falls short.
+func _solve_rig() -> void:
+	var inv := global_transform.affine_inverse()
+	var tip := inv * _rig_tip
+	var butt := (inv.basis * _rig_butt).normalized()
+	var best := INF
+	var at := RIG_LEAN_MAX
+	var lean := RIG_LEAN.x
+	while lean <= RIG_LEAN_MAX + 0.0001:
+		var crouch := clampf((lean - RIG_LEAN.x) / (RIG_LEAN_MAX - RIG_LEAN.x), 0.0, 1.0)
+		var gap := 0.0
+		var exact := true
+		for side in 2:
+			var shoulder := _rig_shoulder(side, lean, crouch)
+			var hold := _hold(tip, butt, shoulder, _rig_pref(side, tip, butt, shoulder))
+			gap += hold.y
+			exact = exact and hold.z > 0.5
+		if exact and lean <= RIG_LEAN.y + 0.0001:
+			at = lean
+			break
+		if lean >= RIG_LEAN.y - 0.0001 and gap < best - 0.0005:
+			best = gap
+			at = lean
+		lean += RIG_STEP
+	_cue_lean = at
+	_cue_crouch = clampf((at - RIG_LEAN.x) / (RIG_LEAN_MAX - RIG_LEAN.x), 0.0, 1.0)
+	for side in 2:
+		var shoulder := _rig_shoulder(side, _cue_lean, _cue_crouch)
+		var hold := _hold(tip, butt, shoulder, _rig_pref(side, tip, butt, shoulder))
+		_rig_hand[side] = tip + butt * hold.x
+		_rig_gap[side] = hold.y
+
+
+## The shoulder (0 right, 1 left) with the trunk pitched `lean` and the knees crouched `crouch` (0..1), this node's space: the chain
+## `_compute_pose` builds, without breath and sway (a few mm).
+func _rig_shoulder(side: int, lean: float, crouch: float) -> Vector3:
+	var bend := CROUCH_KNEE * crouch
+	var ext_r := THIGH * cos(CUE_THIGH.x) + SHIN * cos(CUE_THIGH.x - (CUE_KNEE.x + bend)) + ANKLE
+	var ext_l := THIGH * cos(CUE_THIGH.y) + SHIN * cos(CUE_THIGH.y - (CUE_KNEE.y + bend)) + ANKLE
+	var torso := Vector3(-RIG_SHIFT, maxf(ext_r, ext_l), 0.0) + ORIGIN[B.TORSO] - ORIGIN[B.PELVIS]
+	var ua := B.UARM_R if side == 0 else B.UARM_L
+	return torso + Quaternion(Vector3.RIGHT, -lean) * (ORIGIN[ua] - ORIGIN[B.TORSO])
+
+
+## Where along the stick (distance from the tip) a hand would like to be: the rear hand under its shoulder inside the grip zone, the
+## bridge hand at the bridge.
+func _rig_pref(side: int, tip: Vector3, butt: Vector3, shoulder: Vector3) -> float:
+	if side == 1:
+		return _rig_bridge
+	return clampf((shoulder - tip).dot(butt), _rig_len - GRIP_FROM_BUTT_M.y, _rig_len - GRIP_FROM_BUTT_M.x)
+
+
+## Where a hand on the stick (tip + butt * s) can be with the shoulder fixed: x = s, y = metres the arm still falls short, z = 1 when s is
+## the wanted `pref`. The wanted spot if the arm reaches it (between RIG_NEAR_M and RIG_REACH from the shoulder), else the nearest point
+## of the stick it does.
+func _hold(tip: Vector3, butt: Vector3, shoulder: Vector3, pref: float) -> Vector3:
+	var lo := HAND_MIN_M
+	var hi := _rig_len - 0.05
+	var w := tip - shoulder
+	var b := w.dot(butt)
+	var disc := b * b - (w.length_squared() - RIG_REACH * RIG_REACH)
+	if disc >= 0.0:
+		var r := sqrt(disc)
+		var a := maxf(-b - r, lo)
+		var c := minf(-b + r, hi)
+		if a <= c:
+			var s := clampf(pref, a, c)
+			var in_near := b * b - (w.length_squared() - RIG_NEAR_M * RIG_NEAR_M)
+			if in_near > 0.0:  # the stick passes within RIG_NEAR_M of the shoulder: slide out of that stretch, the nearer way
+				var n1 := -b - sqrt(in_near)
+				var n2 := -b + sqrt(in_near)
+				if s > n1 and s < n2:
+					if n2 <= c and (n1 < a or n2 - s <= s - n1):
+						s = n2
+					elif n1 >= a:
+						s = n1
+			return Vector3(s, 0.0, 1.0 if is_equal_approx(s, pref) else 0.0)
+	var closest := clampf(-b, lo, hi)
+	return Vector3(closest, maxf((tip + butt * closest - shoulder).length() - RIG_REACH, 0.0), 0.0)
 
 
 ## Two-bone IK in this node's space: unit directions for the upper arm and forearm.

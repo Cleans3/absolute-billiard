@@ -1,7 +1,8 @@
 class_name BartenderMenu
 extends UIModal
 ## The Bartender's counter (docs/plan/02 §3.6, 06 P17, polish contract §1 and §9): a `ui_modal` with two tabs.
-## Drinks = the host's random shelf as tier-framed cards (serve a crewmate, or throw one at the shooter);
+## Drinks = the host's random shelf as tier-framed cards (serve yourself or a crewmate, or throw one at the shooter);
+## Solo and the shooter see no choice, so no target row and no Throw (06 P35, 02 §3.6);
 ## Upgrades = the fixed ball / cue / camera / table rows. A Drink tap is only reported (`picked`): the Player sends
 ## the host-validated world interaction. Upgrades ask the host through request_purchase. The UIRouter owns the mouse.
 ## The panel never changes size (polish 2, C11): the cards are fixed-size Controls that clip their content, every
@@ -18,6 +19,7 @@ const ROW_ICON := 56  # + the 4 px plate margin each side = ROW_HEIGHT
 const ROW_RIM := Color("C9A24B")
 const UPGRADE_BUTTON_WIDTH := 300  # fits "Opens between Rounds"
 const BUTTON_HEIGHT := 52  # touch-sized
+const NAME_MAX := 18  # chars of the shooter's name in the "Throws at:" line
 const CATEGORY_TITLES := {&"ball": "Balls", &"cue": "Cue", &"camera": "Cameras", &"table": "Table"}
 ## Why a button is greyed, short enough for a card button (the shop probe measures every entry).
 const REASON_TEXT := {
@@ -33,6 +35,7 @@ const WHEN_TEXT := {
 
 @export var economy: EconomyManager
 @export var game_loop: GameLoop
+@export var round_director: RoundDirector  ## whose turn it is: the shooter cannot be thrown at by themselves
 
 var kind := &"bar_serve"  # bar_serve | throw_drink
 var target_peer := 0  ## 0 = me
@@ -49,6 +52,7 @@ var _upgrade_buttons: Dictionary = {}  # item id -> Buy button of its row
 @onready var _tab_upgrades: Button = %TabUpgrades
 @onready var _serve: Button = %Serve
 @onready var _throw: Button = %Throw
+@onready var _hint: Label = %Hint
 @onready var _target_row: HBoxContainer = %Targets
 @onready var _cards: HBoxContainer = %Cards
 @onready var _note: Label = %Note
@@ -79,10 +83,15 @@ func _ready() -> void:
 		economy.purchase_rejected.connect(_on_rejected)
 	if game_loop != null:
 		game_loop.phase_changed.connect(func(_p: GameLoop.Phase) -> void: _refresh())
+	if round_director != null:
+		round_director.shooter_changed.connect(func(_p: int) -> void:
+			if visible:
+				_build_targets()
+				_refresh())
 	hide()
 
 
-## Always opens on Drinks / Serve / "You": nothing from the last visit stays selected.
+## Always opens on Drinks / Serve / yourself: nothing from the last visit stays selected.
 func open() -> void:
 	_status.text = ""
 	kind = &"bar_serve"
@@ -134,18 +143,35 @@ func _refusal(reason: StringName) -> String:
 	return WHEN_TEXT.get(reason, REASON_TEXT.get(reason, String(reason).replace("_", " ")))
 
 
+## The mode row. Serve and Throw buttons exist only when both are real (a crew, and I am not the shooter); the hint
+## names the target (Solo: me; Serve: a "Serve to:" toggle per crew member; Throw: the shooter).
 func _build_targets() -> void:
 	for c in _target_row.get_children():
 		_target_row.remove_child(c)
 		c.queue_free()
 	_targets.clear()
-	_target_row.visible = kind == &"bar_serve"
-	if kind != &"bar_serve":
-		return
 	var me := multiplayer.get_unique_id()
 	var roster: Array = get_tree().root.get_node(^"NetManager").call(&"get_roster")  # by path: probes compile before autoloads
+	var crew := roster.size() > 1
+	var shooter := round_director.current_shooter_id if round_director != null else me
+	var can_throw := crew and shooter != me  # you cannot throw at yourself
+	if kind == &"throw_drink" and not can_throw:
+		kind = &"bar_serve"  # the shooter changed, or the crew left, while Throw was selected
+	_serve.visible = can_throw
+	_throw.visible = can_throw
+	_target_row.visible = crew and kind == &"bar_serve"
+	if kind == &"throw_drink":
+		var who := "the shooter"
+		for e: Dictionary in roster:
+			if e.peer_id == shooter:
+				who = str(e.name) if str(e.name).length() <= NAME_MAX else str(e.name).left(NAME_MAX - 1) + "…"
+		_hint.text = "Throws at: %s" % who
+		return
 	if target_peer == 0 or not roster.any(func(e: Dictionary) -> bool: return e.peer_id == target_peer):
 		target_peer = me  # never a crewmate who has left
+	_hint.text = "Serve to:" if crew else "Served to you"
+	if not crew:
+		return
 	for e: Dictionary in roster:
 		var b := _button("You" if e.peer_id == me else str(e.name))
 		b.clip_text = true  # a long crew name must not widen the row, and with it the panel

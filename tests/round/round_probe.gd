@@ -82,15 +82,15 @@ func _run() -> void:
 
 	print("probe: C5 tricks")
 	# kick: cue rails first, then hits the object — window ~3°..9° around 6°
-	await _trick(Vector2(1.6, 0.3), [Vector2(1.9, 0.5)], 6.0, 0.4, [&"KickShot"])
+	await _trick(Vector2(1.6, 0.3), [Vector2(1.9, 0.5)], 6.0, _p(4.0), [&"KickShot"])
 	# carom: cue splits two touching balls without potting — window ±3° around 0°
-	await _trick(Vector2(-1.4, 0.0), _pair(-0.2), 0.0, 0.3, [&"Carom"])
+	await _trick(Vector2(-1.4, 0.0), _pair(-0.2), 0.0, _p(3.0), [&"Carom"])
 	# combo: the same split further up pots both in opposite corners — exactly 0° (symmetric)
-	await _trick(Vector2(-1.4, 0.0), _pair(1.0), 0.0, 0.7, [&"Carom", &"Combo"], 2)
+	await _trick(Vector2(-1.4, 0.0), _pair(1.0), 0.0, _p(7.0), [&"Carom", &"Combo"], 2)
 	# bank: one cushion, then the pocket
-	await _trick_line(BANK_OBJ, BANK_AIM, 0.7, [&"BankShot"], 1)
+	await _trick_line(BANK_OBJ, BANK_AIM, _p(7.0), [&"BankShot"], 1)
 	# rail-runner: three distinct cushions, then the pocket
-	await _trick_line(RUNNER_OBJ, RUNNER_AIM, 0.7, [&"RailRunner", &"BankShot"], 1, RUNNER_SPAN)
+	await _trick_line(RUNNER_OBJ, RUNNER_AIM, _p(7.0), [&"RailRunner", &"BankShot"], 1, RUNNER_SPAN)
 	_detector()
 
 	print("ROUND OK" if _failures == 0 else "ROUND FAIL (%d)" % _failures)
@@ -266,6 +266,11 @@ func _ceiling() -> void:
 		_check(_ended.is_empty() == (tilt == 0.0), "at %.2f s a %s shot %s" % [RoundDirector.SHOT_CEILING_TILTED_SEC, "tilted" if tilt > 0.0 else "flat", "is stilled" if tilt > 0.0 else "still rolls"])
 		await _wait_shot()
 	table.sim.set_stat(&"table_tilt_deg", 0.0)
+
+
+## The slider power for a stroke of `speed` m/s: the strokes below were tuned in m/s (4, 3, 7 and 7 of the old linear 10 m/s cap), the power curve moved since.
+func _p(speed: float) -> float:
+	return CUE_SPEC.power_for(speed)
 
 
 func _trick(cue_pos: Vector2, obj_pos: Array, aim_deg: float, power: float, want: Array, pots := 0) -> void:

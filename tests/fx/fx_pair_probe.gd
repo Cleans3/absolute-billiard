@@ -142,7 +142,7 @@ func _client() -> void:
 	await create_timer(0.3).timeout
 	var intent := ShotIntent.new()
 	intent.aim_dir = Vector2.RIGHT
-	intent.power = 0.7
+	intent.power = CueSpec.new().power_for(7.0)  # the strokes of this probe were tuned at the old linear 0.7 x 10 m/s
 	table.sim.request_shot(intent)
 	await _until(func() -> bool: return _started_msec > 0, "shot_started_net")
 	await rd.shot_ended

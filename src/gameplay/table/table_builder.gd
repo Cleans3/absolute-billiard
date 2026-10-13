@@ -10,7 +10,10 @@ extends RefCounted
 # 07 §1 layer bits: balls 1, table (bed + rails) 2, pockets 3, world 4 (players, props). Ball mask = 1|2|3.
 const LAYER_TABLE := 1 << 1
 const LAYER_POCKET := 1 << 2
+const LAYER_WORLD := 1 << 3  # players, props, the room (08 §2.1): the lid is on it; balls (mask 1|2|3) never test it
 const BALL_LAYER := 1
+const LID_THICKNESS := 0.1
+const LID_MARGIN := 0.02  # past the outermost pocket ring
 
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
 const COVER_LIFT_M := 0.0015      # Moving Pockets cover top above the cloth: never coplanar with the bed (E2)
@@ -46,6 +49,7 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 		if osc_m > 0.0:
 			_build_cover(parent, spec, hole, y)
 	_build_safety_floor(parent, spec, y)
+	_build_lid(parent, spec, layout, y)
 
 
 ## Contact materials. Jolt sums the two bounces (clamped to 1) and an `absorbent` side subtracts, against balls that carry
@@ -311,5 +315,32 @@ static func _build_safety_floor(parent: Node3D, spec: TableSpec, y: float) -> vo
 	box.size = Vector3((spec.length_m + spec.rail_width_m * 4.0), thickness, (spec.width_m + spec.rail_width_m * 4.0))
 	shape.shape = box
 	shape.position = Vector3(0, y - chute_depth - box.size.y * 0.5, 0)
+	body.add_child(shape)
+	parent.add_child(body)
+
+
+## The lid (adhoc-1013c U15): one slab on the player layer over the whole bed and every pocket opening, its top level with the rail tops. A
+## player who jumps onto the table (the bed and the cushion strips are colliders on layer 2 they could stand on) stands on the lid, never in
+## the playing field or in a pocket hole, and one cannot fall into the bed while it opens for the clean-up. Balls never test it.
+static func _build_lid(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
+	var lo := Vector2(-spec.length_m * 0.5, -spec.width_m * 0.5)
+	var hi := -lo
+	for hole: TableLayout.Hole in layout.holes.values():
+		for p in hole.ring:
+			lo = lo.min(p)
+			hi = hi.max(p)
+	var outer := Vector2(spec.length_m * 0.5 + spec.rail_width_m, spec.width_m * 0.5 + spec.rail_width_m)  # never past the wood's footprint
+	lo = (lo - Vector2.ONE * LID_MARGIN).max(-outer)
+	hi = (hi + Vector2.ONE * LID_MARGIN).min(outer)
+	var body := StaticBody3D.new()
+	body.name = "Lid"
+	body.collision_layer = LAYER_WORLD
+	body.collision_mask = 0
+	var shape := CollisionShape3D.new()
+	var box := BoxShape3D.new()
+	box.size = Vector3(hi.x - lo.x, LID_THICKNESS, hi.y - lo.y)
+	shape.shape = box
+	var mid := (lo + hi) * 0.5
+	shape.position = Vector3(mid.x, y + spec.rail_height_m - LID_THICKNESS * 0.5, mid.y)
 	body.add_child(shape)
 	parent.add_child(body)

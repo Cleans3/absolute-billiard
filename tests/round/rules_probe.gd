@@ -8,7 +8,7 @@ extends SceneTree
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const BALL := preload("res://src/gameplay/balls/Ball.tscn")
 const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")
-const NIGHT_5 := preload("res://src/resources/nights/night_5.tres")
+const NIGHT_3 := preload("res://src/resources/nights/night_3.tres")
 const SEED := 424242
 
 var table: Table
@@ -103,12 +103,13 @@ func _data() -> void:
 		_check(t != null, "wire list entry")
 
 
-## 2. Night 1 / Night 5 racks are data: exact positions, legal spacing, fallback past the authored rounds.
+## 2. Night 1 / the Campaign finale's racks are data: exact positions, legal spacing, fallback past the authored rounds.
 func _authored() -> void:
 	var half := RackDropper.interior(table.spec).size * 0.5
 	var keep := RackDropper.keepouts(table.spec, table.layout)
 	var head := Vector2(table.layout.spots.head.x, table.layout.spots.head.z)
-	for cfg in [NIGHT_1, NIGHT_5]:
+	_check(NIGHT_3.authored_racks.is_empty() and NIGHT_3.finale_racks.size() == NIGHT_3.rounds_count, "Night 3 keeps seeded racks; its finale racks wait for the Buyout")
+	for cfg in [NIGHT_1, _finale()]:
 		_check(cfg.authored_racks.size() == cfg.rounds_count, "night %d has a rack per round" % cfg.night_number)
 		for round_index in range(1, cfg.rounds_count + 1):
 			var rack: RackLayout = cfg.authored_racks[round_index - 1]
@@ -127,7 +128,7 @@ func _authored() -> void:
 	var seeded := RackDropper.drop(table.spec, table.layout, NIGHT_1, 7, NIGHT_1.rounds_count + 1)
 	_check(seeded.size() == NIGHT_1.object_ball_count, "past the authored rounds the seeded drop takes over")
 	for sd in 20:  # 06 P31 / E5: every seeded rack puts black on the slot nearest its centroid, whatever the seed
-		for cfg in [NIGHT_1, NIGHT_5, _night_with_black()]:
+		for cfg in [NIGHT_1, _finale(), _night_with_black()]:
 			_check_black_in_middle(RackDropper.drop(table.spec, table.layout, cfg, 1000 + sd, cfg.rounds_count + 1), "seeded %d night %d" % [1000 + sd, cfg.night_number])
 	# the N1 triangle: black is the middle ball of the third row (row 3 = x of the third rank, y = 0)
 	var tri := RackDropper.drop(table.spec, table.layout, NIGHT_1, 1, 1)
@@ -323,9 +324,16 @@ func _pocket_visuals() -> void:
 		_check(is_equal_approx(hole.cup_radius, hole.radius), "no oscillation = the cut is the opening")
 
 
-## REQ#rules-2: stone_ball comes from the Night 3 and Night 4 pools, one per rack, inside the 12 cap.
+## Night 3 as the Campaign's finale plays its finale racks (GameLoop swaps them in for the Buyout).
+func _finale() -> NightConfig:
+	var c: NightConfig = NIGHT_3.duplicate()
+	c.authored_racks = c.finale_racks
+	return c
+
+
+## REQ#rules-2: stone_ball comes from the Night 3 pool (Endless Nights inherit it), one per rack, inside the 12 cap.
 func _stone_nights() -> void:
-	for path in ["res://src/resources/nights/night_3.tres", "res://src/resources/nights/night_4.tres"]:
+	for path in ["res://src/resources/nights/night_3.tres"]:
 		var cfg: NightConfig = load(path)
 		_check(cfg.unlocked_ball_types.has(&"stone_ball"), "%s lists stone_ball" % path)
 		_check(RackDropper.rack_size(cfg) == cfg.object_ball_count + RackDropper.STONES_PER_RACK and RackDropper.rack_size(cfg) <= RackDropper.MAX_OBJECT_BALLS, "%s rack size counts the stone under the cap" % path)

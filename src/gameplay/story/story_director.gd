@@ -113,8 +113,8 @@ func _on_phase_changed(phase: GameLoop.Phase) -> void:
 		var gus := _bartender()
 		if gus != null:
 			gus.chat.say_from(&"phone_ignored", game_loop.current_night().night_number)
-	if phase == GameLoop.Phase.CAMPAIGN_WON:
-		var story := _story()
+	if phase == GameLoop.Phase.CAMPAIGN_WON and not CutsceneDirector.plays_endings():
+		var story := _story()  # with cutscenes on, the truck shows these as its captions (09 §3.8.3) and there is no screen under them
 		if story != null and cards != null and not story.ending_cards.is_empty():
 			cards.show_cards(story.ending_cards)  # the Campaign won screen waits underneath and returns when they close
 
@@ -227,7 +227,7 @@ func _show_chat() -> void:
 
 # --- Gus ------------------------------------------------------------------------------------------------------------------------
 
-## The story lines unlocked so far, in telling order: Night 1's up to this Night's (Endless keeps all five).
+## The story lines unlocked so far, in telling order: Night 1's up to this Night's (Endless keeps all three).
 func _feed_gus() -> void:
 	var gus := _bartender()
 	if gus == null or game_loop == null or game_loop.nights.is_empty():

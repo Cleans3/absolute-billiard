@@ -16,6 +16,8 @@ var stock_key := -1  # GameLoop.stock_key() the Bartender's shelf was rolled for
 var stock_ids: Array[StringName] = []  # the Drinks shelf at this boundary, parallel to stock_left
 var stock_left: Array[int] = []
 var crew_size := 0  # peers in the lobby when it was written (0 = unknown); informational, resume never seat-locks
+var mode := &"campaign"  # v3: GameLoop.MODE_*, the run's end; a v2 file migrates to Campaign (Night <= 3) or Endless (SaveManager.migrate)
+var run_stats: Dictionary = {}  # v3: RunStats.to_dict() at this boundary
 
 
 func to_dict() -> Dictionary:
@@ -52,6 +54,8 @@ func to_dict() -> Dictionary:
 		"persistent_unlocks": persistent,
 		"seed": campaign_seed,
 		"crew_size": crew_size,
+		"mode": String(mode),
+		"run": run_stats,
 		"bar_stock": {"key": stock_key, "ids": stock, "left": stock_left},
 	}
 
@@ -71,6 +75,9 @@ static func from_dict(d: Dictionary) -> SaveProfile:
 		p.persistent_unlocks.append(StringName(id))
 	p.campaign_seed = int(d.get("seed", 0))
 	p.crew_size = int(d.get("crew_size", 0))
+	p.mode = &"endless" if str(d.get("mode", "campaign")) == "endless" else &"campaign"
+	var run: Variant = d.get("run", {})
+	p.run_stats = run if run is Dictionary else {}
 	var bar: Dictionary = d.get("bar_stock", {})
 	p.stock_key = int(bar.get("key", -1))
 	var ids: Array = bar.get("ids", [])

@@ -14,11 +14,10 @@ signal cue_spec_changed(spec: CueSpec)
 
 const POINT_TO_CASH_RATE := 0.3
 const BUYOUT_MULT := 1.5  # final Night's demand replaces its quota (02 §3.4)
-const BASE_RIGS := 2
+const BASE_RIGS := 1  # one scored tripod; the fixed ceiling camera is not a rig (CeilingCam, never scored)
 const MAX_RIGS := 4
-const FINE_RATE := 0.10  # scratch fine = this share of the Night's Quota (06 P16)
 const FINE_STEP := 5
-const FINE_MIN := 25
+const FINE_MIN := 10  # PROVISIONAL (02 §3.8); the rate is NightConfig.fine_rate
 const FINE_REASONS: Array[StringName] = [&"scratch", &"off_table"]  # RoundDirector.cue_respawned reasons that cost Cash
 const POUR_DRINKS: Array[StringName] = [&"bar_nuts", &"soda_pop", &"pretzels"]  # the house's free first drink: stream / clock only, never the cue or the Reward (02 §3.10)
 const POUR_SALT := 0x9042
@@ -90,9 +89,9 @@ func update_cash(absolute_balance: int, delta: int, reason: StringName) -> void:
 		fined.emit(reason, -delta)
 
 
-## Scratch / off-table fine: FINE_RATE of the Night's Quota to the nearest FINE_STEP, never under FINE_MIN (06 P16).
-static func fine_for(quota: int) -> int:
-	return maxi(FINE_MIN, roundi(quota * FINE_RATE / FINE_STEP) * FINE_STEP)
+## Scratch / off-table fine: the Night's `fine_rate` of its Quota to the nearest FINE_STEP, never under FINE_MIN (06 P16, P37).
+static func fine_for(config: NightConfig) -> int:
+	return maxi(FINE_MIN, roundi(config.quota * config.fine_rate / FINE_STEP) * FINE_STEP)
 
 
 ## Host: a Shot that scratched or put the cue ball off the table. A whiff or clock foul never gets here (it is
@@ -100,7 +99,7 @@ static func fine_for(quota: int) -> int:
 func _on_cue_respawned(reason: StringName) -> void:
 	if not FINE_REASONS.has(reason) or not multiplayer.is_server() or game_loop.phase != GameLoop.Phase.ROUND_LIVE:
 		return
-	var fine := fine_for(game_loop.current_night().quota)
+	var fine := fine_for(game_loop.current_night())
 	add_cash(-fine, &"scratch")
 	fined.emit(&"scratch", fine)
 

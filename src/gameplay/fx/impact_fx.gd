@@ -14,7 +14,7 @@ const FOUNTAIN_SLOTS := 4
 const FIZZLE_SLOTS := 2
 const POP_SLOTS := 12
 const LABEL_SLOTS := 6
-const HARD_MPS := 8.0  # impact speed that maxes every hit scale (cue power cap is 10)
+const HARD_MPS := 8.0  # impact speed that maxes every hit scale (a full break hits at up to 20 m/s: past 8 every hit is full size)
 const TIER_SCALE := [1.0, 0.6, 0.35]
 const TIER_HITS_PER_FRAME := [6, 4, 2]
 const WORDS := ["CLACK!", "CRACK!", "WHAM!", "SMACK!"]
@@ -266,7 +266,7 @@ func _on_shot_started_net(_id: int, _shooter: int, _base: int) -> void:
 ## Host: the cue ball leaves the tip. (A client sees the same pop as the cue ball's first event, FxHitTap KICK.)
 func _on_strike(ball: Ball, intent: ShotIntent) -> void:
 	var aim := intent.aim_dir.normalized()
-	_hit(FxHitTap.Kind.KICK, ball.global_position, Vector3(aim.x, 0.0, aim.y), clampf(intent.power, 0.0, 1.0) * _sim.active_cue.power_cap_speed_mps)
+	_hit(FxHitTap.Kind.KICK, ball.global_position, Vector3(aim.x, 0.0, aim.y), _sim.active_cue.speed_at(clampf(intent.power, 0.0, 1.0)))
 
 
 ## The hit a host contact makes, or {}: both balls of a ball-ball touch report it, only the lower id speaks.

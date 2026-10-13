@@ -1,5 +1,7 @@
 extends Control
-## Boot screen (docs/plan/04 §4): Host / Join by code / Advanced IP / Solo, then the room (code, roster, Start).
+## Boot screen (docs/plan/04 §4): Campaign / Endless, Host / Join by code / Advanced IP / Solo, then the room (code,
+## roster, Start). The mode pick is the host's (Solo, or the room until Start); it rides GameLoop.pending_mode and clients
+## learn it from GameLoop.run_state.
 ## Settings / Controls / Skins open as modals of this scene's UIRouter.
 
 const REASONS := {
@@ -24,11 +26,16 @@ const STEPS := {
 	steam = "waiting for Steam",
 }
 
+const MODE_HINTS := {
+	campaign = "3 Nights, then the Buyout and the exit.",
+	endless = "Never ends. The quota keeps climbing.",
+}
+
 var _connecting := false
 var _connect_msec := 0
 var _connect_shown := -1
 
-@onready var _home: Array[Control] = [%Host, %JoinRow, %AdvancedToggle, %Solo, %Footer]
+@onready var _home: Array[Control] = [%ModeBox, %Host, %JoinRow, %AdvancedToggle, %Solo, %Footer]
 @onready var _resume_screen: Array[Control] = [%ResumeScroll, %ResumeBack]
 @onready var _room: Array[Control] = [%RoomCode, %Share, %Roster, %Start, %Leave]
 @onready var _status: Label = %Status
@@ -36,6 +43,16 @@ var _connect_shown := -1
 
 func _ready() -> void:
 	SaveManager.pending_resume = null  # a stale pick from an earlier visit must not resume this lobby
+	var modes := ButtonGroup.new()
+	%ModeCampaign.button_group = modes
+	%ModeEndless.button_group = modes
+	%ModeCampaign.toggled.connect(_on_mode_toggled.bind(GameLoop.MODE_CAMPAIGN))
+	%ModeEndless.toggled.connect(_on_mode_toggled.bind(GameLoop.MODE_ENDLESS))
+	if GameLoop.pending_mode == GameLoop.MODE_ENDLESS:
+		%ModeEndless.button_pressed = true
+	else:
+		%ModeCampaign.button_pressed = true
+	_set_mode(GameLoop.pending_mode)
 	%Resume.pressed.connect(_show_resume)
 	%ResumeBack.pressed.connect(_set_home.bind(true))
 	%Host.pressed.connect(_busy.bind(NetManager.host))
@@ -137,6 +154,16 @@ func _on_ended(_reason: StringName) -> void:
 	%Host.grab_focus()
 
 
+func _on_mode_toggled(on: bool, mode: StringName) -> void:
+	if on:
+		_set_mode(mode)
+
+
+func _set_mode(mode: StringName) -> void:
+	GameLoop.pending_mode = mode
+	%ModeHint.text = MODE_HINTS[String(mode)]
+
+
 func _open_group(group: StringName) -> void:
 	var m := get_tree().get_first_node_in_group(group)
 	if m != null:
@@ -179,11 +206,12 @@ func _show_resume() -> void:
 	%ResumeBack.grab_focus()
 
 
-## "Night 3 · Round 2 done · $1,500 · 3 crew · 2026-09-30 14:05"
+## "Night 3 · Round 2 done · $1,500 · 3 crew · 2026-09-30 14:05", an Endless run led by "Endless · "
 static func resume_label(e: Dictionary) -> String:
 	var when := Time.get_datetime_string_from_unix_time(int(e.modified) + int(Time.get_time_zone_from_system().bias) * 60, true)
 	var crew := " · %d crew" % e.crew if int(e.crew) > 0 else ""
-	return "Night %d · Round %d done · $%d%s · %s" % [e.night, e.round_index, e.cash, crew, when.substr(0, 16)]
+	var endless := "Endless · " if e.get("mode", &"campaign") == GameLoop.MODE_ENDLESS else ""
+	return "%sNight %d · Round %d done · $%d%s · %s" % [endless, e.night, e.round_index, e.cash, crew, when.substr(0, 16)]
 
 
 ## Host from the checkpoint: solo files stay solo; others use LAN when Advanced is open, else the relay.
@@ -208,8 +236,9 @@ func _show_room() -> void:
 	_set_home(false)
 	%Share.visible = NetManager.lobby_code != "" or NetManager.transport == NetManager.Transport.STEAM
 	%Start.visible = NetManager.is_host()
+	%ModeBox.visible = NetManager.is_host() and SaveManager.pending_resume == null  # a resume brings its own mode; clients learn it in the bar
 	if SaveManager.pending_resume != null:
-		_status.text = "Resuming Night %d, after Round %d." % [SaveManager.pending_resume.current_night, SaveManager.pending_resume.round_index]
+		_status.text = "Resuming %sNight %d, after Round %d." % ["Endless " if SaveManager.pending_resume.mode == GameLoop.MODE_ENDLESS else "", SaveManager.pending_resume.current_night, SaveManager.pending_resume.round_index]
 	%Leave.grab_focus()
 	_refresh_room()
 

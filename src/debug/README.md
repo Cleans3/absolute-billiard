@@ -32,9 +32,11 @@ or the mid-Shot `motion_stats` RPC if a shot is live — `tests/debug/session_pr
 
 **Replay is a re-simulation, not a recording.** Rewind restores every ball to where the recorded shot found it, zero
 velocity, then the recorded `ShotIntent` goes through `PhysicsSim.request_shot` (validator, scoring, tricks, Cash all run
-again). Jolt on one machine from the same state ends within a fraction of a millimetre of the first run (0.13 mm for a
-0.8 power break, `session_probe.gd`) but not bit for bit; a miscue draws `randf` and will differ. Each replay shows how far
-the balls ended from the original (`replay Δ mm` on the shot's line). A recording of ball poses would be exact, but it
+again). Jolt on one machine from the same state ends within a few thousandths of a millimetre of the first run for a shot
+with few collisions (a stun shot, 0.002 mm in `session_probe.gd`) but not bit for bit: a break into a packed rack (the 20 m/s
+break, adhoc-1013c W2) is chaotic, the same record replays to anywhere from 10 mm to 2.2 m from the original (a ball potting
+or not, decided by float noise below what a transform prints), so its Δ is a report, not a promise; a miscue draws `randf` and
+will differ. Each replay shows how far the balls ended from the original (`replay Δ mm` on the shot's line). A recording of ball poses would be exact, but it
 could not answer "what happens with a different number" — that is the point of a replay here. Rewind does not restore
 the crowd (`StreamManager`), live Effects or whose Turn it is.
 

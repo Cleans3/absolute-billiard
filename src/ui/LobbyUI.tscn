@@ -78,6 +78,37 @@ grow_vertical = 2
 custom_minimum_size = Vector2(540, 0)
 layout_mode = 2
 
+[node name="ModeBox" type="VBoxContainer" parent="Center/Menu"]
+unique_name_in_owner = true
+layout_mode = 2
+
+[node name="ModeButtons" type="HBoxContainer" parent="Center/Menu/ModeBox"]
+layout_mode = 2
+
+[node name="ModeCampaign" type="Button" parent="Center/Menu/ModeBox/ModeButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+button_pressed = true
+text = "Campaign"
+
+[node name="ModeEndless" type="Button" parent="Center/Menu/ModeBox/ModeButtons"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 60)
+layout_mode = 2
+size_flags_horizontal = 3
+toggle_mode = true
+text = "Endless"
+
+[node name="ModeHint" type="Label" parent="Center/Menu/ModeBox"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_type_variation = &"Caption"
+horizontal_alignment = 1
+autowrap_mode = 3
+
 [node name="Host" type="Button" parent="Center/Menu"]
 unique_name_in_owner = true
 custom_minimum_size = Vector2(0, 68)

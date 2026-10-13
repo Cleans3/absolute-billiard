@@ -160,7 +160,7 @@ func is_holding() -> bool:
 
 ## The Buyout Night: the sarcasm is off (09 §3.3).
 func is_final_night() -> bool:
-	return _loop != null and not _loop.nights.is_empty() and _loop.night_index == _loop.nights.size() - 1
+	return _loop != null and _loop.is_final_night()
 
 
 func _campaign() -> int:
@@ -268,7 +268,7 @@ func _ambient_pool() -> StringName:
 		return &"story"
 	var intermission := _loop != null and _loop.phase == GameLoop.Phase.INTERMISSION
 	if is_final_night():
-		return &"pep"  # 09 §3.3: Night 5 drops the sarcasm — no pitches, specials or cash jokes, only pep and story
+		return &"pep"  # 09 §3.3: the finale (Night 3) drops the sarcasm — no pitches, specials or cash jokes, only pep and story
 	var weights := {
 		&"pep": 2.0 if intermission else 4.0,
 		&"pitch": 4.0 if intermission else 2.0,

@@ -7,7 +7,7 @@ extends SceneTree
 
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const SEED := 20261012
-const REPLAY_TOLERANCE_M := 0.05  # a re-simulation of a break, not a recording: balls end within a few cm
+const REPLAY_TOLERANCE_M := 0.001  # a re-simulation of a shot with few collisions: millimetres (a break into a packed rack is chaotic, see DebugSession)
 
 var table: Table
 var director: RoundDirector
@@ -121,7 +121,7 @@ func _shots() -> void:
 	_check(ok and _ended == before + 2, "replay ran the shot again through the normal path (shots ended: %d)" % (_ended - before))
 	_check(session.shots.size() == 1, "and did not add a record of its own")
 	print("replay: balls ended %.2f mm from the first run, %d replay" % [rec.error_m * 1000.0, rec.replays])
-	_check(rec.replays == 1 and rec.error_m >= 0.0 and rec.error_m < REPLAY_TOLERANCE_M, "replay reports how close it ended (%.1f mm)" % (rec.error_m * 1000.0))
+	_check(rec.replays == 1 and rec.error_m >= 0.0, "replay reports how close it ended (%.1f mm; a break into a packed rack is chaotic: 10 mm to 2.2 m, so it is not gated)" % (rec.error_m * 1000.0))
 	_check(rec.label().contains("replay"), "the list shows it")
 
 	_check(not session.fire(0.0, 0.5) or director.shot_in_progress, "a shot is only fired from a still table")
@@ -145,6 +145,16 @@ func _tools() -> void:
 	var want := table.to_global(Vector3(table.spec.length_m * 0.15, obj.global_position.y - table.global_position.y, 0.0))
 	_check(absf(obj.global_position.x - want.x) < 0.002 and absf(obj.global_position.z - want.z) < 0.002, "on the preset's spot")
 	_check(is_equal_approx(session.aim_at_nearest(), 0.0), "aimed straight down the table")
+	# a shot with few collisions: its replays end where the original did, every time
+	_check(session.fire(0.0, 0.3), "a stun shot")
+	await director.shot_ended
+	await _rested()
+	var stun: DebugSession.ShotRecord = session.last()
+	for k in 3:
+		var stun_ok: bool = await session.replay(stun)
+		await physics_frame
+		print("replay: the stun shot, replay %d, ended %.4f mm from its first run" % [k + 1, stun.error_m * 1000.0])
+		_check(stun_ok and stun.error_m >= 0.0 and stun.error_m < REPLAY_TOLERANCE_M, "a stun shot replays to within %.1f mm every time (%.4f mm)" % [REPLAY_TOLERANCE_M * 1000.0, stun.error_m * 1000.0])
 	session.clear_table()
 	await _rested()
 	_check(director.get_balls().filter(func(b: Ball) -> bool: return not b.retired).size() == 1, "clear table leaves the cue ball")

@@ -1,17 +1,18 @@
 class_name CameraRigs
 extends Node3D
-## MainLevel/Cameras: the tripod rigs, the pot-time Camera_Mult and rig movement (docs/plan/02 §3.2, 03 §3.7).
+## MainLevel/Cameras: the tripod rigs, the fixed ceiling camera, the pot-time Camera_Mult and rig movement (docs/plan/02 §3.2, 03 §3.7).
 ## Rig count and tier come from the Shop (mirrored `owned`), so every peer builds the same set; the host
 ## moves them and streams poses at 4 Hz only while something moves (07 §3: silent at rest).
+## One tripod to start (BASE_RIGS 1, 06 P33 U5) plus the `CeilingCam`, which is not a rig: never scored, never moved, same on every peer.
 
 const POSE_PERIOD := 0.25
 const SETTLE_SENDS := 4  # unreliable: keep repeating the resting pose this many periods
 const GRAB_REACH := 3.0
 const POCKET_LIFT := 0.15  # aim the ray a little above the cloth so it does not start inside it
-## Floor position + yaw per rig; rigs 1–2 are the MVP pair, 3–4 the spare tripods. [tune]
+## Floor position + yaw per rig; rig 1 is the base tripod, 2–4 the spare tripods. [tune]
 const SPOTS: Array = [
+	[Vector3(0.0, 0.0, -6.7), PI],  # the base tripod: the north wall, broadside on the whole table (it was cam_2; the south-west spot was dropped as the base)
 	[Vector3(-2.6, 0.0, -0.3), 0.0],  # ≥ 1 m from every bar prop, so a prompt never has two candidates
-	[Vector3(0.0, 0.0, -6.7), PI],
 	[Vector3(-5.2, 0.0, -3.5), -PI / 2.0],
 	[Vector3(5.2, 0.0, -3.5), PI / 2.0],
 ]
@@ -23,6 +24,7 @@ const SPOTS: Array = [
 @export var spawner: Node  # PlayerSpawner: get_player_position(peer_id)
 
 var rigs: Array[CameraRig] = []
+var ceiling: CeilingCam  # the fixed top-down camera over the table: feeds the TV, outside `rigs` on purpose
 var last_rig := &""  # the rig that won the latest score
 var last_quality := 0.0
 
@@ -40,8 +42,19 @@ func _ready() -> void:
 		economy.owned_changed.connect(_sync_rigs)
 	if world != null:
 		world.camera_move_requested.connect(_on_move_requested)
+	_build_ceiling()
 	_sync_rigs()
 	set_physics_process(multiplayer.is_server())
+
+
+## The ceiling pod above the table (CeilingCam: lens down, OFFSET_Z south of the lamp's rod). Built on every peer, never networked.
+func _build_ceiling() -> void:
+	ceiling = CeilingCam.new()
+	ceiling.name = "CeilingCam"
+	ceiling.table = table
+	add_child(ceiling)
+	var centre := table.global_position if table != null else Vector3.ZERO
+	ceiling.global_position = Vector3(centre.x, CeilingCam.EYE_Y, centre.z + CeilingCam.OFFSET_Z)
 
 
 ## Camera_Mult for a pot in `pocket_id`; 1.0 when there is nothing to score.

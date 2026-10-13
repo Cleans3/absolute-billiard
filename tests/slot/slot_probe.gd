@@ -4,6 +4,8 @@ extends SceneTree
 ## Effects; every refusal names its reason and costs nothing; the reels land on the host's stops; the screen follows.
 ## `godot --path . --headless -s tests/slot/slot_probe.gd`
 
+const NIGHT_1 := preload("res://src/resources/nights/night_1.tres")  # the stakes read off Night 1's Quota
+
 var _fails := 0
 var level: Node
 var world: WorldInteractions
@@ -141,6 +143,7 @@ func _contract() -> void:
 	_check(tris < 6000, "triangle budget: %d (the drums are instanced: counted once per use)" % tris)
 
 	player.global_position = Vector3(-4.6, 0.05, 1.5)
+	player.rotation.y = PI / 2.0  # facing the machine (-X): a prompt needs facing beyond 0.6 m (06 P33 U8)
 	player.velocity = Vector3.ZERO
 	await _until(func() -> bool: return player.prompt == "Play the slots", "the slot prompt in reach", 5.0)
 	player.interact()
@@ -160,7 +163,7 @@ const FACE_WAIT := 0.5
 # --- host rules: charge once, pay once, refuse without cost -------------------------------------------------------------
 
 func _rules() -> void:
-	var bets := SlotMath.bets(600)
+	var bets := SlotMath.bets(NIGHT_1.quota)
 	econ.add_cash(1000 - econ.cash, &"test")
 	# a miss: the stake goes at the spin, nothing comes back
 	var cash0 := econ.cash
@@ -239,6 +242,7 @@ func _rules() -> void:
 
 func _chaos() -> void:
 	econ.add_cash(5000 - econ.cash, &"test")
+	var bet := SlotMath.bets(NIGHT_1.quota)[1]  # the middle stake, tier 1, which _spin defaults to
 	# WILD: x3 and a free drink for the spinner
 	var cash0 := econ.cash
 	var live0 := fx.live_drinks().size()
@@ -248,7 +252,7 @@ func _chaos() -> void:
 	_check(fx.live_drinks().size() == live0, "the drink waits for the reveal")
 	house.flush()
 	var served: Array = fx.live_drinks().filter(func(d: Dictionary) -> bool: return d.peer_id == 1 and d.drink.id == chaos[0].id)
-	_check(served.size() == 1 and econ.cash == cash0 - 30 + 90, "the free drink is in effect and wild paid x3")
+	_check(served.size() == 1 and econ.cash == cash0 - bet + 3 * bet, "the free drink is in effect and wild paid x3")
 	_check(fx.live_count() > 0, "the drink's Effects are live (the only modifier path)")
 	_check(SlotScreen.chaos_text(chaos).begins_with("On the house: "), "the screen words it: %s" % SlotScreen.chaos_text(chaos))
 	machine._finish()
@@ -257,7 +261,7 @@ func _chaos() -> void:
 	var viewers0 := stream.viewers
 	p = _spin(&"jackpot", 1, true)
 	var kinds := (p[&"chaos"] as Array).map(func(c: Dictionary) -> StringName: return c.kind)
-	_check(kinds == [&"crew_round", &"hype"] and int(p[&"payout"]) == 120 * 30, "jackpot: x120, a crew round, hype: %s" % [kinds])
+	_check(kinds == [&"crew_round", &"hype"] and int(p[&"payout"]) == 120 * bet, "jackpot: x120, a crew round, hype: %s" % [kinds])
 	_check(stream.hype > hype0 or hype0 >= 1.0 - SlotHouse.HYPE_KICK, "hype kicked (%.2f -> %.2f)" % [hype0, stream.hype])
 	_check(stream.viewers >= viewers0 + SlotHouse.VIEWERS_KICK, "viewers +%d" % SlotHouse.VIEWERS_KICK)
 	machine._finish()
@@ -325,7 +329,7 @@ func _live_round() -> void:
 	# a phase change pays a pending spin at once: the win is never lost to the Round ending
 	cash0 = econ.cash
 	_spin(&"cherries", 0, false)
-	var bet := SlotMath.bets(600)[0]
+	var bet := SlotMath.bets(NIGHT_1.quota)[0]
 	_check(econ.cash == cash0 - bet, "stake taken")
 	loop.call(&"_end_round", &"timer")
 	_check(econ.cash == cash0 - bet + 4 * bet, "ending the Round flushed the reveal: the win is paid (%d)" % econ.cash)
@@ -373,7 +377,7 @@ func _screen() -> void:
 	econ.add_cash(1000 - econ.cash, &"test")
 	screen.open()
 	await process_frame
-	var bets := SlotMath.bets(600)
+	var bets := SlotMath.bets(NIGHT_1.quota)
 	_check(screen._tier_buttons.size() == 3 and screen._tier_buttons[0].text == "$%d" % bets[0] and screen._tier_buttons[2].text == "$%d" % bets[2], "the three stakes read off the Night's Quota")
 	_check(screen._tier_buttons[1].button_pressed and screen._spin.text == "PULL THE LEVER  $%d" % bets[1], "the middle stake is picked: %s" % screen._spin.text)
 	for b in screen._tier_buttons:

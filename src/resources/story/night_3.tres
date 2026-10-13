@@ -5,10 +5,10 @@
 [resource]
 script = ExtResource("1")
 night = 3
-intro_cards = Array[String](["Moe's collectors came in tonight. They don't play. They 'help'.", "The table feels different. The lights feel different. Gus doesn't feel anything. Gus has had three drinks."])
-call = Array[String](["My associates will be in the room tonight. Don't thank them.", "Thirteen fifty. The viewers like it when it's close."])
-gus_lines = Array[String](["If the table leans, lean with it. That's life advice.", "Gus's rule: never ask who sharpened the pockets.", "I used to have a pool cue signed by a champion. Moe has it now. He uses it to point.", "You're getting better. That's worse for me, somehow."])
+intro_cards = Array[String](["The Rope is in the room tonight. They don't play. They 'help'. The table leans and the lights flicker.", "Tonight is the big one. Moe swears that if you pay on camera, the door opens. Gus says Moe has never opened a door.", "Gus isn't joking tonight. That's how you know it's real."])
+call = Array[String](["My associates will be in the room tonight. Don't thank them.", "Pay it all, on camera, and you walk. My word is on the record.", "Gus. You know what tonight means for you, too."])
+gus_lines = Array[String](["Forty years of crews in this room. You're the first I'd bet on.", "If this goes wrong, keep off the floor by the table. Please.", "The pour's on the house tonight. Don't tell Moe. Actually, tell him.", "Whatever he says on that phone, you don't owe him your nerve."])
 paid_line = "Good. The city saw that. The city is learning."
-short_line = "Three Nights. I'll admit I'd started to like the show."
-chat_line = "if the table leans, lean with it"
-ending_cards = Array[String]([])
+short_line = "So close. Gus, open the floor."
+chat_line = "last call"
+ending_cards = Array[String](["The Buyout clears live, in front of more viewers than this room has ever had. Gus raises a glass. Then the vent opens.", "You wake on a flatbed, at sunrise. The radio: 'Paid in full. The city saw. You're free.' A pause. 'Gus stays.'", "One last line in the chat. velvet: 'good show. same table next week?' You never saw the name until now. He never missed a shot."])
