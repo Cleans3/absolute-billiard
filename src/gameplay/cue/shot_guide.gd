@@ -5,7 +5,7 @@ extends MeshInstance3D
 ## shooter aims. One unshaded alpha `ImmediateMesh` rebuilt only when an input changes (aim, power, spin, elevation, the cue
 ## ball, the cloth/tilt numbers); a few hundred vertices, one draw call, nothing allocated per frame. Local shooter only: the
 ## puppets' cues never carry it (no spin on the wire, 08 §2.6).
-##   cue-ball path  warm white, cyan where the ball is off the cloth (jump), red when the stroke miscues
+##   cue-ball path  warm white, cyan where the ball is off the cloth (jump: the arc, with a strip on edge and its shadow on the cloth), red when the stroke miscues
 ##   ghost ring     the cue ball where it first touches; a ring, so the contact point reads on any cloth
 ##   object line    orange, from the struck ball along its post-impact direction, an arrow at the end
 ##   past contact   the same path, dimmer: the cue ball past the ball, or the bounce off the cushion
@@ -19,8 +19,9 @@ const HALF_W_M := 0.006
 const RING_SEGS := 28
 const PREVIEW_BELOW := 0.02
 const PREVIEW_POWER := 0.5
-const PREVIEW_POWER_JUMP := 0.75  # a jump needs 0.70
+const PREVIEW_POWER_JUMP := 0.7  # a jump needs Ball.JUMP_MIN_POWER; the middle of its range
 const PREVIEW_ALPHA := 0.55
+const AIR_SHADOW := 0.4   # the arc's shadow on the cloth, against the arc's own alpha
 const C_MAIN := Color(1.0, 0.93, 0.55)
 const C_AIR := Color(0.55, 0.9, 1.0)
 const C_MISCUE := Color(1.0, 0.35, 0.3)
@@ -43,6 +44,7 @@ func _ready() -> void:
 	_cur.resize(SIG_SIZE)
 	mesh = _im
 	top_level = true
+	global_transform = Transform3D.IDENTITY  # top_level keeps the transform the node had: under the Head that is 1.6 m up and a seat aside, and the ribbon is built in world coordinates (V7: it drew on the ceiling)
 	layers = LAYER
 	cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	gi_mode = GeometryInstance3D.GI_MODE_DISABLED
@@ -135,11 +137,24 @@ func _ribbon(pts: PackedVector3Array, c0: Color, c1: Color, hw: float) -> void:
 		var d := Vector3(q.x - sx, q.y - _drop, q.z - sz)
 		_tri(a, cp, b, cp, c, cq)
 		_tri(b, cp, d, cq, c, cq)
+		if BallMotion.is_airborne(p.y, _floor_y) or BallMotion.is_airborne(q.y, _floor_y):
+			# a jump's arc: a second strip standing on edge so it reads from the side, and its shadow on the cloth so it reads from behind
+			var up := Vector3(0.0, hw, 0.0)
+			var pa := Vector3(p.x, p.y - _drop, p.z)
+			var qa := Vector3(q.x, q.y - _drop, q.z)
+			_tri(pa + up, cp, pa - up, cp, qa + up, cq)
+			_tri(pa - up, cp, qa - up, cq, qa + up, cq)
+			var sp := Color(cp, cp.a * AIR_SHADOW)
+			var sq := Color(cq, cq.a * AIR_SHADOW)
+			var gp := Vector3(p.x, _floor_y - _drop, p.z)
+			var gq := Vector3(q.x, _floor_y - _drop, q.z)
+			_tri(gp + Vector3(sx, 0.0, sz), sp, gp - Vector3(sx, 0.0, sz), sp, gq + Vector3(sx, 0.0, sz), sq)
+			_tri(gp - Vector3(sx, 0.0, sz), sp, gq - Vector3(sx, 0.0, sz), sq, gq + Vector3(sx, 0.0, sz), sq)
 
 
 func _tint(c: Color, p: Vector3) -> Color:
 	var out := c
-	if p.y > _floor_y + BallMotion.AIR_TOL:
+	if BallMotion.is_airborne(p.y, _floor_y):
 		out = Color(C_AIR, c.a)
 	out.a *= _alpha
 	return out

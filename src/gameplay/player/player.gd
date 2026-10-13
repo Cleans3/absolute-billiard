@@ -134,6 +134,7 @@ func bind(level: Node) -> void:
 		_shot_seen = true
 		_verdict_pending = false)
 	_rd.shooter_changed.connect(_on_shooter_changed)
+	_rd.staging_changed.connect(_on_staging_changed)
 	_rd.shot_clock_started.connect(func(seconds: float) -> void: _clock_end_msec = Time.get_ticks_msec() + int(seconds * 1000.0))
 	_rd.shot_ended.connect(func(_i: String, _s: int, _p: int, _t: Array[StringName], _f: bool) -> void: _clock_end_msec = 0)
 	_sim.shot_rejected.connect(func(reason: StringName) -> void: _toast(WaitText.shot(reason, _shooter_name(), _sim.awake)))
@@ -444,9 +445,17 @@ func _on_interaction_applied(_peer: int, kind: StringName, _target_id: int, _pay
 		stand_up()
 
 
-func _on_phase_changed(_phase: GameLoop.Phase) -> void:
+func _on_phase_changed(phase: GameLoop.Phase) -> void:
 	if seated:
 		stand_up()
+	if phase != GameLoop.Phase.ROUND_LIVE:
+		exit_cue()  # a Round that is over, or not begun, has no shot to aim: the table is about to be cleared and re-racked (V10)
+
+
+## The table is being set up or cleared (RoundDirector.staging): nobody stays in the shooting stance over it.
+func _on_staging_changed(on: bool) -> void:
+	if on:
+		exit_cue()
 
 
 # --- CUE mode -------------------------------------------------------------------------------------

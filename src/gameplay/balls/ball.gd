@@ -16,6 +16,13 @@ const REGULATION_MASS_KG := 0.17  # kg; regulation ball density, not a table dim
 const MISCUE_POWER_SCALE := 0.35
 const MISCUE_SCATTER_DEG := 4.0
 const JUMP_MIN_ELEVATION_DEG := 30.0
+## A jump shot needs the slider past this; the part of the slider from here to 1 is spread over JUMP_MIN_POWER..JUMP_TOP_POWER of the cue's
+## power curve (a hop is a few metres of table, not a leap off it): 0.4 = 4.6 m/s, 1.0 = 9.2 m/s on the stock cue (01 §3 "Jump").
+const JUMP_MIN_POWER := 0.40
+const JUMP_TOP_POWER := 0.65
+const FLIGHT_VY := 0.5  # m/s: a ball over the cloth falling faster than this is landing (a rest tick of gravity is 0.16; a rebound needs 0.3/LAND_E = 0.75 m/s)
+const TOUCHDOWN_H := 0.03  # m over the cloth where a falling ball becomes the model's (Jolt's speculative contact reaches 2 cm)
+const MAX_ELEVATION_DEG := 80.0  # CueController.max_elevation_deg, ElevationPad.MAX_DEG: the host does not trust the wire for it
 const MASSE_MIN_ELEVATION_DEG := 45.0
 const MASSE_MIN_SPIN := 0.60
 const POCKET_SETTLE_SEC := 0.4  # a potted ball is retired this long after it reaches the cup
@@ -44,6 +51,9 @@ var _ccd_speed := 0.0  # spec.ccd_speed_mps is derived; read once (apply_spec), 
 var _max_speed := 24.0  # spec.max_ball_speed_mps, read once (apply_spec)
 var _pending_rail_id: StringName
 var is_resting := false  # our own (stricter, reliable) rest flag — PhysicsSim counts on this, not `sleeping`
+var _forced := false  # `_next` is where the model puts the ball after the step Jolt is running (a touch-down, see `_air_step`)
+var _next := BallMotion.State.new()
+var _air := BallMotion.State.new()  # scratch for `_air_step`
 
 @onready var radius: float = spec.ball_radius_m * ball_type.radius_multiplier
 
@@ -103,7 +113,7 @@ func apply_mass_mult(m: float) -> void:
 ## The cue angle a strike really uses: a locked technique clamps the cue below its threshold instead of failing the
 ## shot. The touch overlay (08 §2.3) asks the same function, so what it shows is what the ball gets.
 static func effective_elevation(deg: float, spin: Vector2, cue: CueSpec) -> float:
-	var elevation := maxf(deg, 0.0)
+	var elevation := clampf(deg, 0.0, MAX_ELEVATION_DEG)
 	if not cue.jump_unlocked:
 		elevation = minf(elevation, JUMP_MIN_ELEVATION_DEG - 1.0)
 	if not cue.masse_unlocked and spin.length() >= MASSE_MIN_SPIN:
@@ -122,6 +132,17 @@ class Plan extends RefCounted:
 	var masse := false
 	var miscue := false        ## spin past the cue's threshold: a third of the power and a scattered aim
 
+	## The cue ball's state the instant the stroke ends: the velocity and spin straight from the impulse, then the cloth's answer to a downward
+	## cue (`BallMotion.cloth_impact`). A non-jump stroke gets a dead cloth (Jolt does that itself on the host: it takes the downward speed and
+	## friction works the slip); a jump shot rebounds `JUMP_E` of it, and `Ball.strike` fires exactly this state, so Jolt flies what the guide draws.
+	func launch(radius: float, motion: BallMotion.Params) -> BallMotion.State:
+		var s := BallMotion.State.new()
+		s.lin = aim3 * speed
+		s.ang = offset.cross(aim3) * (speed / (0.4 * radius * radius))
+		if s.lin.y < 0.0:
+			BallMotion.cloth_impact(s, motion, BallMotion.JUMP_E if jump else 0.0, BallMotion.JUMP_VY_MAX)
+		return s
+
 
 ## `power_mult` / `spin_radius` are the shooter's resolved stats (`sim.stat`); `random_miscue` scatters the aim of a miscue (the host
 ## does, a preview must not).
@@ -132,7 +153,9 @@ static func plan_strike(intent: ShotIntent, cue: CueSpec, radius: float, max_spe
 	var spin := intent.spin_offset.limit_length(1.0)
 	var spin_r := cue.spin_offset_radius if spin_radius < 0.0 else spin_radius
 	plan.elevation_deg = effective_elevation(intent.elevation_deg, spin, cue)
-	plan.jump = cue.jump_unlocked and power >= 0.70 and plan.elevation_deg >= JUMP_MIN_ELEVATION_DEG
+	plan.jump = cue.jump_unlocked and power >= JUMP_MIN_POWER and plan.elevation_deg >= JUMP_MIN_ELEVATION_DEG
+	if plan.jump:
+		power = lerpf(JUMP_MIN_POWER, JUMP_TOP_POWER, clampf((power - JUMP_MIN_POWER) / (1.0 - JUMP_MIN_POWER), 0.0, 1.0))
 	plan.masse = cue.masse_unlocked and plan.elevation_deg >= MASSE_MIN_ELEVATION_DEG and spin.length() >= MASSE_MIN_SPIN
 	plan.speed = cue.speed_at(power)
 	if spin.length() > cue.miscue_threshold:
@@ -163,12 +186,18 @@ func strike(intent: ShotIntent, cue: CueSpec) -> void:
 	freeze = false  # resting balls are frozen (PhysicsSim); an impulse on a frozen body is dropped
 	sleeping = false
 	_set_resting(false)
-	apply_impulse(plan.aim3 * plan.speed * mass, plan.offset)
+	if plan.jump:  # the ball leaves the cloth: it is given the state after the cloth's rebound, not left to Jolt's dead cloth
+		var launch := plan.launch(radius, motion if motion != null else BallMotion.make_params(spec, radius))
+		apply_central_impulse(launch.lin * mass)
+		apply_torque_impulse(launch.ang * (0.4 * mass * radius * radius))
+	else:
+		apply_impulse(plan.aim3 * plan.speed * mass, plan.offset)
 	struck.emit(self, intent)
 
 
 ## Called once the ball is in a pocket cup (Table's pot sensor: centre `pot_depth_m` below the cloth, 06 P30).
 func pocket(pocket_id: StringName) -> void:
+	_forced = false
 	is_pocketed = true
 	pocketed_in = pocket_id
 	if motion != null:
@@ -186,6 +215,7 @@ func _retire_if_pocketed() -> void:
 ## Takes the ball out of play: frozen, hidden, non-colliding, and counted as resting so
 ## PhysicsSim.all_resting can fire once every pot has finished (A1).
 func retire() -> void:
+	_forced = false
 	retired = true
 	freeze = true
 	visible = false
@@ -196,6 +226,7 @@ func retire() -> void:
 
 ## Puts a retired (or stray) ball back in play at world `pos`, stationary; it settles under gravity.
 func restore(pos: Vector3) -> void:
+	_forced = false
 	is_pocketed = false
 	pocketed_in = &""
 	retired = false
@@ -288,6 +319,15 @@ func _rail_rebound(state: PhysicsDirectBodyState3D, n: Vector3) -> void:
 
 
 func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if _forced:
+		_forced = false
+		if not is_pocketed and not retired and not _shared_step(state):  # another ball or a cushion was in that step: Jolt's own solve stands
+			var placed := state.transform
+			placed.origin = _next.pos
+			state.transform = placed
+			state.linear_velocity = _next.lin
+			state.angular_velocity = _next.ang
+			_last_good_y = _next.lin.y
 	pre_solve_velocity = state.linear_velocity
 	if _pending_rail != Vector3.ZERO:
 		_rail_rebound(state, _pending_rail)
@@ -320,6 +360,10 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 		v *= _max_speed / speed
 		state.linear_velocity = v
 		speed = _max_speed
+	if _in_flight(state):
+		_air_step(state, speed)
+		_last_good_y = state.linear_velocity.y
+		return
 	if speed < spec.rest_speed_mps and state.angular_velocity.length() < spec.rest_ang_rad_s:
 		state.linear_velocity = Vector3.ZERO
 		state.angular_velocity = Vector3.ZERO
@@ -359,6 +403,58 @@ func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
 	state.apply_torque(-spin * mass * radius * mu * spec.spin_decay)
 	_stop_spin(state, inertia, dt)
 	_last_good_y = state.linear_velocity.y
+
+
+## In the air (S3 airborne rule): leaving the cloth faster than `BallMotion.AIR_VY` (the model's own rule, so a jump's take-off step is already free of
+## the cloth), coming down on it faster than FLIGHT_VY, or over it by more than AIRBORNE_EPS with nothing under it (a ball resting on a rail top or on
+## another ball is not flying). A ball under the cloth plane is dropping into a pocket or off the table: Jolt's.
+func _in_flight(state: PhysicsDirectBodyState3D) -> bool:
+	if motion == null or is_pocketed:
+		return false
+	var vy := state.linear_velocity.y
+	if vy > BallMotion.AIR_VY:
+		return true
+	var h := state.transform.origin.y - motion.floor_y
+	if h < -BallMotion.AIRBORNE_EPS:
+		return false
+	return vy < -FLIGHT_VY or (BallMotion.is_airborne(h + motion.floor_y, motion.floor_y) and state.get_contact_count() == 0)
+
+
+## A ball in flight: no cloth friction, spin decay, tilt or hazard term acts on it (they are all ground terms) and Jolt's gravity flies it, which
+## `BallMotion._fly` draws exactly. The last `TOUCHDOWN_H` of a descent are the model's, not Jolt's: Jolt's speculative contact with the bed takes
+## the fall's speed away a few mm before the cloth, and its landing is dead. So the step is run on `_next` by `BallMotion.advance` (the cloth's
+## friction at the contact point, the bounce, the roll after it) and put in place when Jolt has run it (`_forced`, top of `_integrate_forces`).
+## Over a pocket's mouth, a cushion or a rail the ball is left to Jolt: there is no cloth to land on.
+func _air_step(state: PhysicsDirectBodyState3D, speed: float) -> void:
+	_set_resting(false)
+	if not is_cue_ball:
+		continuous_cd = speed > _ccd_speed
+	_air.pos = state.transform.origin
+	_air.lin = state.linear_velocity
+	_air.ang = state.angular_velocity
+	if _air.lin.y >= 0.0 or _air.pos.y - motion.floor_y > TOUCHDOWN_H or not _over_cloth(_air.pos):
+		return
+	_next.copy_from(_air)
+	BallMotion.advance(_next, state.step, motion)
+	_forced = true
+
+
+## Over cloth the model can land on: inside the playing surface and not over a pocket's mouth. Over a cushion, a rail or a hole Jolt keeps the ball.
+func _over_cloth(world: Vector3) -> bool:
+	var table := sim.get_parent() as Table if sim != null else null
+	if table == null:
+		return false
+	var local := table.to_local(world)
+	return absf(local.x) <= spec.length_m * 0.5 and absf(local.z) <= spec.width_m * 0.5 and not table.in_hole(Vector2(local.x, local.z))
+
+
+## True when this step's contacts include a ball or a cushion/jaw (the cloth, a bed body, is the touch-down itself).
+func _shared_step(state: PhysicsDirectBodyState3D) -> bool:
+	for i in state.get_contact_count():
+		var other := state.get_contact_collider_object(i)
+		if other is Ball or (other is Node and (other.has_meta(&"rail_normal") or other.has_meta(&"jaw"))):
+			return true
+	return false
 
 
 ## Constant (pivot) loss of spin about the table normal, never past zero within one step.

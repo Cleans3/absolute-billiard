@@ -123,7 +123,8 @@ func _spin() -> void:
 
 func _elevation() -> void:
 	var ov := tc.elevation_overlay
-	cue.cue_spec = CueSpec.new()  # a fresh cue like EconomyManager.build_cue_spec() starts with: no Jump, no Masse
+	cue.cue_spec = CueSpec.new()  # a fresh cue like EconomyManager.build_cue_spec() starts with: Jump (free since adhoc-1014a V4), no Masse
+	cue.cue_spec.jump_unlocked = false  # the locked ranges below are for a cue without the Jump: none in the shop, but the overlay still reads the cap
 	cue.set_spin(Vector2.ZERO)
 	cue.set_elevation(0.0)
 	cue._push_ui()
@@ -154,7 +155,7 @@ func _elevation() -> void:
 	_touch(ov, ov._pivot + Vector2(-5.0, -ov._radius * 0.9), true)  # nearly overhead: 80
 	_touch(ov, ov._pivot + Vector2(-5.0, -ov._radius * 0.9), false)
 	_check(_near(cue.elevation_deg, 80.0), "nearly overhead clamps to 80: %f" % cue.elevation_deg)
-	# locked ranges: a fresh cue has no Jump, so it stops at 29 and the overlay says so
+	# locked ranges: a cue without the Jump stops at 29 and the overlay says so
 	cue._push_ui()
 	_check(not cue.cue_spec.jump_unlocked and _near(tc.elevation.cap, Ball.effective_elevation(80.0, Vector2.ZERO, cue.cue_spec)), "cap = Ball.effective_elevation (%f)" % tc.elevation.cap)
 	_check(_near(tc.elevation.cap, 29.0) and _near(tc.elevation.effective(), 29.0), "Jump locked: the cue is capped at 29 with 80 asked")

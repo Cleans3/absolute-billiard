@@ -33,7 +33,7 @@ Rewritten against 06 D4/D7 as amended by P2 (no roles, free-roam bar), P3 (Barte
 The fixed ceiling camera (adhoc-1013c U5): a small 3-surface pod (plate, body, lens barrel, glass, red tally) under the centre beam, lens straight down at the table, built by `CameraRigs` on every peer (`CameraRigs.ceiling`). **Not a rig and not scored**: it is not in `CameraRigs.rigs`, `CameraScorer` never sees it and it adds no `Camera_Mult` (F2 recalibrates the money; a free scored camera would have moved the economy). It hangs `OFFSET_Z = 0.36` m south of the table's centre because the table lamp's rod and shade hang from the same beam over that point and are never moved; the lamp (shade, cap, rod) is its own mesh on render layer 13 (`LAMP_LAYER`), which only the ceiling feed's cull mask leaves out, so it never blocks the picture. `fit_fov(aspect)` returns the vertical fov that holds the table's four outer rail corners with a 5 % margin (about 89 degrees for the 3:2 half-picture, 111 degrees across); its picture is the right half of the TV.
 
 ### `CueSpec` (`Resource`) — upgrade target, not a player design
-01's fields: `power_cap_speed_mps`, `spin_offset_radius`, `jump_unlocked`, `masse_unlocked`, `wobble_reduction`. `EconomyManager.build_cue_spec()` folds the owned cue items over the defaults (power `×(1+Σ)`, spin `×(1+Σ)`) and sets `PhysicsSim.active_cue`; the Player module decides how a phone gesture drives it.
+01's fields: `power_cap_speed_mps`, `spin_offset_radius`, `jump_unlocked` (`true` from the start, 01 §3 "Jump"), `masse_unlocked` (the Masse Cue), `wobble_reduction`. `EconomyManager.build_cue_spec()` folds the owned cue items over the defaults (power `×(1+Σ)`, spin `×(1+Σ)`) and sets `PhysicsSim.active_cue`; the Player module decides how a phone gesture drives it.
 
 ### `ShopItem` (`Resource`) — one catalog, owned by 02
 | field | type | note |
@@ -197,7 +197,7 @@ Each card shows the tier-coloured frame, the Drink's **icon** (a glass of its ow
 | `joker_ball` | ball | $600 | unlock `wild` — ×2 on the shot's best ball (min_night 4) |
 | `heavy_shaft` | cue | $300 | `power_cap_mult +0.15` |
 | `chalk_tin` | cue | $350 | `spin_offset_radius_mult +0.20` |
-| `jump_cue` | cue | $500 | `jump_unlocked`, `masse_unlocked` |
+| `jump_cue` | cue | $350 | **the Massé cue** (adhoc-1014a V4): `masse_unlocked` only. The jump shot is free, `CueSpec.jump_unlocked` defaults `true`; the item keeps its id and file (`jump_cue.tres`, old saves) and shows "Masse Cue". It was $500 for both |
 | `custom_tip` | cue | $250 | `wobble_reduction_deg 2.0` (floors at 0, per D6) |
 | `lens_t2` / `lens_t3` | camera | $400 / $800 | rig `tier` 2 / 3 → `tier_mult` 1.25 / 1.5 |
 | `spare_tripod` | camera | $500 | one more `CameraRig` to place (1 base + up to 3 = max 4; the ceiling camera is not a rig) |

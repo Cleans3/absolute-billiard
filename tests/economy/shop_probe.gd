@@ -8,7 +8,7 @@ extends SceneTree
 const ROWS := {
 	&"polish_the_set": [&"ball", 250], &"tier2_rack": [&"ball", 400], &"tier3_rack": [&"ball", 900],
 	&"bomb_ball": [&"ball", 300], &"split_ball": [&"ball", 450], &"joker_ball": [&"ball", 600],
-	&"heavy_shaft": [&"cue", 300], &"chalk_tin": [&"cue", 350], &"jump_cue": [&"cue", 500], &"custom_tip": [&"cue", 250],
+	&"heavy_shaft": [&"cue", 300], &"chalk_tin": [&"cue", 350], &"jump_cue": [&"cue", 350], &"custom_tip": [&"cue", 250],
 	&"lens_t2": [&"camera", 400], &"lens_t3": [&"camera", 800], &"spare_tripod": [&"camera", 500],
 	&"magnetic_pockets": [&"table", 600], &"stream_overlay": [&"table", 500], &"fresh_cloth": [&"table", 350],
 }
@@ -221,7 +221,7 @@ func _upgrades() -> void:
 	var spec := eco.build_cue_spec()
 	_check(is_equal_approx(spec.power_cap_speed_mps, CueSpec.new().power_cap_speed_mps * 1.15), "heavy_shaft: power cap ×1.15 (got %s)" % spec.power_cap_speed_mps)
 	_check(is_equal_approx(spec.spin_offset_radius, 0.42), "chalk_tin: spin radius ×1.20 (got %s)" % spec.spin_offset_radius)
-	_check(spec.jump_unlocked and spec.masse_unlocked and is_equal_approx(spec.wobble_reduction, 2.0), "jump/masse/wobble")
+	_check(spec.jump_unlocked and spec.masse_unlocked and is_equal_approx(spec.wobble_reduction, 2.0), "jump (free) / masse (jump_cue) / wobble")
 	var base: Array[StringName] = [&"red_basic", &"black_penalty"]
 	var pool := eco.unlocked_ball_types(base)
 	_check(pool.has(&"blue_mid") and not pool.has(&"gold_prize"), "tier2_rack adds blue_mid only")
@@ -358,7 +358,7 @@ func _persistence() -> void:
 	eco.wipe()
 	_check(eco.cash == 0 and eco.count_of(&"tier2_rack") == 1 and eco.count_of(&"heavy_shaft") == 0, "wipe keeps persistent items only")
 	_check(eco.stock_size() == 0 and eco.stock_key == -1, "wipe empties the shelf (the next Intermission rolls)")
-	_check(not eco.build_cue_spec().jump_unlocked, "cue mods reset with the wipe")
+	_check(eco.build_cue_spec().jump_unlocked and not eco.build_cue_spec().masse_unlocked, "cue mods reset with the wipe: the Jump stays (free), the Masse goes")
 
 
 func _cleanup() -> void:
