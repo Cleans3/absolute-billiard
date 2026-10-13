@@ -11,13 +11,17 @@ const OFF_COLOR := Color(0.28, 0.1, 0.1)
 
 var prop: Interactable  ## the press target; its prompt follows the ready state
 
+const HINT_TEXT := "Press when you're\nready to play"
+
 @onready var _button: MeshInstance3D = $Button
 @onready var _title: Label3D = $Title
 @onready var _status: Label3D = $Status
 var _glow: StandardMaterial3D
+var _hint: Label3D  ## the first-time coach's floating hint (set_hint); built on first use
 
 
 func _ready() -> void:
+	add_to_group(&"go_live_pedestal")
 	_glow = (_button.material_override as StandardMaterial3D).duplicate()  # one glow per pedestal; the scene's stays
 	_button.material_override = _glow
 	if game_loop != null:
@@ -55,6 +59,24 @@ func _refresh() -> void:
 		prop.prompt = "Ready %d/%d · press to cancel" % [game_loop.ready_peers.size(), total]
 	else:
 		prop.prompt = "GO LIVE"
+
+
+## The first-time coach (src/ui/coach.gd) floats "Press when you're ready to play" over the button until this player is ready.
+## Always on while it applies, not on proximity: a phone has no hover and the button can be off screen.
+func set_hint(on: bool) -> void:
+	if on and _hint == null:
+		_hint = Label3D.new()
+		_hint.text = HINT_TEXT
+		_hint.billboard = BaseMaterial3D.BILLBOARD_FIXED_Y
+		_hint.pixel_size = 0.004
+		_hint.font_size = 64
+		_hint.outline_size = 16
+		_hint.modulate = Color(1.0, 0.9, 0.35)
+		_hint.no_depth_test = true  # readable through the rail and the crowd
+		_hint.position = Vector3(0.0, 2.05, 0.0)
+		add_child(_hint)
+	if _hint != null:
+		_hint.visible = on
 
 
 func _set_glow(c: Color) -> void:

@@ -49,6 +49,24 @@ static func shot(reason: StringName, shooter := "", moving := 0) -> String:
 	return SHOT.get(reason, _sentence(reason))
 
 
+## The HUD's turn line (adhoc-1014a V2): whose shot it is. `shooter` = the roster name, "" when unknown.
+static func turn(shooter: String, mine: bool) -> String:
+	if mine:
+		return "Your turn"
+	return "%s is shooting" % shooter if shooter != "" else "Someone else is shooting"
+
+
+## The roster name of `peer_id`, "" when the roster does not list it. `net` = the NetManager node (found by path: `-s` probes compile
+## before autoload names exist).
+static func roster_name(net: Node, peer_id: int) -> String:
+	if net == null:
+		return ""
+	for e: Dictionary in net.call(&"get_roster"):
+		if e.peer_id == peer_id:
+			return e.name
+	return ""
+
+
 ## `wait_sec` > 0 only for `cooldown` (the host's remaining seconds).
 static func interaction(kind: StringName, reason: StringName, wait_sec := 0.0) -> String:
 	if reason == &"cooldown":

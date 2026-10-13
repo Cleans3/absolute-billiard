@@ -101,11 +101,6 @@ mouse_filter = 2
 theme_type_variation = &"HudLabel"
 text = "0:00"
 
-[node name="Gap" type="Control" parent="Clock/Line"]
-custom_minimum_size = Vector2(10, 0)
-layout_mode = 2
-mouse_filter = 2
-
 [node name="ShotsIcon" type="TextureRect" parent="Clock/Line"]
 custom_minimum_size = Vector2(30, 30)
 layout_mode = 2
@@ -120,7 +115,7 @@ unique_name_in_owner = true
 layout_mode = 2
 mouse_filter = 2
 theme_type_variation = &"HudLabel"
-text = "Shots 0"
+text = "Shots 0/0"
 
 [node name="Fps" type="Label" parent="."]
 unique_name_in_owner = true
@@ -149,3 +144,20 @@ mouse_filter = 2
 theme_type_variation = &"Payout"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="Turn" type="Label" parent="."]
+unique_name_in_owner = true
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -440.0
+offset_top = 68.0
+offset_right = -140.0
+offset_bottom = 96.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_type_variation = &"HudLabel"
+horizontal_alignment = 2
+text_overrun_behavior = 3

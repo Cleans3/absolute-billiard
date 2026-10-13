@@ -73,6 +73,7 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
 	DirAccess.make_dir_recursive_absolute(dir + "/checkpoints")
 	SaveManager.root = dir
+	StoryDirector.auto_intro_cards = true  # the cards no longer open by themselves (06 P44); this probe is about them
 	nm = root.get_node("NetManager")
 	nm.config.direct_port = port
 	if role == "host":

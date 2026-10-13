@@ -364,10 +364,14 @@ func _layout() -> void:
 		_check(tc.mirror, "the touch mirror setting reaches TouchControls")
 		Settings.set_value(&"touch_mirror", false)
 		_check(not tc.mirror, "and back")
+		var coach := Coach.new()  # unbound: force_step shows a card, the state machine is tests/ui/coach_probe.gd's
+		vp.add_child(coach)
 		var labels := hud.find_children("*", "Label", true, false)
-		_check(labels.size() == 6, "%s the HUD is lean: cash, quota, clock, shots, fps, payout (got %d labels)" % [size, labels.size()])
+		_check(labels.size() == 7, "%s the HUD is lean: cash, quota, clock, shots, fps, turn, payout (got %d labels)" % [size, labels.size()])
 		hud._time.text = "12:34"  # sizes worse than the real ones
-		hud._shots.text = "Shots 12"
+		hud._shots.text = "Shots 10/10"
+		hud._turn.text = "Averyveryverylongplayername is shooting"
+		hud._turn.show()
 		hud._quota.text = "/ $125000"
 		hud._fps.text = "120 fps"
 		Settings.set_value(&"show_fps", true)
@@ -377,17 +381,30 @@ func _layout() -> void:
 		tc._away.show()
 		tc.set_prompt("Place the camera")
 		tc.set_clock("Call a pocket   Shot clock 30")
+		coach.force_step(Coach.Step.SPIN)  # the longest text
+		await process_frame
+		await process_frame
+		for step in [Coach.Step.GO_LIVE, Coach.Step.WAIT, Coach.Step.WALK, Coach.Step.AIM, Coach.Step.SPIN, Coach.Step.POWER]:
+			coach.force_step(step)
+			await process_frame
+			await process_frame
+			var card := coach._card.get_global_rect()
+			_check(Rect2(Vector2.ZERO, Vector2(size)).encloses(card) and card.end.y <= 400.0 and card.end.x <= 390.0, "%s coach card for step %d stays in its corner (%s)" % [size, step, card])
+		coach.force_step(Coach.Step.SPIN)
+		await process_frame
+		await process_frame
 		for mirror in [false, true]:
 			for touch in [true, false]:
 				for mode in [TouchControls.MODE_WALK, TouchControls.MODE_CARRY, TouchControls.MODE_CUE]:
 					tc.touch = touch
 					tc.mirror = mirror
+					coach.mirror = mirror
 					tc.set_mode(mode)
 					tc.set_can_shoot(true)
 					tc.set_call_pockets(true)
 					await process_frame
 					await process_frame
-					_check_layout(vp, hud, tc, router, "%s mirror=%s touch=%s mode=%d" % [size, mirror, touch, mode])
+					_check_layout(vp, hud, tc, router, coach, "%s mirror=%s touch=%s mode=%d" % [size, mirror, touch, mode])
 		_check(tc.look.size.x >= size.x * 0.5 - 1.0 and tc.look.size.y >= size.y - 1.0, "%s look pad is no longer zero-size" % size)
 		tc.touch = true
 		tc.mirror = false
@@ -402,9 +419,10 @@ func _layout() -> void:
 	Settings.reset_values()
 
 
-func _check_layout(vp: SubViewport, hud: Control, tc: TouchControls, router: UIRouter, tag: String) -> void:
+func _check_layout(vp: SubViewport, hud: Control, tc: TouchControls, router: UIRouter, coach: Coach, tag: String) -> void:
 	var items := {
-		"money": hud.get_node("%Money"), "round": hud.get_node("%Clock"), "fps": hud._fps, "payout": hud._payout, "toast": router.get_child(0),
+		"money": hud.get_node("%Money"), "round": hud.get_node("%Clock"), "fps": hud._fps, "turn": hud._turn, "payout": hud._payout, "toast": router.get_child(0),
+		"coach": coach._card,
 		"clock": tc._status, "prompt": tc._prompt_label, "away": tc._away,
 		"jump": tc._btn_jump, "interact": tc._btn_interact, "shoot": tc._btn_shoot, "back": tc._btn_back,
 		"place": tc._btn_place, "drop": tc._btn_drop, "pause": tc._btn_pause,

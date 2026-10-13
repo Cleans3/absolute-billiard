@@ -28,7 +28,8 @@ Systems-only pass, plus Player v1 since 2026-09-30 (06 P6, `08-player.md`). Cosm
 | World interactions (03) | `request_world_interaction(kind, target_id)` client→host (04) | EffectManager (03) with `owner_peer_id` |
 | PhysicsSim (01/04) | `shot_started`, `push_contact_events` (reliable ch1, 30 Hz flush), `push_heartbeat` (unreliable_ordered ch2, 2 Hz) | clients dead-reckon + interpolate |
 | SaveManager (04) | `SaveProfile` broadcast each Round end | every peer (any friend can re-host) |
-| GameLoop (02) | `night_started(n, quota)`, `intermission_started`, `phase_changed(phase)` | StoryDirector (09): opens StoryCards, rings the phone, hands Gus his story pool, velvet's chat toast |
+| GameLoop (02) | `night_started(n, quota)`, `intermission_started`, `phase_changed(phase)` | StoryDirector (09): opens StoryCards (only with `auto_intro_cards`, off since 06 P44), rings the phone, hands Gus his story pool, velvet's chat toast |
+| GameLoop (02) / RoundDirector (01) / Player (08) / CueController (08) | `phase_changed`, `state_changed`, `ready_changed`, `staging_changed`; `shooter_changed(peer_id)`; `mode_changed(mode)`; `fired(intent)` | `Coach` (08 §2.8, 06 P44, built by the HUD): the first-time guide and the GO LIVE pedestal's hint; the HUD's turn line reads `shooter_changed` + `phase_changed` too |
 | WorldInteractions (03) | `answer_phone` → `world_interaction_applied` (every peer) | StoryDirector (09) plays Moe's call at the phone; `BartenderChat` holds Gus |
 | WorldInteractions (03) | `slot_spin` → `world_interaction_applied` with the host-rolled result (every peer) | SlotMachine plays the drums, SlotScreen words the win (02 §3.9); Cash (`slot`) and chaos Effects reach clients through their own mirrors |
 | StoryDirector (09) | `BartenderChat` story pool / `phone_ignored` line | Bartender (P24) |

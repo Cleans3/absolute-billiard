@@ -44,7 +44,7 @@ One resource per campaign Night. Endless Nights reuse one shared resource.
 ```
 StoryNight (Resource)          src/resources/story/story_night.gd
   night: int                   # 1..3; 0 = the Endless resource
-  intro_cards: Array[String]   # shown at NIGHT_START, before Intermission; [] = none
+  intro_cards: Array[String]   # shown at NIGHT_START, before Intermission, only while StoryDirector.auto_intro_cards (off since 06 P44); [] = none
   call: Array[String]          # Moe on the phone, one subtitle per line; [] = no call this Night
   gus_lines: Array[String]     # extra ambient lines for Gus, unlocked from this Night on
   paid_line: String            # Reckoning line when the Quota is met (Night 3 reads it in Endless only)
@@ -69,6 +69,11 @@ resets on a new campaign and survives a Resume. `cutscenes_seen` (§3.8) is per 
 ## 3. Rules
 
 ### 3.1 Night intro cards
+- **Off by default (adhoc-1014a V2, 06 P44).** Cleanse: remove the backstory display on first spawn. `StoryDirector.auto_intro_cards` (a static
+  flag, `false`) gates the whole path, so nothing opens these cards by itself on any Night; a first spawn is the intro cutscene (§3.8.1), then
+  the bar with the first-time coach (08 §2.8) instead. Nothing opens the cards on request, so they are reachable only by setting the flag
+  (one line brings the old behaviour back; `tests/story/*` and `screenshot_story.gd` set it, `SoloSupport.until_playable(keep_story)` too).
+  The ending cards, the phone, Moe's call, Gus's lines and velvet's chat are unchanged. The rules below describe the path with the flag on.
 - At `NIGHT_START`, before Intermission, each peer shows its own intro cards: full-screen text over the dimmed bar, one tap per card,
   with a **Skip** button. On a fresh session Night 1's cards follow the intro cutscene (§3.8.1).
 - The first time a player reaches a given Night, they see its cards. After that the cards are skippable with a single tap and are
@@ -213,7 +218,7 @@ screen (two columns of four rows, the grade to their right, a **Continue** butto
   pool. It runs on every peer and owns no networked state except the phone's "answered this Night" flag. The host replays it to a peer
   that comes back: through `RoundDirector.send_full_state` once a Round exists, and on `NetManager.peers_away_changed` before Round 1
   (when `send_full_state` has nothing to send).
-- `StoryCards` (UIModal, `src/ui/story_cards.gd/.tscn`): one modal in the `UIRouter` stack, at priority above PhaseScreen and below
+- `StoryCards` (UIModal, `src/ui/story_cards.gd/.tscn`; opened for the intro only while `StoryDirector.auto_intro_cards`, §3.1, and for the ending cards): one modal in the `UIRouter` stack, at priority above PhaseScreen and below
   EventVote, `keep_on_phase = true` (the NIGHT_START → INTERMISSION phase change must not close it). Tap advances, Skip closes.
 - `Phone` prop: an `Interactable` at the back bar (an exact spot that `decor_plan.gd`'s keep-clear accepts), kind `answer_phone`, a bare
   kind like `go_live`.

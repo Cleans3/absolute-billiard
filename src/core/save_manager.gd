@@ -232,6 +232,18 @@ static func mark_cutscene_seen(id: StringName) -> void:
 		_write_profile(d)
 
 
+# --- the first-time coach (06 P44): per player, not per campaign, set when the guide is finished or skipped -----------------------
+
+static func coach_seen() -> bool:
+	return bool(_read_profile().get("coach_seen", false))
+
+
+static func save_coach_seen(seen: bool) -> void:
+	var d := _read_profile()
+	d["coach_seen"] = seen
+	_write_profile(d)
+
+
 ## The campaigns that can still be resumed (their checkpoint exists), as profile keys.
 static func checkpoint_campaigns() -> PackedStringArray:
 	var out := PackedStringArray()
