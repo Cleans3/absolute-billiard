@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dpei6rc8hw24d"
-path="res://.godot/imported/tilted_table.svg-ee504eec3c38cf3b1db54b7d641805db.ctex"
+uid="uid://doudlvoug2cwn"
+path="res://.godot/imported/shaky_hands.svg-2e3814d6d26f3b173f81a604f6508c2b.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/ui/hazard/tilted_table.svg"
-dest_files=["res://.godot/imported/tilted_table.svg-ee504eec3c38cf3b1db54b7d641805db.ctex"]
+source_file="res://assets/ui/hazard/shaky_hands.svg"
+dest_files=["res://.godot/imported/shaky_hands.svg-2e3814d6d26f3b173f81a604f6508c2b.ctex"]
 
 [params]
 

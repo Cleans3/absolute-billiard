@@ -477,9 +477,9 @@ func _fake_events() -> void:
 	_check(is_equal_approx(fx._far_scale(near_pos), 1.0) and fx._far_scale(far_pos) > 2.0 and fx._far_scale(far_pos) <= ImpactFx.POP_FAR_MAX, "pop size grows with distance, capped (%.2f)" % fx._far_scale(far_pos))
 	# the game's own beats: a hazard starting, a Drink going down, GO, a cleared table, the Flaming Shot
 	_kinds.clear()
-	fx._on_event_applied(&"tilted_table", 1, 1.25)
+	fx._on_event_applied(&"sunken_ship", 1, 1.25)
 	var haz: Label = fx._stage._rows[FxStage.ROW_TRICK]
-	_check(int(_kinds.get(&"hazard", 0)) == 1 and haz.visible and haz.text == "TILTED TABLE!", "a hazard starting is announced (%s)" % haz.text)
+	_check(int(_kinds.get(&"hazard", 0)) == 1 and haz.visible and haz.text == "SUNKEN SHIP!", "a hazard starting is announced (%s)" % haz.text)
 	fx._drink_banner(FxCatalog.drink(&"beer"))
 	var sip: Label = fx._stage._rows[FxStage.ROW_MINOR]
 	_check(int(_kinds.get(&"drink", 0)) == 1 and sip.text == "BEER!", "a drink going down is announced (%s)" % sip.text)

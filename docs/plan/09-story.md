@@ -106,12 +106,18 @@ resets on a new campaign and survives a Resume. `cutscenes_seen` (§3.8) is per 
 |---|---|
 | Bouncer | "The Rope sent a 'doorman'. He doesn't let balls out." |
 | Lights Out | "Someone forgot to pay the electric. Someone was told to forget." |
-| Tilted Table | "One leg of the table got shorter overnight. Funny, that." |
+| Sunken Ship | "The Rope sank a ship under one corner. The cloth slopes to it." (the board says which corner) |
 | Crowd Roar | "Moe bought a few hundred viewers. They're loud and they're not yours." |
 | Moving Pockets | "The Rope 'fixed' the pockets. Now the pockets move." |
 | Glass Cushions | "New cushions, courtesy of Moe. Mind the bounce." |
 | Ball Swap Chaos | "Somebody's been rearranging the rack. Nobody saw who." |
 | Pocket Jackpot | "Moe likes a show. One pocket pays like a slot machine tonight." |
+| Vacation | "Moe booked a holiday: a wet side and a dry side." |
+| Pinball | "Somebody bolted pinball bumpers to the cloth." |
+| Double Ball | "Moe's bargain: twice the balls, half the cash a ball." |
+| Ice Rink | "The Rope hosed the cloth down and left the window open." |
+| Shaky Hands | "Somebody spiked the chalk. Nobody's aim is steady." |
+| Lead Ball | "Gus swapped the cue ball for a bait-shop sinker." |
 
 ### 3.5 The ledger on the wall
 The blackboard's footer stops saying "TONIGHT OWE $X" and becomes Moe's ledger. Its old "NEXT NIGHT" line gives its space to the hazard's

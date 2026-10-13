@@ -225,7 +225,7 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 	var head: Vector3 = table.layout.spots.head
 	_cue_ball = _spawn(CUE_TYPE, Vector2(head.x, head.z), 0)
 	_next_net_id = 1
-	for entry in RackDropper.drop(table.spec, table.layout, config, seed, round_index):
+	for entry in RackDropper.drop(table.spec, table.layout, config, seed, round_index, ball_mult(), _pin_discs()):
 		_spawn(entry.type, entry.pos, _next_net_id)
 		_next_net_id += 1
 	_round_active = true
@@ -238,6 +238,19 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 	if not multiplayer.get_peers().is_empty():
 		_push_rack_rpc.rpc(_round_id, seed, _rack_blob(), table.sim.pocket_time())
 	rack_ready.emit(seed)
+
+
+## Double Ball (`object_ball_mult`): how many times the Round's object balls; every pot pays 1 / this (`value_of`), so the
+## Round's total stays what the plain rack's was. The same on every peer (the Effect is mirrored).
+func ball_mult() -> float:
+	return _fx.get_stat(&"object_ball_mult", EffectManager.ALL_PEERS, 1.0) if _fx != null else 1.0
+
+
+## Pinball: discs (table-local x, z, radius) a ball centre must stay out of; none otherwise.
+func _pin_discs() -> Array[Vector3]:
+	if _fx != null and _fx.has_method(&"hazard_keepouts"):
+		return _fx.hazard_keepouts()
+	return []
 
 
 func _rack_blob() -> PackedByteArray:
@@ -514,7 +527,7 @@ func _return_stray(ball: Ball) -> void:
 		return
 	var near := _local(ball)
 	var region := RackDropper.interior(table.spec)
-	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), hash([_seed, _shot_index, ball.spawn_index, &"stray"]))
+	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), hash([_seed, _shot_index, ball.spawn_index, &"stray"]), _pin_discs())
 	ball.restore(_world(spot, ball))
 
 
@@ -591,14 +604,14 @@ func _respawn_seed(ball: Ball) -> int:
 func _respawn_object(ball: Ball) -> void:
 	var region := RackDropper.interior(table.spec)
 	var near: Vector2 = _rest_pos.get(ball, _local(ball))  # a ball spawned mid-shot has no strike-time spot
-	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), _respawn_seed(ball))
+	var spot := RackDropper.place_near(table.spec, table.layout, near.clamp(region.position, region.end), region, _positions_except(ball), _respawn_seed(ball), _pin_discs())
 	_off_table.erase(ball)
 	ball.restore(_world(spot, ball))
 
 
 func _respawn_cue(reason: StringName) -> void:
 	var head: Vector3 = table.layout.spots.head
-	var spot := RackDropper.place_near(table.spec, table.layout, Vector2(head.x, head.z), RackDropper.kitchen(table.spec), _positions_except(_cue_ball), _respawn_seed(_cue_ball))
+	var spot := RackDropper.place_near(table.spec, table.layout, Vector2(head.x, head.z), RackDropper.kitchen(table.spec), _positions_except(_cue_ball), _respawn_seed(_cue_ball), _pin_discs())
 	_off_table.erase(_cue_ball)
 	_cue_ball.restore(_world(spot, _cue_ball))
 	cue_respawned.emit(reason)
@@ -658,10 +671,12 @@ func _on_loop_round_ended(_reason: StringName, _points: int) -> void:
 
 ## `value(ball_type)`: a shop override replaces the resource's `base_value`; nothing mutates the resource.
 func value_of(type: BallType) -> int:
+	var base := type.base_value
 	for o in ball_overrides:
 		if String(o.id) == type.id:
-			return o.base_value
-	return type.base_value
+			base = o.base_value
+			break
+	return base if is_equal_approx(ball_mult(), 1.0) else roundi(base / ball_mult())  # Double Ball: twice the balls, each pays half
 
 
 ## Σ value over `potted`: `high_value` +25 %, `wild` (joker) doubles the single best ball of the Shot,
@@ -730,9 +745,9 @@ func _detonate(bomb: Ball) -> void:
 func _spawn_splits() -> int:
 	var n := 0
 	for b in _potted.duplicate():
-		if not b.ball_type.behaviour_tags.has(&"splitter") or _next_net_id >= BallEventCodec.MAX_BALLS or _live_object_count() >= RackDropper.MAX_OBJECT_BALLS:
+		if not b.ball_type.behaviour_tags.has(&"splitter") or _next_net_id >= BallEventCodec.MAX_BALLS or _live_object_count() >= RackDropper.object_cap(ball_mult()):
 			continue
-		var spot := RackDropper.place_near(table.spec, table.layout, _rest_pos.get(b, Vector2.ZERO), RackDropper.interior(table.spec), _positions_except(null), hash([_seed, _shot_index, b.spawn_index]))
+		var spot := RackDropper.place_near(table.spec, table.layout, _rest_pos.get(b, Vector2.ZERO), RackDropper.interior(table.spec), _positions_except(null), hash([_seed, _shot_index, b.spawn_index]), _pin_discs())
 		var nb := _spawn(BALL_TYPES[1], spot, _next_net_id)
 		_next_net_id += 1
 		n += 1

@@ -59,7 +59,7 @@ def load(d, prefix):
             for i, k in enumerate(("03", "08", "15")):
                 r[f"above_{k}_median_s"] = statistics.median(s["above"][i] for s in shots)
         out.append(r)
-        tilted = {n for rd in j["rounds"] if any(x[0] == "vote" and x[1] == "tilted_table" for x in rd.get("notes", [])) for n in rd["shots"]}
+        tilted = {n for rd in j["rounds"] if any(x[0] == "vote" and x[1] == "sunken_ship" for x in rd.get("notes", [])) for n in rd["shots"]}
         r["_tilted"] = [x for x in shots if x["n"] in tilted]
     return out
 
@@ -75,7 +75,7 @@ def cell(runs, key):
 
 
 def tilted_rows(runs):
-    """Shots of Rounds whose voted Event was tilted_table, per run set: duration and creep-tail median / max."""
+    """Shots of Rounds whose voted Event was sunken_ship (tilted_table before adhoc-1014a), per run set: duration and creep-tail median / max."""
     shots = [x for r in runs for x in r.get("_tilted", [])]
     if not shots:
         return "-"
@@ -93,7 +93,7 @@ def main():
     print("|---|" + "---|" * len(prefixes))
     for key, label in ROWS:
         print(f"| {label} | " + " | ".join(cell(sets[p], key) for p in prefixes) + " |")
-    print("| Tilted Table Rounds (voted) | " + " | ".join(tilted_rows(sets[p]) for p in prefixes) + " |")
+    print("| Sunken Ship Rounds (voted) | " + " | ".join(tilted_rows(sets[p]) for p in prefixes) + " |")
 
 
 if __name__ == "__main__":

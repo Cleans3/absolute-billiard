@@ -51,6 +51,8 @@ class ActiveEvent:
 	var event: Event
 	var pocket := &""  # RANDOM_POCKET: the host-chosen pocket
 	var spent := false  # NEXT_POT: already paid out
+	var params := PackedInt32Array()  # the host's roll for a hazard with geometry (HazardModel.roll), carried by apply_event
+	var model: HazardModel  # built from `params` on every peer; null for a stat-only hazard
 
 
 @export var sim: Node  # PhysicsSim; typed Node so probes can stand in
@@ -68,6 +70,8 @@ var _hooks: Array[StringName] = []
 var _pushed := {}  # stat -> last value sent to the sim
 var _pushed_rails := {}  # rail id -> last mult sent
 var _tilt_dir := Vector2.ZERO
+var _hazard_tilt := Vector2.ZERO  # Sunken Ship's world direction: restored after a bump-the-table tilt has expired
+var _view: HazardView  # the hazard's picture (pins, water, sand, the wreck), when there is a Table to put it on
 var _night_uses := {}  # "peer:drink" -> count this Night
 var _shot_pockets: Array[StringName] = []  # non-cue pots of the Shot being resolved
 var _last_reward := 1.0
@@ -210,11 +214,18 @@ func resync_peer(peer_id: int) -> void:
 		targets.append(le.target_id)
 		durations.append(le.duration_ms)
 		remaining.append(le.remaining)
-	_resync_effects_rpc.rpc_id(peer_id, ids, owners, targets, durations, remaining)
+	var ev_id := &""
+	var ev_pocket := &""
+	var ev_params := PackedInt32Array()
+	if not _events.is_empty():  # one hazard at a time: it comes with its roll, or a rejoining client would have no pins / shoreline
+		ev_id = _events[0].event.id
+		ev_pocket = _events[0].pocket
+		ev_params = _events[0].params
+	_resync_effects_rpc.rpc_id(peer_id, ids, owners, targets, durations, remaining, ev_id, ev_pocket, ev_params)
 
 
 @rpc("authority", "call_remote", "reliable", 3)
-func _resync_effects_rpc(ids: PackedStringArray, owners: PackedInt32Array, targets: PackedInt32Array, durations: PackedInt32Array, remaining: PackedFloat32Array) -> void:
+func _resync_effects_rpc(ids: PackedStringArray, owners: PackedInt32Array, targets: PackedInt32Array, durations: PackedInt32Array, remaining: PackedFloat32Array, event_id: StringName, event_pocket: StringName, event_params: PackedInt32Array) -> void:
 	for i in ids.size():
 		var e := FxCatalog.effect(StringName(ids[i]))
 		if e == null:
@@ -224,6 +235,14 @@ func _resync_effects_rpc(ids: PackedStringArray, owners: PackedInt32Array, targe
 			le = apply_local(e, owners[i], targets[i], durations[i])
 		if le != null:
 			le.remaining = remaining[i]
+	var ev := FxCatalog.event(event_id) if event_id != &"" else null
+	if ev != null and _events.is_empty():  # its Effects came with the list above; only the Event itself (and its geometry) is missing
+		var a := ActiveEvent.new()
+		a.event = ev
+		a.pocket = event_pocket
+		a.params = event_params
+		_events.append(a)
+		_install_hazard(a)
 	_changed()
 
 
@@ -334,6 +353,8 @@ func _finish_shot(foul: bool) -> void:
 			if a.event.opportunity == Event.Opportunity.NEXT_POT:
 				a.spent = true
 	_shot_pockets.clear()
+	if _hazard_tilt != Vector2.ZERO:
+		set_tilt_direction(_hazard_tilt)  # a bump-the-table shove turned it for one shot
 	_refresh_table_stats()  # the shooter has rotated
 	var shooter := current_shooter()
 	if shooter != _last_shooter:
@@ -350,6 +371,7 @@ func _on_round_ended(_reason: StringName, _round_points: int) -> void:
 	_expire(ROUND)
 	_drinks.clear()
 	_events.clear()
+	_remove_hazard()
 	_changed()
 
 
@@ -364,14 +386,93 @@ func _changed() -> void:
 
 # --- Events (driven by EventScheduler, run on every peer) -------------------------------------
 
-func begin_event(event: Event, pocket := &"") -> void:
+## `params`: the host's roll for a hazard with geometry (EventScheduler -> HazardModel.roll), the same on every peer.
+func begin_event(event: Event, pocket := &"", params := PackedInt32Array()) -> void:
 	var a := ActiveEvent.new()
 	a.event = event
 	a.pocket = pocket
+	a.params = params
 	_events.append(a)
+	_install_hazard(a)
 	for e in event.effects:
 		apply_local(e, 0, 0, duration_ms_of(e))
 	_changed()
+
+
+# --- hazard geometry (adhoc-1014a G) -------------------------------------------------------------
+
+func _table() -> Table:
+	return sim.get_parent() as Table if sim != null else null
+
+
+## Builds the model from the payload, hands it to the physics (BallMotion on every peer, the colliders on the host) and the picture.
+func _install_hazard(a: ActiveEvent) -> void:
+	var table := _table()
+	if a.event.hazard == &"" or table == null:
+		return
+	a.model = HazardModel.from_params(a.event.hazard, a.params, table.spec, table.layout, table.global_transform)
+	if a.model == null:
+		push_error("EffectManager: bad payload for hazard '%s'" % a.event.hazard)
+		return
+	if a.model.kind == HazardModel.SUNKEN_SHIP:  # the tilt points at that pocket's centre, read from the layout
+		_hazard_tilt = a.model.tilt_dir
+		set_tilt_direction(_hazard_tilt)
+	sim.call(&"set_hazard", a.model)
+	_view = HazardView.new()
+	add_child(_view)
+	_view.show_model(a.model, table)
+
+
+func _remove_hazard() -> void:
+	_hazard_tilt = Vector2.ZERO
+	if sim != null and sim.has_method(&"set_hazard"):
+		sim.call(&"set_hazard", null)
+	if _view != null:
+		_view.queue_free()
+		_view = null
+
+
+## The live hazard's roll as plain ints and names, hashable and identical on every peer: what F's table-state checksum
+## covers, and what a probe compares. {} when no hazard runs. One hazard at a time (EventScheduler).
+func hazard_state() -> Dictionary:
+	if _events.is_empty():
+		return {}
+	var a := _events[0]
+	var d: Dictionary = a.model.state() if a.model != null else {"id": String(a.event.id), "params": Array(a.params)}
+	var balls := get_stat(&"object_ball_mult", ALL_PEERS, 1.0)
+	if not is_equal_approx(balls, 1.0):  # Double Ball: the rack holds this many times the object balls
+		d["object_ball_mult"] = balls
+	return d
+
+
+## Discs (table-local x, z, radius) a respawned or racked ball centre must stay out of (pins). Empty off Pinball.
+func hazard_keepouts() -> Array[Vector3]:
+	for a in _events:
+		if a.model != null:
+			return a.model.keepouts()
+	return []
+
+
+## The hazard's name on the Blackboard: Sunken Ship names its corner.
+func event_title(e: Event) -> String:
+	var m := _model_of(e)
+	return "%s (%s)" % [e.display_name, String(m.corner).trim_prefix("corner_").to_upper()] if m != null and m.kind == HazardModel.SUNKEN_SHIP else e.display_name
+
+
+## The flavour line under it; Sunken Ship's says which corner is going down.
+func event_story(e: Event) -> String:
+	var m := _model_of(e)
+	if m != null and m.kind == HazardModel.SUNKEN_SHIP:
+		var id := String(m.corner).trim_prefix("corner_")
+		return "The %s-%s corner is sinking. Balls drift to its pocket." % [{"n": "north", "s": "south"}[id[0]], {"w": "west", "e": "east"}[id[1]]]
+	return e.story_line
+
+
+func _model_of(e: Event) -> HazardModel:
+	for a in _events:
+		if a.event == e:
+			return a.model
+	return null
 
 
 ## Round length delta from live Effects (energy_drink), every subject; Events add theirs via EventScheduler.
