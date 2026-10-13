@@ -83,6 +83,7 @@ func _run() -> void:
 func _stand_at_counter() -> void:
 	player.collision_mask |= 1
 	player.global_position = COUNTER
+	player.rotation.y = -PI / 2.0  # facing the counter (+X): a prop is used only when faced (06 P33 U8), else the Player closes the menu
 	player.velocity = Vector3.ZERO
 	for i in 6:
 		await physics_frame
