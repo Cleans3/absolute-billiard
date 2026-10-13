@@ -4,20 +4,32 @@ extends UIModal
 ## Pick a stake, pull the lever; the host rolls and every peer watches the same reels. Local to each peer; the only network
 ## traffic is the `slot_spin` interaction. Priority 5: over the Bartender, under the hazard vote and Pause.
 
-const PANEL_SIZE := Vector2(640.0, 250.0)
+const PANEL_SIZE := Vector2(640.0, 322.0)
 const FACE_SEC := 0.35  ## how long the camera takes to turn to the machine
+const VIEW_LIFT_DEG := 13.0  ## the camera looks this far BELOW the reels, so they sit in the free part of the screen over the (taller) strip
 const TOAST_CHARS := 46  ## longest win + chaos line that still fits the toast slot
+## The two refusals only a custom stake can earn (WaitText has no sentence for them).
+const BET_REASONS := {&"bad_bet": "That stake is outside tonight's limits", &"stale_cash": "Your cash just changed: check the stake"}
+const SHAKE_PX := 14.0     ## panel shake at full power
+const SHAKE_VIEW := 0.05   ## camera frustum shake at full power (m)
 
 @export var economy: EconomyManager
 @export var game_loop: GameLoop
 
-var _tier := 1
+var _bet := 0   ## the stake the player picked; 0 = none yet, the middle preset (it follows the Night)
 var _spinning := false
 var _shown_busy := false
 var _machine: SlotMachine
 var _world: WorldInteractions
 var _bets := PackedInt32Array([0, 0, 0])
-var _tier_buttons: Array[Button] = []
+var _tier_buttons: Array[Button] = []   ## the three presets
+var _max_button: Button
+var _minus: Button
+var _plus: Button
+var _slider: HSlider
+var _panel: PanelContainer
+var _panel_home := Vector2.ZERO
+var _shake_tween: Tween
 var _cash: Label
 var _status: Label
 var _chaos: Label
@@ -89,6 +101,7 @@ func _build() -> void:
 	panel.offset_top = -PANEL_SIZE.y - 20.0
 	panel.offset_bottom = -20.0
 	panel.name = "Panel"
+	_panel = panel
 	add_child(panel)
 	var box := VBoxContainer.new()
 	box.theme_type_variation = &"TightBox"
@@ -112,12 +125,32 @@ func _build() -> void:
 		var b := Button.new()
 		b.toggle_mode = true
 		b.button_group = group
-		b.custom_minimum_size = Vector2(150.0, 56.0)
+		b.custom_minimum_size = Vector2(110.0, 56.0)
 		b.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		b.pressed.connect(_pick_tier.bind(i))
 		tiers.add_child(b)
 		_tier_buttons.append(b)
+	_max_button = Button.new()
+	_max_button.custom_minimum_size = Vector2(130.0, 56.0)
+	_max_button.pressed.connect(_pick_max)
+	tiers.add_child(_max_button)
 	box.add_child(tiers)
+
+	var stepper := HBoxContainer.new()  # any stake from $10 up to the Night's cap, in $5 steps
+	_minus = _step_button("-")
+	_minus.pressed.connect(_nudge.bind(-SlotMath.BET_STEP))
+	stepper.add_child(_minus)
+	_slider = HSlider.new()
+	_slider.step = SlotMath.BET_STEP
+	_slider.custom_minimum_size = Vector2(0.0, 52.0)
+	_slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_slider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_slider.value_changed.connect(func(v: float) -> void: _set_bet(roundi(v)))
+	stepper.add_child(_slider)
+	_plus = _step_button("+")
+	_plus.pressed.connect(_nudge.bind(SlotMath.BET_STEP))
+	stepper.add_child(_plus)
+	box.add_child(stepper)
 
 	_status = Label.new()
 	_status.theme_type_variation = &"CardName"
@@ -171,6 +204,13 @@ func _build() -> void:
 	_pays_panel.hide()
 
 
+func _step_button(text: String) -> Button:
+	var b := Button.new()
+	b.text = text
+	b.custom_minimum_size = Vector2(72.0, 52.0)
+	return b
+
+
 ## One line per win, best first: what it pays and what else the machine does.
 static func pays_text() -> String:
 	var lines := PackedStringArray()
@@ -199,17 +239,38 @@ func _quota() -> int:
 
 ## Stakes, cash and the button's state from the mirrored Night and Cash.
 func _refresh() -> void:
-	_bets = SlotMath.bets(_quota())
+	var quota := _quota()
+	var cap := SlotMath.bet_cap(quota)
+	_bets = SlotMath.bets(quota)
 	var cash := economy.cash if economy != null else 0
+	var bet := _stake()
 	_cash.text = "-$%d" % -cash if cash < 0 else "Cash $%d" % cash
 	for i in _tier_buttons.size():
 		_tier_buttons[i].text = "$%d" % _bets[i]
-		_tier_buttons[i].button_pressed = i == _tier
-	var bet := _bets[_tier]
+		_tier_buttons[i].button_pressed = _bets[i] == bet
+	_max_button.text = "MAX $%d" % _max_bet(cap, cash)
+	_slider.set_block_signals(true)  # a Range clamps and emits when its bounds move: that is not the player dragging
+	_slider.min_value = SlotMath.BET_MIN
+	_slider.max_value = cap
+	_slider.value = bet
+	_slider.set_block_signals(false)
+	_minus.disabled = bet <= SlotMath.BET_MIN
+	_plus.disabled = bet >= cap
 	var busy := _is_busy()
 	_shown_busy = busy
 	_spin.disabled = busy or bet > maxi(cash, 0)
 	_spin.text = "Spinning…" if busy else ("PULL THE LEVER  $%d" % bet if bet <= maxi(cash, 0) else "Need $%d" % bet)
+
+
+## The stake the strip would send now: the player's pick, else the middle preset, always inside tonight's limits (a new Night moves them).
+func _stake() -> int:
+	var quota := _quota()
+	return clampi(_bet if _bet > 0 else SlotMath.bets(quota)[1], SlotMath.BET_MIN, SlotMath.bet_cap(quota))
+
+
+## The biggest stake this purse may risk tonight: all of it up to the cap, in $5 steps (the floor when broke: the button then says what it needs).
+static func _max_bet(cap: int, cash: int) -> int:
+	return clampi(maxi(cash, 0) - posmod(maxi(cash, 0), SlotMath.BET_STEP), SlotMath.BET_MIN, cap)
 
 
 func _is_busy() -> bool:
@@ -217,7 +278,19 @@ func _is_busy() -> bool:
 
 
 func _pick_tier(tier: int) -> void:
-	_tier = tier
+	_set_bet(_bets[tier])
+
+
+func _pick_max() -> void:
+	_set_bet(_max_bet(SlotMath.bet_cap(_quota()), economy.cash if economy != null else 0))
+
+
+func _nudge(by: int) -> void:
+	_set_bet(_stake() + by)
+
+
+func _set_bet(bet: int) -> void:
+	_bet = bet
 	_refresh()
 
 
@@ -228,7 +301,7 @@ func _pull() -> void:
 	_status.text = "Good luck…"
 	_chaos.text = ""
 	_refresh()
-	_world.request(SlotHouse.PROP_KIND, 0, {&"tier": _tier})
+	_world.request(SlotHouse.PROP_KIND, 0, {&"bet": _stake(), &"cash": economy.cash if economy != null else 0})  # the host checks both
 	_watchdog = get_tree().create_timer(SlotMath.MAX_SPIN_SEC + 2.0)  # a lost answer frees the button
 	_watchdog.timeout.connect(func() -> void:
 		if _spinning:
@@ -249,7 +322,7 @@ func _on_rejected(kind: StringName, reason: StringName) -> void:
 	if kind != SlotHouse.PROP_KIND:
 		return
 	_spinning = false
-	_status.text = WaitText.interaction(kind, reason, _world.last_wait_sec if _world != null else 0.0)
+	_status.text = BET_REASONS[reason] if BET_REASONS.has(reason) else WaitText.interaction(kind, reason, _world.last_wait_sec if _world != null else 0.0)
 	_chaos.text = ""
 	_refresh()
 
@@ -271,6 +344,30 @@ func _on_landed(peer_id: int, payload: Dictionary) -> void:
 	_status.text = text if mine else "%s: %s" % [_name_of(peer_id), text]
 	_chaos.text = chaos
 	_refresh()
+	var mult := int(w.mult)
+	if mine and (mult >= SlotMachine.BIG_MULT or win == &"zap"):  # a big win shakes the strip and the view
+		_shake_view(clampf(float(mult) / 40.0, 0.35, 1.0))
+
+
+## A big win rattles the strip and the camera's frustum (the cabinet's own shake is the machine's): `power` 0..1, decaying over ~0.6-1 s.
+func _shake_view(power: float) -> void:
+	if _shake_tween != null and _shake_tween.is_valid():
+		_shake_tween.kill()
+		_panel.position = _panel_home
+	_panel_home = _panel.position
+	var p := _local_player()
+	var cam: Camera3D = p.cam if p != null else null
+	_shake_tween = create_tween()
+	_shake_tween.tween_method(_shake_step.bind(power, cam), 0.0, 1.0, 0.35 + 0.6 * power)
+	_shake_tween.tween_callback(_shake_step.bind(1.0, power, cam))
+
+
+func _shake_step(u: float, power: float, cam: Camera3D) -> void:
+	var k := power * (1.0 - u)
+	_panel.position = _panel_home + Vector2(randf_range(-1.0, 1.0), randf_range(-1.0, 1.0)) * SHAKE_PX * k
+	if is_instance_valid(cam):
+		cam.h_offset = randf_range(-1.0, 1.0) * SHAKE_VIEW * k
+		cam.v_offset = randf_range(-1.0, 1.0) * SHAKE_VIEW * k
 
 
 ## What the chaos of a payload did, one line ("On the house: Beer · The chat goes wild").
@@ -324,7 +421,7 @@ func _face_machine() -> void:
 	if flat < 0.05:
 		return
 	var yaw := atan2(-d.x, -d.z)
-	var pitch := clampf(atan2(d.y, flat), -Player.PITCH_LIMIT, Player.PITCH_LIMIT)
+	var pitch := clampf(atan2(d.y, flat) - deg_to_rad(VIEW_LIFT_DEG), -Player.PITCH_LIMIT, Player.PITCH_LIMIT)
 	var yaw0 := p.rotation.y
 	var pitch0 := p.head.rotation.x
 	var dyaw := angle_difference(yaw0, yaw)

@@ -11,6 +11,7 @@ const SPIN_RADPS := 16.0   ## drum speed before it brakes (a face passes every ~
 const EASE_SEC := 0.55     ## the braking run
 const BIG_MULT := 7        ## a win from this multiple of the bet strobes the bulbs
 const IDLE_TEXT := "PLAY ME"
+const RATTLE_M := 0.0035   ## the cabinet's shiver while the drums run (m, all three; fewer drums, less)
 
 var _mat: ShaderMaterial
 var _drums: Array[MeshInstance3D] = []
@@ -31,6 +32,8 @@ var _peer := 0
 var _result := {}
 var _shake := 0.0
 var _home := Vector3.ZERO
+var _rattle: AudioStreamPlayer3D   ## the drums' loop, while any of them is still turning
+var _stopped := 0                  ## drums that have clicked to a stop this spin
 
 
 ## One drum's closed-form run (see _plan_reel).
@@ -104,6 +107,11 @@ func _ready() -> void:
 	_coins.color = SlotCabinet.GOLD
 	add_child(_coins)
 	_home = position
+	_rattle = AudioStreamPlayer3D.new()
+	_rattle.bus = &"SFX"
+	_rattle.unit_size = 3.0
+	_rattle.position = Vector3(0.0, SlotCabinet.DRUM_Y, 0.2)
+	add_child(_rattle)
 	set_process(false)
 	_bind.call_deferred()
 
@@ -182,6 +190,14 @@ func play(peer_id: int, payload: Dictionary) -> void:
 	_mat.set_shader_parameter(&"chase_speed", 2.5)
 	_mat.set_shader_parameter(&"flash", 0.0)
 	_pull_lever()
+	_stopped = 0
+	_sound_at(&"lever", -2.0)
+	var loop: Variant = _sfx(&"stream", [&"reel_loop"])
+	if loop is AudioStreamOggVorbis:
+		(loop as AudioStreamOggVorbis).loop = true
+		_rattle.stream = loop
+		_rattle.volume_db = -4.0
+		_rattle.play()
 	set_process(true)
 
 
@@ -218,12 +234,27 @@ func _process(delta: float) -> void:
 		_drums[i].rotation.x = _angle_at(plan, _t)
 		var blur := 1.0 if _t < plan.t_brake else clampf(1.0 - (_t - plan.t_brake) / EASE_SEC, 0.0, 1.0)
 		_drums[i].set_instance_shader_parameter(&"blur", blur)
+	while _stopped < SlotMath.REELS and _t >= _plans[_stopped].t_stop:  # the drums stop left to right: one click each
+		_sound_at(&"reel_stop", -3.0, 0.92 + 0.08 * _stopped)
+		_stopped += 1
+	var turning := SlotMath.REELS - _stopped
+	if _rattle.playing:
+		if turning == 0:
+			_rattle.stop()
+		else:
+			_rattle.volume_db = -4.0 + linear_to_db(float(turning) / SlotMath.REELS)
+			_rattle.pitch_scale = 0.8 + 0.2 * turning
 	if not _landed and _t >= SlotMath.reveal_sec(_result[&"stops"]):
 		_land()
 	if _shake > 0.0:
 		_shake = maxf(_shake - delta, 0.0)
 		var k := 0.012 * _shake
 		position = _home + Vector3(randf_range(-k, k), 0.0, randf_range(-k, k))
+	elif turning > 0:
+		var r := RATTLE_M * turning / SlotMath.REELS
+		position = _home + Vector3(randf_range(-r, r), 0.0, randf_range(-r, r))
+	else:
+		position = _home
 	if _t >= _total:
 		_finish()
 
@@ -241,6 +272,7 @@ func _finish() -> void:
 		_land()
 	position = _home
 	_shake = 0.0
+	_rattle.stop()
 	_mat.set_shader_parameter(&"chase_speed", 0.6)
 	_mat.set_shader_parameter(&"flash", 0.0)
 	_led.text = IDLE_TEXT
@@ -265,11 +297,49 @@ func _land() -> void:
 		_celebrate(1.0, Color("FFC93A"), 0.0, "+$%d" % payout, 0.75)
 	elif payout > 0:
 		_celebrate(0.0, Color("FFE58A"), 0.0, "+$%d" % payout, 0.5)
+	_sound_win(win, mult, payout)
 	if payout > int(_result[&"bet"]):  # more than the stake back: coins (a refund is not a win)
 		_coins.amount = 70 if win == &"jackpot" else (36 if mult >= BIG_MULT else 18)
 		_coins.restart()
 		_coins.emitting = true
+		get_tree().create_timer(0.25).timeout.connect(_sound_at.bind(&"chips_b" if mult >= BIG_MULT else &"chips_a", -4.0, 1.0))
 	landed.emit(_peer, _result)
+
+
+## The jingle of a result: jackpot and sevens duck the jukebox so they are heard; a refund is a coin, a miss a sad two notes.
+func _sound_win(win: StringName, mult: int, payout: int) -> void:
+	match win:
+		&"jackpot":
+			_sound_at(&"jackpot", -2.0)
+			_sfx(&"duck", [3.4])
+		&"sevens":
+			_sound_at(&"win_seven", -3.0)
+			_sfx(&"duck", [2.0])
+		&"zap":
+			_sound_at(&"zap", -2.0)
+		&"cursed":
+			_sound_at(&"zap", -2.0)
+			get_tree().create_timer(0.4).timeout.connect(_sound_at.bind(&"win_big", -4.0, 1.0))
+		&"miss":
+			_sound_at(&"lose", -9.0)
+		_:
+			if mult >= BIG_MULT:
+				_sound_at(&"win_big", -3.0)
+			elif payout > int(_result[&"bet"]):
+				_sound_at(&"win_small", -4.0)
+			else:
+				_sound_at(&"coin", -5.0)
+
+
+func _sound_at(sound: StringName, db := 0.0, pitch := 1.0) -> void:
+	_sfx(&"play_at", [sound, to_global(Vector3(0.0, SlotCabinet.DRUM_Y, 0.3)), db, pitch])
+
+
+## The Sfx autoload (src/core/sfx.gd), looked up by path: a script that names an autoload does not compile under a `-s` probe, which
+## compiles this one before any autoload exists.
+func _sfx(method: StringName, args: Array) -> Variant:
+	var sfx := get_node_or_null(^"/root/Sfx")
+	return sfx.callv(method, args) if sfx != null else null
 
 
 ## `strobe` 1 = bulbs flash; `shake` seconds of cabinet shake; a floating readout of `size` (1 = jackpot).

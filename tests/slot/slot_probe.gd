@@ -110,6 +110,7 @@ func _run() -> void:
 	await _live_round()
 	await _animation()
 	await _screen()
+	await _custom_bet()
 	print("SLOT %s" % ("OK" if _fails == 0 else "FAILED (%d)" % _fails))
 	quit(0 if _fails == 0 else 1)
 
@@ -151,7 +152,8 @@ func _contract() -> void:
 	_check(screen.priority == 5 and screen.get_node("Panel").get_global_rect().size.x >= 600.0, "priority 5, a bottom strip")
 	await create_timer(FACE_WAIT).timeout
 	var to_machine := (machine.global_position + Vector3(0.0, SlotCabinet.DRUM_Y, 0.0) - player.cam.global_position).normalized()
-	_check((-player.cam.global_basis.z).dot(to_machine) > 0.98, "the camera turned to the reels (dot %.3f)" % (-player.cam.global_basis.z).dot(to_machine))
+	var lift := (-player.cam.global_basis.z).dot(to_machine)
+	_check(lift > 0.96 and lift < 0.995, "the camera turned to the reels, looking a little below them so they clear the strip (dot %.3f)" % lift)
 	screen.close()
 	_check(not UIRouter.blocking(), "closing frees the player")
 	player.global_position = Vector3(-5.0, 0.05, 1.5)
@@ -236,6 +238,90 @@ func _rules() -> void:
 	world.request(&"slot_spin", 0, {&"tier": 0})
 	loop.phase = phase
 	_check(refused == [&"slot_closed"], "dark between Nights: %s" % [refused])
+
+
+# --- a custom stake: the host snaps it, bounds it, checks the purse, and an RTP ledger holds at the top stake --------------------------------
+
+func _custom_bet() -> void:
+	if loop.phase != GameLoop.Phase.INTERMISSION:
+		return
+	_close_modals()
+	player.global_position = Vector3(-5.0, 0.05, 1.5)
+	var cap := SlotMath.bet_cap(NIGHT_1.quota)
+	var bets := SlotMath.bets(NIGHT_1.quota)
+	_check(cap == roundi(NIGHT_1.quota * 0.25 / 5.0) * 5 and cap > bets[2] and SlotMath.bet_cap(40) == SlotMath.BET_MIN and SlotMath.bet_cap(3000) == 750, "the cap scales with the Quota: $%d at %d, the floor at 40, $%d at 3000" % [cap, NIGHT_1.quota, SlotMath.bet_cap(3000)])
+	_check(SlotMath.snap_bet(57, 600) == 55 and SlotMath.snap_bet(10, 600) == 10 and SlotMath.snap_bet(150, 600) == 150, "a stake snaps down to the $5 step")
+	_check(SlotMath.snap_bet(7, 600) == -1 and SlotMath.snap_bet(5, 600) == -1 and SlotMath.snap_bet(155, 600) == -1 and SlotMath.snap_bet(-5, 600) == -1, "under the floor, over the cap, negative: out")
+	_check(SlotMath.snap_bet(20.0, 600) == -1 and SlotMath.snap_bet("20", 600) == -1 and SlotMath.snap_bet(true, 600) == -1 and SlotMath.snap_bet(null, 600) == -1, "a float, a string, a bool, null: out")
+	econ.add_cash(1000 - econ.cash, &"test")
+	# every bad stake is refused, names its reason, and costs nothing
+	var bad := {
+		"zero": [{&"bet": 0, &"cash": 1000}, &"bad_bet"],
+		"negative": [{&"bet": -20, &"cash": 1000}, &"bad_bet"],
+		"under the step floor": [{&"bet": 7, &"cash": 1000}, &"bad_bet"],
+		"over the cap": [{&"bet": cap + 5, &"cash": 1000}, &"bad_bet"],
+		"huge": [{&"bet": 1 << 40, &"cash": 1000}, &"bad_bet"],
+		"a float": [{&"bet": 20.0, &"cash": 1000}, &"bad_payload"],
+		"a string": [{&"bet": "20", &"cash": 1000}, &"bad_payload"],
+		"no cash field": [{&"bet": 20}, &"bad_payload"],
+		"a float cash": [{&"bet": 20, &"cash": 1000.0}, &"bad_payload"],
+		"stale cash (low)": [{&"bet": 20, &"cash": 999}, &"stale_cash"],
+		"stale cash (high)": [{&"bet": 20, &"cash": 1001}, &"stale_cash"],
+	}
+	var n := applied.size()
+	for what: String in bad:
+		refused.clear()
+		world.request(&"slot_spin", 0, bad[what][0].duplicate())
+		_check(refused == [bad[what][1]] and econ.cash == 1000 and applied.size() == n, "%s is refused as %s, free (got %s, cash %d)" % [what, bad[what][1], refused, econ.cash])
+	# a valid custom stake is charged exactly, the broadcast carries it, an off-step one snaps down
+	for want: Array in [[55, 55, -1], [bets[1], bets[1], 1], [cap, cap, -1], [57, 55, -1]]:
+		econ.add_cash(1000 - econ.cash, &"test")
+		house.rng.seed = _seed_for(&"miss")
+		var p := _spin_custom(want[0])
+		_check(not p.is_empty() and int(p[&"bet"]) == want[1] and int(p[&"tier"]) == want[2] and econ.cash == 1000 - want[1], "stake $%d is charged $%d (tier %d), cash %d" % [want[0], want[1], want[2], econ.cash])
+		machine._finish()
+	# the 200-spin ledger at the top stake: every payout is its multiple x the stake, and the purse is exactly the sum
+	var top := cap
+	econ.add_cash(1000000 - econ.cash, &"test")
+	house.rng.seed = 20261014
+	var paid := 0
+	var staked := 0
+	var jackpots := 0
+	var slot_net := [0]  # every `slot` cash movement: the purse also takes tips, effects and chaos, which are not this ledger
+	var count := func(_b: int, delta: int, reason: StringName) -> void:
+		if reason == &"slot":
+			slot_net[0] += delta
+	econ.cash_changed.connect(count)
+	for i in 200:
+		var payload := {&"bet": top, &"cash": econ.cash}
+		if house.validate(1, payload) != &"" or house.charge(payload) != &"":
+			_check(false, "spin %d at the top stake was refused" % i)
+			break
+		house.spin(1, payload)
+		var win: StringName = payload[&"win"]
+		_check(int(payload[&"bet"]) == top and int(payload[&"payout"]) == int(SlotMath.WINS[win].mult) * top, "spin %d: %s pays x%d of $%d" % [i, win, SlotMath.WINS[win].mult, top])
+		paid += int(payload[&"payout"])
+		staked += top
+		jackpots += 1 if win == &"jackpot" else 0
+		house.flush()
+	econ.cash_changed.disconnect(count)
+	_check(slot_net[0] == paid - staked and staked == 200 * top, "the slot ledger is stakes out, payouts in: %d vs %d" % [slot_net[0], paid - staked])
+	var rtp := float(paid) / float(staked)
+	_check(rtp > 0.2 and rtp < 3.0, "200 spins at $%d: realised RTP %.3f (the exact %.4f is in slot_math_probe; 200 spins are noise, this is a sanity band)" % [top, rtp, SlotMath.rtp()])
+	_check(SlotMath.payout(&"jackpot", top) == 120 * top, "payout scales exactly with the stake (jackpot $%d)" % SlotMath.payout(&"jackpot", top))
+	machine._finish()
+	await _stand_at_machine()
+	econ.add_cash(1000 - econ.cash, &"test")
+
+
+func _spin_custom(bet: int) -> Dictionary:
+	var before := applied.size()
+	world.request(&"slot_spin", 0, {&"bet": bet, &"cash": econ.cash})
+	if applied.size() == before:
+		return {}
+	var payload: Dictionary = applied.back()
+	house.flush()
+	return payload
 
 
 # --- chaos: real Effects, decided with the spin, fired at the reveal ---------------------------------------------------
@@ -385,6 +471,31 @@ func _screen() -> void:
 	_check(screen._spin.size.y >= 48.0 and screen._cash.text == "Cash $1000", "the spin button is thumb-sized; the Cash shows")
 	screen._tier_buttons[2].pressed.emit()
 	_check(screen._spin.text == "PULL THE LEVER  $%d" % bets[2], "picking a stake re-words the button")
+	var cap := SlotMath.bet_cap(NIGHT_1.quota)
+	_check(screen._slider.min_value == 10 and screen._slider.max_value == cap and screen._slider.step == 5 and screen._slider.value == bets[2], "the slider spans $10 .. the cap $%d and sits on the pick" % cap)
+	screen._plus.pressed.emit()
+	_check(screen._spin.text == "PULL THE LEVER  $%d" % (bets[2] + 5) and not screen._tier_buttons[2].button_pressed, "+ raises the stake by $5 and leaves the presets")
+	screen._minus.pressed.emit()
+	screen._minus.pressed.emit()
+	_check(screen._spin.text == "PULL THE LEVER  $%d" % (bets[2] - 5), "- lowers it by $5")
+	screen._max_button.pressed.emit()
+	_check(screen._spin.text == "PULL THE LEVER  $%d" % cap and screen._plus.disabled and screen._max_button.text == "MAX $%d" % cap, "MAX is the whole purse up to the cap: %s" % screen._spin.text)
+	screen._slider.value = 25
+	_check(screen._spin.text == "PULL THE LEVER  $25", "dragging the slider sets any $5 stake: %s" % screen._spin.text)
+	screen._slider.value = 5
+	_check(screen._spin.text == "PULL THE LEVER  $%d" % SlotMath.BET_MIN and screen._minus.disabled, "the floor holds at $%d" % SlotMath.BET_MIN)
+	for b: Button in [screen._minus, screen._plus, screen._max_button]:
+		_check(b.size.y >= 48.0, "stepper buttons are thumb-sized (%.0f px)" % b.size.y)
+	_check(screen._slider.size.y >= 48.0, "the slider is thumb-sized")
+	_check(screen.get_node("Panel").get_global_rect().size.y <= 330.0, "the strip stays low enough to keep the machine in view")
+	econ.add_cash(33 - econ.cash, &"test")
+	screen._max_button.pressed.emit()
+	_check(screen._spin.text == "PULL THE LEVER  $30" and screen._max_button.text == "MAX $30", "MAX is the whole purse in $5 steps ($33 -> $30)")
+	econ.add_cash(3 - econ.cash, &"test")
+	screen._max_button.pressed.emit()
+	_check(screen._spin.disabled and screen._spin.text == "Need $%d" % SlotMath.BET_MIN and screen._max_button.text == "MAX $%d" % SlotMath.BET_MIN, "broke: MAX is the floor and the button names what it needs")
+	econ.add_cash(1000 - econ.cash, &"test")
+	screen._tier_buttons[2].pressed.emit()
 	var rect: Rect2 = screen.get_node("Panel").get_global_rect()
 	var view := Rect2(Vector2.ZERO, screen.get_viewport_rect().size)
 	_check(view.encloses(rect), "the strip is on screen %s in %s" % [rect, view])
@@ -398,6 +509,7 @@ func _screen() -> void:
 	landed.clear()
 	screen._spin.pressed.emit()
 	_check(applied.size() == 1 and screen._spin.disabled and screen._spin.text == "Spinning…", "Pull sends the spin; the button waits")
+	_check(int(applied[0][&"bet"]) == bets[0], "the pull sent the picked stake $%d" % bets[0])
 	await _until(func() -> bool: return not landed.is_empty(), "the reels to land", 10.0)
 	await process_frame
 	_check(screen._status.text == "TWO CHERRIES  +$%d" % (2 * bets[0]), "the strip names the win: %s" % screen._status.text)
@@ -408,6 +520,15 @@ func _screen() -> void:
 	_check(machine.is_playing(), "the celebration outlasts the spin")
 	house.flush()
 	machine._finish()
+	# a big win shakes the strip and the view, and both come to rest
+	screen._shake_view(1.0)
+	await create_timer(0.2).timeout
+	_check(screen.get_node("Panel").position != screen._panel_home or player.cam.h_offset != 0.0, "mid-shake the strip or the camera is off its rest")
+	await create_timer(1.3).timeout
+	_check(screen.get_node("Panel").position == screen._panel_home and player.cam.h_offset == 0.0 and player.cam.v_offset == 0.0, "the shake ends exactly at rest")
+	for reason in [&"bad_bet", &"stale_cash"]:
+		screen._on_rejected(&"slot_spin", reason)
+		_check(screen._status.text == SlotScreen.BET_REASONS[reason], "'%s' is worded on the strip: %s" % [reason, screen._status.text])
 	# a refusal reads on the strip
 	refused.clear()
 	screen._on_rejected(&"slot_spin", &"busy")
