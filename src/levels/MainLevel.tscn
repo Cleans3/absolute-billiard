@@ -36,6 +36,9 @@
 [ext_resource type="Script" path="res://src/ui/slot_screen.gd" id="slot_screen"]
 [ext_resource type="Script" path="res://src/gameplay/fx/impact_fx.gd" id="impact_fx"]
 [ext_resource type="Script" path="res://src/gameplay/bar/stream_tv.gd" id="stream_tv"]
+[ext_resource type="Script" path="res://src/gameplay/staging/vent.gd" id="staging_vent"]
+[ext_resource type="Script" path="res://src/gameplay/staging/trapdoor.gd" id="staging_trapdoor"]
+[ext_resource type="Script" path="res://src/gameplay/staging/round_staging.gd" id="round_staging"]
 
 [node name="MainLevel" type="Node3D" unique_id=1789307385]
 script = ExtResource("5_main")
@@ -157,6 +160,18 @@ spawner = NodePath("../PlayerSpawner")
 transform = Transform3D(-1, 0, 0, 0, 1, 0, 0, 0, -1, 0, 2.1, 7)
 script = ExtResource("stream_tv")
 cameras = NodePath("../Cameras")
+
+[node name="Vent" type="Node3D" parent="." node_paths=PackedStringArray("table")]
+script = ExtResource("staging_vent")
+table = NodePath("../Table")
+
+[node name="Trapdoor" type="Node3D" parent="."]
+script = ExtResource("staging_trapdoor")
+
+[node name="Staging" type="Node3D" parent="." node_paths=PackedStringArray("table", "vent")]
+script = ExtResource("round_staging")
+table = NodePath("../Table")
+vent = NodePath("../Vent")
 
 [node name="UILayer" type="CanvasLayer" parent="."]
 

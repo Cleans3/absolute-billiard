@@ -190,6 +190,9 @@ MainLevel.tscn
  │    └── PlayerSlots/         — one PlayerSlot per peer (Player module: black box)
  ├── Bar / Cameras / Props     — free-roam interaction targets (Cameras also owns the fixed ceiling camera, never scored)
  ├── Tv                        — StreamTv: the wall TV, dynamic, two live camera feeds (tripod 1 + ceiling), `set_feeds_on(on)` (07 §2)
+ ├── Vent                      — the ceiling vent over the table's east rail (dynamic, louvres): `open()` / `close()` / `finished` / `mouth_transform()` / `is_open` (01 "Round staging", 06 P33 D14)
+ ├── Trapdoor                  — the hole in the floor (3 × 3 m at (0, 3.8)) and its two dynamic panels, a dark shaft below: `open()` / `close()` / `finished` / `pit()` (the failure cutscene's seam, 06 P33 A10)
+ ├── Staging                   — RoundStaging: plays the Round's set-up (saucer out of the Vent, beam, balls materialise) and clean-up (the bed opens, the balls fall away) on every peer from `StagingPlan`; RoundDirector owns the `staging` flag
  └── UILayer
 ```
 "New campaign" is a scene reload, so no session node needs a reset path.
@@ -246,6 +249,8 @@ MainLevel.tscn
 | `push_player_pose(blob)` | PlayerSlot | any→A | `any_peer` | `call_remote` | `unreliable_ordered` | 2 |
 | `apply_knock(peer_id, impulse, seconds)` — the host's `PlayerSpawner.knock`: thrown drink, bomb blast, stumble tick (08 §2.7) | PlayerSpawner | H→A | `authority` | `call_local` | `reliable` | 3 |
 | `push_player_knock(impulse, seconds)` — the owner's own knock (a hard landing); the sender must be the slot's peer | PlayerSlot | any→A | `any_peer` | `call_remote` | `reliable` | 3 |
+
+**The Round's set-up and clean-up (01 "Round staging", 06 P33 U15/U16) add no rpc.** Every peer plays the same schedule from its own clock, started by what it already receives: the host when it has placed the rack, a client when `push_rack` arrives, and the clean-up from `round_state`'s Intermission transition (`GameLoop.round_ended`). `RoundDirector.staging` is per peer; a client that asks for a strike while the host is still staging gets `shot_rejected(&"staging")`.
 
 `update_cash` carries the **absolute** balance, never a delta — a lost or reordered delta desyncs the crew purse permanently; `delta`/`reason` ride along only so the HUD can flash a tip. The host handler is a no-op (`add_cash` already applied it); a client that receives `reason == &"scratch"` also emits `fined(reason, -delta)` (06 P16), so the fine banner needs no RPC of its own. The balance may be negative. `update_viewers` is display-only (the host computes income from its own value), so losing one costs a frame of a number; hype decay reaches clients at ≤ 4 Hz, and `GameLoop` re-sends it with a 1 Hz `round_state` heartbeat during a live Round (phase changes are sent at once; nothing is sent at rest). Clients re-emit `night_started` / `round_started` / `round_ended` / `intermission_started` / `night_ended` from `round_state` in the host's order, so the HUD is identical on every peer. `push_rig_poses` is 4 floats per rig (x, y, z, yaw) plus a `PackedInt32Array` of holder peer ids (0 = free) at 4 Hz, only while a rig moved or changed hands, plus a few repeats at rest; the Player derives `CARRY` from the holders (08 §5). `push_save_checkpoint` lands in `SaveManager.receive_checkpoint`.
 

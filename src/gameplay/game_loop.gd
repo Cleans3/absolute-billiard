@@ -16,6 +16,7 @@ signal shot_settled(shot_id: String, cash: int, trick_id: StringName, foul: bool
 signal cue_respawned(reason: StringName)  # relayed from RoundDirector for the HUD
 signal state_changed()  # time/shots/round/night fields changed (host after a rule, client after a mirror)
 signal ready_changed()  # GO LIVE: someone (un)pressed it, or the crew changed (host after a rule, client after a mirror)
+signal staging_changed(on: bool)  # relayed from RoundDirector: the table is being set up / cleared (06 P33 A4); the pedestal reads it
 
 const SYNC_PERIOD := 1.0  # live-Round round_state heartbeat; phase changes are sent at once
 const STOCK_SALT := 0x5701  # keeps the shelf's seed apart from round_seed's hash of the same three numbers
@@ -54,6 +55,8 @@ func _ready() -> void:
 		round_director.connect(&"table_cleared", _on_table_cleared)
 		round_director.connect(&"cue_respawned", func(reason: StringName) -> void: cue_respawned.emit(reason))
 		round_director.connect(&"ball_potted", _on_ball_potted)
+		if round_director.has_signal(&"staging_changed"):
+			round_director.connect(&"staging_changed", func(on: bool) -> void: staging_changed.emit(on))
 	if stream != null:
 		stream.tip_received.connect(_on_tip_received)
 	if economy != null:
@@ -67,8 +70,10 @@ func _ready() -> void:
 func _process(delta: float) -> void:
 	if phase != Phase.ROUND_LIVE:
 		return
+	var waiting := is_staging()  # the Round's clock starts when the set-up has played (06 P33 A4)
 	if not is_host():
-		time_left = maxf(time_left - delta, 0.0)  # cosmetic between round_state packets
+		if not waiting:
+			time_left = maxf(time_left - delta, 0.0)  # cosmetic between round_state packets
 		return
 	_sync_accum += delta
 	if _sync_accum >= SYNC_PERIOD:
@@ -76,7 +81,7 @@ func _process(delta: float) -> void:
 		_push_state()
 		if stream != null:
 			stream.resend()
-	if _timer_expired:
+	if _timer_expired or waiting:
 		return
 	time_left = maxf(time_left - delta, 0.0)
 	if time_left == 0.0:
@@ -136,7 +141,8 @@ func advance() -> void:
 		return
 	match phase:
 		Phase.INTERMISSION:
-			_start_round()
+			if not is_staging():  # the last Round's clean-up is still playing
+				_start_round()
 		Phase.RECKONING, Phase.CAMPAIGN_WON:
 			night_index += 1
 			_begin_night()
@@ -145,7 +151,7 @@ func advance() -> void:
 ## Host. The GO LIVE pedestal (WorldInteractions `go_live`): a press toggles the presser's ready flag; the Round
 ## starts once every peer the crew waits on has pressed. A peer that left is dropped, one in the background is not waited on.
 func toggle_ready(peer_id: int) -> void:
-	if not is_host() or phase != Phase.INTERMISSION:
+	if not is_host() or phase != Phase.INTERMISSION or is_staging():
 		return
 	var at := ready_peers.find(peer_id)
 	if at >= 0:
@@ -158,6 +164,11 @@ func toggle_ready(peer_id: int) -> void:
 ## Identity of this Intermission's Bartender shelf (06 P17): one Night + Round of one campaign always rolls the same drinks.
 func stock_key() -> int:
 	return hash([campaign_seed, current_night().night_number, round_index, STOCK_SALT])
+
+
+## The table is being set up or cleared (RoundDirector.staging): no clock runs, no strike, no GO LIVE (06 P33 A4).
+func is_staging() -> bool:
+	return round_director != null and round_director.get(&"staging") == true
 
 
 func is_host() -> bool:

@@ -128,6 +128,7 @@ func _run() -> void:
 	await process_frame
 	lobby.get_node("LobbyUI/Center/Menu/Solo").pressed.emit()
 	await SoloSupport.until_playable(self, 60.0, true)
+	RoundDirector.skip_staging = true  # the bot plays the game, not the show (06 P33 A4): no waiting for the saucer
 	t0_msec = Time.get_ticks_msec()
 	_bind()
 	process_frame.connect(_sample)

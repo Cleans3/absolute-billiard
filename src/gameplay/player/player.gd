@@ -321,8 +321,8 @@ func _hostile_ok() -> bool:
 	return _loop == null or (_loop.phase == GameLoop.Phase.ROUND_LIVE and not _staging() and _rd.current_shooter_id != multiplayer.get_unique_id())
 
 
-## RoundDirector.staging: true while the table is being set up or cleared (A4, the Round staging slice owns the flag; until it
-## exists nothing is ever staging).
+## RoundDirector.staging: true while the table is being set up (the saucer beams the rack in) or cleared (the bed opens, the balls fall away),
+## 06 P33 A4. Read by name so a RoundDirector stand-in without the flag simply never stages.
 func _staging() -> bool:
 	return _rd != null and _rd.get(&"staging") == true
 

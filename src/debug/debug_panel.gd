@@ -47,6 +47,7 @@ var _test_spin_y: HSlider
 var _test_elev: HSlider
 var _refresh_queued := false
 var _view_toggles := {}
+var _staging_toggle: CheckButton
 
 
 func _init() -> void:
@@ -289,6 +290,7 @@ func _build_view(page: VBoxContainer) -> void:
 		_view_toggles[v[0]] = DebugWidgets.toggle(page, v[1], false, func(on: bool) -> void: debug_root.set_view(v[0], on))
 	if not DisplayServer.is_touchscreen_available():
 		_view_toggles["freecam"] = DebugWidgets.toggle(page, "Free camera (WASD, mouse, Q/E)", false, func(on: bool) -> void: debug_root.set_view("freecam", on))
+	_staging_toggle = DebugWidgets.toggle(page, "Skip Round set-up / clean-up (this peer: no saucer, no wait)", RoundDirector.skip_staging, func(on: bool) -> void: RoundDirector.skip_staging = on)
 	DebugWidgets.label(page, "Time scale")
 	var row := DebugWidgets.row(page)
 	for t: float in TIMESCALES:
@@ -316,6 +318,7 @@ func _refresh() -> void:
 	_tuning_label.text = "default numbers" if changed_text == "" else "changed:  " + changed_text.replace("\n", ",  ")
 	_rebuild_shots()
 	_game_label.text = _game_text()
+	_staging_toggle.set_pressed_no_signal(RoundDirector.skip_staging)
 
 
 func _game_text() -> String:

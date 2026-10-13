@@ -40,6 +40,7 @@ func _run() -> void:
 	root.add_child(vp)
 	var room: BarRoom = ROOM.instantiate()
 	root.add_child(room)
+	root.add_child(Trapdoor.new())  # the floor's hole is covered by MainLevel/Trapdoor's panels, not by the baked room
 	var table: Table = TABLE.instantiate()
 	table.position = TABLE_CENTRE
 	root.add_child(table)

@@ -17,6 +17,7 @@ const INTERACTION := {
 	bad_payload = "That order isn't valid",
 	intermission_only = "That is only served between Rounds",
 	not_intermission = "GO LIVE only works between Rounds",
+	staging = "The table is being cleared: one moment",
 	not_ringing = "The phone isn't ringing",
 	already_answered = "Somebody already picked up",
 	hostile_off = "Hostile moves are off in this lobby",

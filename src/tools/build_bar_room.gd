@@ -222,8 +222,9 @@ func _run() -> void:
 	var s_lamp := _st(prop_m, TILE.metal)   # the table lamp: its own mesh on CeilingCam.LAMP_LAYER, so the ceiling feed can leave it out
 	var s_juke := _st(juke_m)
 
-	# --- floor ---
-	_box(s_floor, Vector3(0, -0.05, 0), Vector3(2 * HALF, 0.1, 2 * HALF))
+	# --- floor (with the Trapdoor's hole cut out: MainLevel/Trapdoor covers it with dynamic panels) ---
+	for r in _floor_rects(HALF):
+		_box(s_floor, Vector3(r.get_center().x, -0.05, r.get_center().y), Vector3(r.size.x, 0.1, r.size.y))
 
 	# --- walls (north wall has the door opening) ---
 	var t := 0.2
@@ -462,7 +463,8 @@ func _build_collision(root_n: Node3D, cz0: float, clen: float, stools: Array[Vec
 	body.collision_layer = 8  # 07 §1 layer 4 "world"; balls (mask 1|2|3) never test it
 	body.collision_mask = 0
 	_add(root_n, body, "Collision")
-	_shape(body, Vector3(0, -0.5, 0), Vector3(2 * HALF + 4, 1.0, 2 * HALF + 4))
+	for r in _floor_rects(HALF + 2.0):  # the floor slab, but for the Trapdoor's hole (the shaft and the panels have their own bodies)
+		_shape(body, Vector3(r.get_center().x, -0.5, r.get_center().y), Vector3(r.size.x, 1.0, r.size.y))
 	_shape(body, Vector3(0, CEIL + 0.5, 0), Vector3(2 * HALF + 4, 1.0, 2 * HALF + 4))
 	_shape(body, Vector3(0, CEIL * 0.5, HALF + 0.5), Vector3(2 * HALF + 2, CEIL, 1.0))
 	_shape(body, Vector3(0, CEIL * 0.5, -HALF - 0.5), Vector3(2 * HALF + 2, CEIL, 1.0))
@@ -477,6 +479,20 @@ func _build_collision(root_n: Node3D, cz0: float, clen: float, stools: Array[Vec
 		_shape(body, tp + Vector3(0, 0.5, 0), Vector3(1.0, 1.0, 1.0))
 	for b: AABB in decor_boxes:
 		_shape(body, b.get_center(), b.size)
+
+
+## The square [-half, half]² (x, z as Rect2's x, y) minus the Trapdoor's hole (DecorPlan.TRAPDOOR_*): four rectangles round it.
+func _floor_rects(half: float) -> Array[Rect2]:
+	var x0 := DecorPlan.TRAPDOOR_AT.x - DecorPlan.TRAPDOOR_SIZE.x * 0.5
+	var x1 := DecorPlan.TRAPDOOR_AT.x + DecorPlan.TRAPDOOR_SIZE.x * 0.5
+	var z0 := DecorPlan.TRAPDOOR_AT.y - DecorPlan.TRAPDOOR_SIZE.y * 0.5
+	var z1 := DecorPlan.TRAPDOOR_AT.y + DecorPlan.TRAPDOOR_SIZE.y * 0.5
+	return [
+		Rect2(-half, -half, x0 + half, 2.0 * half),     # west of the hole, the full depth of the room
+		Rect2(x1, -half, half - x1, 2.0 * half),        # east of it
+		Rect2(x0, -half, x1 - x0, z0 + half),           # north of it, between those
+		Rect2(x0, z1, x1 - x0, half - z1),              # south of it
+	]
 
 
 func _light(root_n: Node3D, nm: String, pos: Vector3, color: Color, energy: float, range_m: float, bake: int) -> OmniLight3D:

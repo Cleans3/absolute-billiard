@@ -45,6 +45,11 @@ const AGAINST_EAST := -90.0   # wall x=+7, front faces -x
 
 const HALF := 7.0
 const CEIL := 3.6
+## The Trapdoor's hole in the floor (06 P33 A10, MainLevel/Trapdoor): centre (x, z) and size (x, z) in metres. build_bar_room.gd cuts it out of the
+## floor mesh and collision, Trapdoor covers it with its panels and floor_keep_clear() keeps decor off it. The open floor in the middle of the
+## south half: clear of the table's band, the spawn row, GO LIVE, the counter, the jukebox, the round tables and the TV wall's shelves.
+const TRAPDOOR_AT := Vector2(0.0, 3.8)
+const TRAPDOOR_SIZE := Vector2(3.0, 3.0)
 const TABLE_TOP_Y := 1.01   # round bar tables (build_bar_room.gd: top at 0.98, 0.06 thick)
 
 ## [id, pack, model, Vector3(x, y, z), yaw_deg, kind, scale multiplier = 1.0, class = auto (see `classify`), brightness = 1.0]
@@ -152,6 +157,7 @@ static func floor_keep_clear() -> Array[Rect2]:
 	for t: Vector2 in [Vector2(-5.2, 2.6), Vector2(-5.2, 4.4), Vector2(-2.8, 5.6)]:
 		r.append(_rect(t.x - 1.0, t.y - 1.0, t.x + 1.0, t.y + 1.0))  # table + its two stools
 	r.append(_circle_rect(Vector3(-3.7, 0.0, -1.0), 1.2))  # GO LIVE pedestal (flow)
+	r.append(_rect(TRAPDOOR_AT.x - TRAPDOOR_SIZE.x * 0.5 - 0.2, TRAPDOOR_AT.y - TRAPDOOR_SIZE.y * 0.5 - 0.2, TRAPDOOR_AT.x + TRAPDOOR_SIZE.x * 0.5 + 0.2, TRAPDOOR_AT.y + TRAPDOOR_SIZE.y * 0.5 + 0.2))  # the Trapdoor's hole + 0.2 m
 	r.append(_rect(-7.5, 0.3, -5.1, 2.7))          # slot machine reach zone (alpha, supersedes the contract box): the slot at (-6.3, 1.5) on the west wall, facing +x
 	for p: Array in Bar.PROPS:
 		r.append(_circle_rect(p[1], Bar.REACH_ZONE_RADIUS))
