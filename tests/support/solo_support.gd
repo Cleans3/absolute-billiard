@@ -3,9 +3,10 @@ extends RefCounted
 ## For probes that press Lobby > Solo: MainLevel loads on a thread behind the loading screen (docs/plan/04), so wait
 ## for the bar to be playable (MainLevel is the current scene, the screen has ended, the local player stands in it)
 ## instead of counting frames.
-## The campaign starts as the level comes up and Night 1's story cards open over the bar (docs/plan/09 §3.1); a probe that is
-## not about the story reads past them (they close here), because an open modal gates the player and holds the toasts back.
-## `keep_story` leaves them open for the probes under tests/story.
+## The campaign starts as the level comes up. Night 1's story cards no longer open by themselves (`StoryDirector.auto_intro_cards`,
+## 06 P44); `keep_story` switches them back on for the probes under tests/story, and leaves them open. Without it a card that
+## did open (a probe flipped the flag) is closed here: an open modal gates the player and holds the toasts back.
+## The first-time coach (src/ui/coach.gd) is off for every probe and shot tool; `keep_coach` is for the ones that test it.
 ## The Night's first Intermission also pours the crew one house Drink (docs/plan/02 §3.10), which takes a slot and a Reward
 ## term; a probe that is not about Drinks reads past it too (it ends here as a Round would end it). `keep_pour` leaves it
 ## for the probes that test the pour.
@@ -14,9 +15,11 @@ extends RefCounted
 ## The cutscenes (the intro, the failure, the win, 09 §3.8, adhoc-1013c F3b) are skipped the same way (`CutsceneDirector.skip_cutscenes`): the campaign
 ## starts at once and Game over / Campaign won are the PhaseScreen's. `keep_cutscenes` leaves them on for tests/cutscene/room_cutscene_probe.gd.
 
-static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false, keep_staging := false, keep_cutscenes := false) -> void:
+static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false, keep_staging := false, keep_cutscenes := false, keep_coach := false) -> void:
 	RoundDirector.skip_staging = not keep_staging
 	CutsceneDirector.skip_cutscenes = not keep_cutscenes
+	StoryDirector.auto_intro_cards = keep_story
+	Coach.enabled = keep_coach
 	var t0 := Time.get_ticks_msec()
 	while Time.get_ticks_msec() - t0 < sec * 1000.0:
 		var scene := tree.current_scene

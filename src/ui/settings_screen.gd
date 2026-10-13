@@ -4,6 +4,7 @@ extends UIModal
 ## final (slider released, toggle, screen closed). From the main menu or from Pause.
 
 var _widgets := {}  # key -> Control, so a reset can push the stored values back
+var _replay: Button
 
 @onready var _tabs: TabContainer = %Tabs
 @onready var _back: Button = %Back
@@ -32,6 +33,15 @@ func _ready() -> void:
 	_slider(input, "Cue aim sensitivity", &"cue_aim_sens", times)
 	_check(input, "Invert look Y", &"invert_y")
 	_check(input, "Left-handed touch layout (mirror)", &"touch_mirror")
+	var help := _page("Help")
+	_replay = Button.new()
+	_replay.text = "Replay tutorial"
+	_replay.custom_minimum_size = Vector2(0, 56)
+	_replay.pressed.connect(func() -> void:
+		Coach.replay(get_tree())  # the first-time guide shows again in the next game (or right now, in a Round)
+		_replay.text = "Tutorial will replay"
+		_replay.disabled = true)
+	help.add_child(_replay)
 	_back.pressed.connect(close)
 	%Reset.pressed.connect(func() -> void:
 		Settings.reset_values()
@@ -41,6 +51,8 @@ func _ready() -> void:
 
 func _on_open() -> void:
 	_sync()
+	_replay.text = "Replay tutorial"
+	_replay.disabled = false
 	_back.grab_focus()
 
 

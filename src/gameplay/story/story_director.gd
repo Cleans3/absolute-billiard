@@ -1,14 +1,18 @@
 class_name StoryDirector
 extends Node
 ## The story's one director (docs/plan/09 §4.1): presentation only, it changes no rule. It runs on every peer from the same
-## GameLoop signals and owns four things: the Night's intro cards (local, once per Night per campaign per player), the
-## ringing phone and Moe's call, Gus's story pool, and velvet's one stream-chat line per Night. The only state two peers must
-## agree on is "this Night's call was answered": it rides the host-validated `answer_phone` interaction
+## GameLoop signals and owns four things: the Night's intro cards (local, once per Night per campaign per player; off by default,
+## `auto_intro_cards`), the ringing phone and Moe's call, Gus's story pool, and velvet's one stream-chat line per Night. The only
+## state two peers must agree on is "this Night's call was answered": it rides the host-validated `answer_phone` interaction
 ## (`world_interaction_applied`), and the host replays it to a peer that comes back from the background (E7, 06 P29).
 
 const CHAT_DELAY_SEC := 15.0  ## [tune] velvet's line, after Round 1 of a Night goes live
 const CALL_GAP_SEC := 0.7  ## between two lines of the call
 const MOE_SLOW := 1.4  ## Moe's subtitles stay up as much longer as his syllables are (09 §3.2)
+
+## The Night's intro cards open by themselves at NIGHT_START. Off since adhoc-1014a V2 (06 P44): a first spawn shows the first-time
+## coach (src/ui/coach.gd) instead of a wall of story. One flag to bring them back; probes under tests/story switch it on.
+static var auto_intro_cards := false
 
 @export var game_loop: GameLoop
 @export var world: WorldInteractions
@@ -87,7 +91,7 @@ func _on_night_started(night_number: int, _quota: int) -> void:
 	_ring(false)
 	_feed_gus()
 	var story := _story()
-	if story == null or cards == null or story.intro_cards.is_empty():
+	if not auto_intro_cards or story == null or cards == null or story.intro_cards.is_empty():
 		return
 	if game_loop.round_index != 0:  # a resume always lands on a Round boundary: the intro is never replayed mid-Night
 		return
