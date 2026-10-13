@@ -4,11 +4,33 @@ extends Node3D
 ## `lean_on_rail` target_id = 1 + index in Stats.RAILS.
 
 const REACH_ZONE_RADIUS := 1.2
+const SEAT_ZONE_RADIUS := 0.7
+const STOOL_TOP := 0.808  ## build_bar_room.gd's stool seat height
+const SOFA_TOP := 0.46    ## the lounge sofa's cushion: the model's 0.23 at decor scale 2.0 (decor_plan.gd, loungeSofa)
 const PEDESTAL := preload("res://src/gameplay/bar/GoLivePedestal.tscn")
 const GO_LIVE_AT := Vector3(-3.7, 0.0, -1.0)  ## beside the table's south-west corner (table centre (0, 0, -3.5))
 const PHONE_PROP_AT := Vector3(6.1, 0.0, 3.5)  ## the aisle behind the counter, in front of the phone (09 §2.2)
 const PHONE_AT := Vector3(6.8, 1.28, 3.5)  ## the phone on the back-bar panel (x 6.8 face), between the cabinet and the low shelf
 const SLOT_AT := Vector3(-6.3, 0.0, 1.5)  ## the slot machine's footprint centre, against the west wall; its front faces +X (docs/plan/02 §3.9)
+## Sittable seats (06 P33 U7, local Interactables of kind `sit`, not in PROPS: they are not host prompts and the decor keep-clear
+## list is made from PROPS). [id, floor point, Player yaw the sitter faces, seat top]. The counter stools (build_bar_room.gd STOOL_X)
+## face the counter (+X), the table stools face their table, each lounge sofa (decor_plan.gd) seats two facing into the room (+Z).
+const SEATS: Array = [
+	[&"stool_counter_1", Vector3(4.3, 0.0, 1.0), -PI / 2.0, STOOL_TOP],
+	[&"stool_counter_2", Vector3(4.3, 0.0, 2.0), -PI / 2.0, STOOL_TOP],
+	[&"stool_counter_3", Vector3(4.3, 0.0, 3.0), -PI / 2.0, STOOL_TOP],
+	[&"stool_counter_4", Vector3(4.3, 0.0, 4.0), -PI / 2.0, STOOL_TOP],
+	[&"stool_table_1e", Vector3(-4.45, 0.0, 2.6), PI / 2.0, STOOL_TOP],
+	[&"stool_table_1w", Vector3(-5.95, 0.0, 2.6), -PI / 2.0, STOOL_TOP],
+	[&"stool_table_2e", Vector3(-4.45, 0.0, 4.4), PI / 2.0, STOOL_TOP],
+	[&"stool_table_2w", Vector3(-5.95, 0.0, 4.4), -PI / 2.0, STOOL_TOP],
+	[&"stool_table_3e", Vector3(-2.05, 0.0, 5.6), PI / 2.0, STOOL_TOP],
+	[&"stool_table_3w", Vector3(-3.55, 0.0, 5.6), -PI / 2.0, STOOL_TOP],
+	[&"sofa_ne_1", Vector3(5.1, 0.0, -6.55), PI, SOFA_TOP],
+	[&"sofa_ne_2", Vector3(6.1, 0.0, -6.55), PI, SOFA_TOP],
+	[&"sofa_nw_1", Vector3(-6.1, 0.0, -6.55), PI, SOFA_TOP],
+	[&"sofa_nw_2", Vector3(-5.1, 0.0, -6.55), PI, SOFA_TOP],
+]
 # [interaction id or bar kind, position, target_id, prompt]
 const PROPS: Array = [
 	[&"bump_table", Vector3(0.0, 0.0, -1.2), 0, "Bump the table"],
@@ -54,6 +76,25 @@ func _ready() -> void:
 			_add_phone(prop)
 		elif spec[0] == SlotHouse.PROP_KIND:
 			_add_slot()
+	_add_seats()
+
+
+## One local `sit` Interactable per SEATS row (06 P33 U7): `Player.sit_on` reads the seat from it, a puppet finds its seat's height there.
+func _add_seats() -> void:
+	for row: Array in SEATS:
+		var seat := Interactable.new()
+		seat.name = String(row[0])
+		seat.kind = Interactable.SIT
+		seat.prompt = "Sit"
+		seat.position = row[1]
+		seat.seat_yaw = row[2]
+		seat.seat_top = row[3]
+		var shape := CollisionShape3D.new()
+		var sphere := SphereShape3D.new()
+		sphere.radius = SEAT_ZONE_RADIUS
+		shape.shape = sphere
+		seat.add_child(shape)
+		add_child(seat)
 
 
 ## The visible button + ready list at the go_live prop's spot (its labels billboard, so it needs no facing).

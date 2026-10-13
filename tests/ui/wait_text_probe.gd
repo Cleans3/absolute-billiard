@@ -7,7 +7,7 @@ extends SceneTree
 const INTERACTION_REASONS := [&"unknown_kind", &"bad_payload", &"intermission_only", &"not_intermission", &"hostile_off",
 		&"hostile_friends_only", &"shooter_cant_grief", &"not_live", &"once_per_round", &"no_prop", &"no_position", &"too_far",
 		&"hostile_cap", &"cant_afford", &"sold_out", &"not_stocked", &"unknown_item"]
-const SHOT_REASONS := [&"no_cue_ball", &"no_round", &"bad_power", &"bad_aim", &"call_pocket"]
+const SHOT_REASONS := [&"no_cue_ball", &"no_round", &"staging", &"bad_power", &"bad_aim", &"call_pocket"]
 
 var fails := 0
 

@@ -6,6 +6,7 @@ extends RefCounted
 const SHOT := {
 	no_cue_ball = "No cue ball on the table",
 	no_round = "No Round is live yet: press GO LIVE at the table",
+	staging = "The table is being set up: one moment",
 	bad_power = "Pull the power slider back first",
 	bad_aim = "Aim at the table first",
 	call_pocket = "Call a pocket first (1-6)",

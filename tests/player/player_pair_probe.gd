@@ -1,7 +1,8 @@
 extends SceneTree
 ## Two-peer Player probe (run through tests/net/pair.sh): the client becomes shooter, walks to the cue ball and
-## enters CUE (the host sees its avatar switch to the cue pose), strikes with the touch power slider, and the
-## host's PhysicsSim strikes with the client's intent.
+## enters CUE (the host sees its avatar switch to the cue pose, on the rig), strikes with the touch power slider, and the
+## host's PhysicsSim strikes with the client's intent; then the client sits on a stool (the seated bit of the pose: the
+## host's puppet takes the SIT stance on the seat) and stands up again (06 P33 U1 / U7).
 ##   tests/net/pair.sh tests/player/player_pair_probe.gd
 ## Prints `PLAYERPAIR HOST OK` / `PLAYERPAIR CLIENT OK`.
 
@@ -97,6 +98,7 @@ func _host() -> void:
 	await _until(func() -> bool:
 		var d := Vector2(puppet.global_position.x - b.global_position.x, puppet.global_position.z - b.global_position.z)
 		return absf(d.length() - CueController.BACK_M) < 0.1, "avatar %.2f m behind the cue ball" % CueController.BACK_M, 10.0)
+	_check_rig(puppet)
 	_touch_file("host_saw_cue")
 	await _until(func() -> bool: return not struck.is_empty(), "the client's strike", 30.0)
 	var intent: ShotIntent = struck[0]
@@ -104,9 +106,27 @@ func _host() -> void:
 		_fail("host struck with shooter %d power %f, expected %d / %f" % [intent.shooter_id, intent.power, client_id, POWER])
 	await table.sim.all_resting
 	await _until(func() -> bool: return puppet._puppet_mode == Player.Mode.WALK, "client's avatar back in WALK", 10.0)
+	if puppet.humanoid.has_cue_rig() or puppet.humanoid.transform != Transform3D.IDENTITY:
+		_fail("the puppet is out of CUE but its body is still on the rig")
+	await _until(func() -> bool: return FileAccess.file_exists(_file("client_seated")), "client seated", 30.0)
+	var stool := level.get_node("Bar/stool_counter_1") as Interactable
+	await _until(func() -> bool: return puppet._puppet_seated and puppet.humanoid.stance == Humanoid.Stance.SIT, "the puppet sits", 10.0)
+	if puppet.global_position.distance_to(stool.global_position) > 0.05 or not is_equal_approx(puppet.humanoid._seat_top, Bar.STOOL_TOP):
+		_fail("the puppet sits at %s on seat height %.3f, expected %s / %.3f" % [puppet.global_position, puppet.humanoid._seat_top, stool.global_position, Bar.STOOL_TOP])
+	_touch_file("host_saw_seat")
+	await _until(func() -> bool: return not puppet._puppet_seated and puppet.humanoid.stance == Humanoid.Stance.STAND, "the puppet stands up again", 10.0)
 	await _until(func() -> bool: return FileAccess.file_exists(_file("client_done")), "client verdict", 30.0)
 	print("PLAYERPAIR HOST OK")
 	quit(0)
+
+
+## A remote shooter's body is on the rig: stick in the world and on the mirror layer, the body outside the table's outline (06 P33 U1).
+func _check_rig(puppet: Player) -> void:
+	if not puppet.humanoid.has_cue_rig() or not puppet._avatar_cue.top_level or (puppet._avatar_cue.layers & Humanoid.MIRROR_LAYER) == 0:
+		_fail("the puppet in CUE is not on the rig (rig %s, stick top_level %s)" % [puppet.humanoid.has_cue_rig(), puppet._avatar_cue.top_level])
+	var gap := CueStance.outline_gap(table.global_transform.affine_inverse() * puppet.humanoid.bone_point(Humanoid.B.PELVIS), CueStance.outline_half(table.spec))
+	if gap < CueStance.BODY_R_M + CueStance.CLEAR_M - 0.015:
+		_fail("the puppet's pelvis is %.3f m outside the table outline, expected %.2f" % [gap, CueStance.BODY_R_M + CueStance.CLEAR_M])
 
 
 func _client() -> void:
@@ -141,6 +161,13 @@ func _client() -> void:
 		_fail("still in mode %d after the strike" % player.mode)
 	await table.sim.shot_started_net
 	await _until(func() -> bool: return not rd.shot_in_progress, "shot resolved on the client", 30.0)
+	var seat := level.get_node("Bar/stool_counter_1") as Interactable
+	player.sit_on(seat)
+	if not player.seated:
+		_fail("the client could not sit on the stool (mode %d)" % player.mode)
+	_touch_file("client_seated")
+	await _until(func() -> bool: return FileAccess.file_exists(_file("host_saw_seat")), "the host saw the seat", 30.0)
+	player.stand_up()
 	_touch_file("client_done")
 	print("PLAYERPAIR CLIENT OK")
 	quit(0)

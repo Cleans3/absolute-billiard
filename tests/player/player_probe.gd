@@ -464,11 +464,11 @@ func _pose() -> void:
 
 # --- interact prompt, shop, camera carry --------------------------------------------------------------
 
-func _stand_at(pos: Vector3) -> void:
+func _stand_at(pos: Vector3, yaw := 0.0) -> void:
 	player.collision_mask |= 1  # the level floor is still on layer 1 (PERF moves it to 4)
 	player.global_position = pos
 	player.velocity = Vector3.ZERO
-	player.rotation.y = 0.0
+	player.rotation.y = yaw  # a prompt needs the player facing the prop unless it is within 0.6 m (06 P33 U8)
 
 
 ## Every Label / Button text under `node`, joined: what a player can read on the cards.
@@ -492,7 +492,7 @@ func _interact() -> void:
 	_stand_at(Vector3(-1.0, 0.05, 3.0))
 	await _physics(6)
 	_check(player.prompt == "", "no prompt out of reach: '%s'" % player.prompt)
-	_stand_at(Vector3(3.5, 0.05, 2.5))  # customer side of the counter (bar props at (4.2, 0, 2.5))
+	_stand_at(Vector3(3.5, 0.05, 2.5), -PI / 2.0)  # customer side of the counter (bar props at (4.2, 0, 2.5)), facing it (+X)
 	await _physics(6)
 	_check(player.prompt == "Bartender", "the three counter props share one prompt: '%s'" % player.prompt)
 	var menu: BartenderMenu = level.get_node("UILayer/BartenderMenu")
@@ -539,13 +539,15 @@ func _interact() -> void:
 	_stand_at(Vector3(-1.0, 0.05, 3.0))
 	await _physics(6)
 	_check(not menu.is_open(), "walking away closes the Bartender")
-	# no two Interactables closer than 1 m (except the counter's own three)
+	# no two Interactables closer than 1 m (except the counter's own three, and seats: the facing rule tells those apart)
 	var props := get_nodes_in_group(&"interactable")
 	for i in props.size():
 		for j in range(i + 1, props.size()):
 			var pa := props[i] as Interactable
 			var pb := props[j] as Interactable
 			if pa.effective_kind() in Player.BAR_KINDS and pb.effective_kind() in Player.BAR_KINDS:
+				continue
+			if pa.effective_kind() == Interactable.SIT or pb.effective_kind() == Interactable.SIT:
 				continue
 			_check(pa.global_position.distance_to(pb.global_position) >= 1.0, "%s and %s are %.2f m apart" % [pa.effective_kind(), pb.effective_kind(), pa.global_position.distance_to(pb.global_position)])
 	# camera carry

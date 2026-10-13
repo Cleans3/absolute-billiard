@@ -58,11 +58,11 @@ func _wait_flag(name: String, sec := 30.0) -> void:
 	await _until(func() -> bool: return FileAccess.file_exists(_file(name)), name, sec)
 
 
-func _stand_at(pos: Vector3) -> void:
+func _stand_at(pos: Vector3, yaw := 0.0) -> void:
 	player.collision_mask |= 1  # the level floor is still on layer 1 (PERF moves it to 4); without it the walker falls through
 	player.global_position = pos
 	player.velocity = Vector3.ZERO
-	player.rotation.y = 0.0
+	player.rotation.y = yaw  # a prompt needs the player facing the prop unless it is within 0.6 m (06 P33 U8)
 
 
 func _run() -> void:
@@ -156,7 +156,7 @@ func _client() -> void:
 	await _wait_flag("host_ready")
 	await _until(func() -> bool: return econ.cash >= 1000, "mirrored Cash", 10.0)
 	await _until(func() -> bool: return econ.stock_size() == 3 and econ.stock_left(2) == 1, "the host's shelf mirrored", 10.0)
-	_stand_at(COUNTER)
+	_stand_at(COUNTER, -PI / 2.0)
 	await _until(func() -> bool: return player.prompt == "Bartender", "Bartender prompt", 5.0)
 	_flag("client_at_bar")
 	await _wait_flag("host_saw_bar")

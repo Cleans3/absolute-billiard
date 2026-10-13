@@ -1,10 +1,13 @@
 extends SceneTree
-## The wall mirror (C14, 06 P26, adhoc-1012a), the parts that need no renderer: placement, the render layers (shell + table
-## on the room capture, table + avatars + the local head on the window pass, balls on neither), the window camera's geometry, the
-## gates (range, side, off screen), every-frame drawing, the cube face table vs the shader. The capture itself needs a
+## The wall mirror (C14, 06 P26, adhoc-1012a, 06 P33 U2), the parts that need no renderer: placement, the render layers (shell +
+## table on the room capture, table + avatars + the local head + the cue stick on the window pass, balls on neither), the window
+## camera's geometry, the gates (side, off screen; no range cut-off), every-frame drawing, the window pass sized to the glass on
+## screen per tier, the cube face sizes and mipmaps, set_blood, the cube face table vs the shader. The capture itself needs a
 ## window: src/tools/screenshot_mirror.gd.
 ##   godot --path . --headless -s tests/player/mirror_probe.gd
 ## Prints MIRROR OK, or the failing checks and MIRROR FAIL (exit 1).
+
+const FOCAL := 1000.0  ## pixels per metre at 1 m from the eye: a 1080 px tall view at about 56 degrees
 
 var fails := 0
 var finished := false
@@ -53,7 +56,7 @@ func _run() -> void:
 	var view: SubViewport = mirror.get_node("View")
 	_check(mirror.global_position.is_equal_approx(Vector3(-6.9, 1.4, -3.8)), "centred on the west wall at (-6.90, 1.4, -3.8): %s" % mirror.global_position)
 	_check(mirror.global_basis.z.is_equal_approx(Vector3.RIGHT) and mirror.global_basis.y.is_equal_approx(Vector3.UP), "faces +x, upright")
-	_check(view.size.y <= 384 and view.size == Mirror.VIEW_PX and _near(float(view.size.x) / view.size.y, Mirror.SIZE.x / Mirror.SIZE.y, 0.001), "sub viewport %s, <= 384 px tall, the glass's aspect" % view.size)
+	_check(view.size.y >= Mirror.VIEW_MIN_H and _near(float(view.size.x) / view.size.y, Mirror.SIZE.x / Mirror.SIZE.y, 0.001), "sub viewport %s, the glass's aspect" % view.size)
 	_check(view.transparent_bg, "the window pass keeps a transparent background (the room capture shows through)")
 
 	# render layers
@@ -82,6 +85,10 @@ func _run() -> void:
 		"the local head is on HEAD_LAYER: the mirror camera draws it, the player's own camera does not")
 	_check(cam.cull_mask == (Mirror.LAYER | Humanoid.HEAD_LAYER), "the mirror camera draws the mirror layer and the head layer only")
 	_check(level.get_node("Bar/Bartender/Humanoid")._body_mi.layers & Mirror.LAYER != 0, "the Bartender is in the mirror")
+	_check((player.cue.cue_mesh.layers & Mirror.LAYER) != 0 and (player.cue.cue_mesh.layers & 1) != 0, "the local cue stick is on the mirror layer and still layer 1 (06 P33 U1)")
+	player.humanoid.set_body_hidden(true)
+	_check((hum._body_mi.layers & (cam.cull_mask)) != 0 and (hum._body_mi.layers & player.cam.cull_mask) == 0, "CUE: the local body is out of the player's camera, in the mirror's")
+	player.humanoid.set_body_hidden(false)
 
 	# the reflected camera
 	var eye := Vector3(-3.4, 1.6, -3.8)
@@ -106,26 +113,72 @@ func _run() -> void:
 	_check(_near(tl.x, view.size.x, 1.0) and _near(tl.y, 0.0, 1.0) and _near(br.x, 0.0, 1.0) and _near(br.y, view.size.y, 1.0),
 		"...also for an eye off-axis: %s %s" % [tl, br])
 
-	# gates, every-frame drawing, tier size
-	_check(mirror.in_range(Vector3(-3.4, 1.6, -3.8)), "3.5 m in front: in range")
-	_check(not mirror.in_range(Vector3(2.0, 1.6, -3.8)), "8.9 m away: out of range")
-	_check(not mirror.in_range(Vector3(-7.5, 1.6, -3.8)), "behind the glass plane: no render")
+	# gates (06 P33 U2): no range cut-off. In front of the glass it always draws; behind it, or off screen, never
+	var across := Vector3(6.5, 1.6, -3.8)  # the far wall, 13.4 m from the glass: the old 8 m range froze the avatars and the table here
+	_check(mirror.in_front(Vector3(-3.4, 1.6, -3.8)), "3.5 m in front: draws")
+	_check(mirror.in_front(across), "13.4 m in front, across the room: still draws")
+	_check(not mirror.in_front(Vector3(-7.5, 1.6, -3.8)), "behind the glass plane: no render")
 	var drawn := 0
 	var at := Vector3(-3.4, 1.6, -3.8)
 	QualityManager.current_tier = 0
 	for i in 120:
-		drawn += 1 if mirror.tick(at) else 0
-	_check(drawn == 120, "in range it draws every frame (a throttled reflection swims): %d/120" % drawn)
-	_check(view.size == Mirror.VIEW_PX, "tier 0: full window size")
-	QualityManager.current_tier = 2
-	mirror.tick(at)
-	_check(view.size == Mirror.VIEW_PX / 2, "tier 2 halves the window pass: %s" % view.size)
-	QualityManager.current_tier = 0
+		drawn += 1 if mirror.tick(at, FOCAL) else 0
+	_check(drawn == 120, "in front it draws every frame (a throttled reflection swims): %d/120" % drawn)
 	drawn = 0
 	for i in 60:
-		drawn += 1 if mirror.tick(Vector3(5.0, 1.6, -3.8)) else 0
-		drawn += 1 if mirror.tick(Vector3.INF) else 0
-	_check(drawn == 0 and view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "out of range or off screen draws nothing")
+		drawn += 1 if mirror.tick(across, FOCAL) else 0
+	_check(drawn == 60 and view.render_target_update_mode == SubViewport.UPDATE_ONCE, "...from across the room too: %d/60" % drawn)
+	drawn = 0
+	for i in 60:
+		drawn += 1 if mirror.tick(Vector3(-7.5, 1.6, -3.8), FOCAL) else 0
+		drawn += 1 if mirror.tick(Vector3.INF, FOCAL) else 0
+	_check(drawn == 0 and view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "behind the glass or off screen draws nothing")
+
+	# the window pass is sized to the glass on the viewer's screen (SIZE.y * focal / distance px, rounded up to a step), per tier
+	QualityManager.current_tier = 0
+	_check(mirror.window_height(0.5, FOCAL) == 1024 and mirror.window_height(2.0, FOCAL) == 1024, "close up the glass fills the screen: the tier's tallest (1024)")
+	_check(mirror.window_height(4.0, FOCAL) == 640 and mirror.window_height(10.0, FOCAL) == 256, "4 m: 600 px -> 640; 10 m: 240 px -> 256")
+	_check(mirror.window_height(40.0, FOCAL) == Mirror.VIEW_MIN_H, "far away: the floor, %d px" % Mirror.VIEW_MIN_H)
+	_check(mirror.window_height(4.0, 0.0) == 1024, "no focal given: the tier's tallest")
+	var steady := true
+	var prev := 99999
+	for d in [0.3, 0.8, 1.5, 3.0, 5.0, 8.0, 12.0, 20.0]:
+		var h := mirror.window_height(d, FOCAL)
+		steady = steady and h <= prev
+		prev = h
+	_check(steady, "never taller further away")
+	QualityManager.current_tier = 1
+	_check(mirror.window_height(0.5, FOCAL) == 768, "tier 1: at most 768")
+	QualityManager.current_tier = 2
+	_check(mirror.window_height(0.5, FOCAL) == 384, "tier 2: at most 384")
+	QualityManager.current_tier = 0
+	mirror.tick(Vector3(-3.4, 1.6, -3.8), FOCAL)  # 3.5 m from the glass plane: 686 px -> 704
+	_check(view.size == Mirror.view_size(704), "3.5 m away the pass is 704 px tall: %s" % view.size)
+	mirror.tick(Vector3(-2.9, 1.6, -3.8), FOCAL)  # 4.0 m: wants 640, one step under: kept (no resizing at a boundary)
+	_check(view.size.y == 704, "one step smaller is not worth a resize: %s" % view.size)
+	mirror.tick(across, FOCAL)
+	_check(view.size.y == 192, "across the room it shrinks: %s" % view.size)
+	mirror.tick(Vector3(-5.9, 1.6, -3.8), FOCAL)  # 1 m: the glass is wider than the screen
+	_check(view.size == Mirror.view_size(1024), "1 m from the glass it grows to the tier's tallest, sharp: %s" % view.size)
+	QualityManager.current_tier = 2
+	mirror.tick(Vector3(-5.9, 1.6, -3.8), FOCAL)
+	_check(view.size.y == 384, "tier 2 caps the pass at 384: %s" % view.size)
+	QualityManager.current_tier = 0
+
+	# the room cube: 1024 / 768 / 512 px faces, mipmapped (the shader samples them with filter_linear_mipmap)
+	_check(Mirror.FACE_PX.size() == 3 and Mirror.FACE_PX[0] == 1024 and Mirror.FACE_PX[1] == 768 and Mirror.FACE_PX[2] == 512, "cube faces 1024 / 768 / 512 by tier: %s" % [Mirror.FACE_PX])
+	_check(FileAccess.get_file_as_string("res://src/gameplay/bar/mirror.gd").contains("generate_mipmaps"), "each face gets its mipmaps")
+	_check(preload("res://src/shaders/mirror.gdshader").code.contains("filter_linear_mipmap"), "the shader samples the cube with mipmaps")
+
+	# blood (06 P33 U2, for the failure cutscene): 0..1, a shader uniform, clamped, local
+	_check(mirror.blood == 0.0 and _near(float(mirror._mat.get_shader_parameter(&"blood")), 0.0), "clean glass at start")
+	mirror.set_blood(0.5)
+	_check(_near(mirror.blood, 0.5) and _near(float(mirror._mat.get_shader_parameter(&"blood")), 0.5), "set_blood(0.5) reaches the shader")
+	mirror.set_blood(7.0)
+	_check(mirror.blood == 1.0 and float(mirror._mat.get_shader_parameter(&"blood")) == 1.0, "clamped to 1")
+	mirror.set_blood(-3.0)
+	_check(mirror.blood == 0.0, "clamped to 0")
+	_check(preload("res://src/shaders/mirror.gdshader").code.contains("uniform float blood"), "the shader has the blood uniform")
 
 	# cube faces: proper camera bases, and the shader's F/U arrays match Mirror.FACES
 	var src: String = preload("res://src/shaders/mirror.gdshader").code
