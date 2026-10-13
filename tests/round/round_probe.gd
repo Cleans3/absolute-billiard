@@ -11,11 +11,12 @@ const CUE_CONTROLLER := preload("res://src/gameplay/cue/CueController.tscn")
 const CUE_SPEC := preload("res://src/resources/cues/demo_cue.tres")
 const SEED := 20260921
 const SHOT_TIMEOUT_FRAMES := 4000
-const BANK_OBJ := Vector2(-1.2, -0.5)  # into the south side pocket's east jaw, then in — window 55.5°..58° (wide mouths, 06 P30)
+const BANK_OBJ := Vector2(-1.2, -0.5)  # into the south side pocket's east jaw, then in — window 56.3°..56.7° (2.2 D mouths, 06 P40; 55.5°..58° at 2.8 D)
 const BANK_AIM := 56.5
+const BANK_SPAN := 0.2                 # ± search around it if float noise shifts the window
 const RUNNER_OBJ := Vector2(-0.6, 0.6)  # south, foot, north cushion, then the north side pocket
-const RUNNER_AIM := 53.3                # ~0.1° window (53.25-53.30 after the adhoc-1012a ball retune): three bounces amplify everything, see _trick_line
-const RUNNER_SPAN := 0.5                # ± search around it if float noise shifts the window
+const RUNNER_AIM := 49.0                # window 48.7°..49.3° after 06 P40 (53.25-53.30 before it, after the adhoc-1012a ball retune): three bounces amplify everything, see _trick_line
+const RUNNER_SPAN := 0.3                # ± search around it if float noise shifts the window
 const BEHIND := 0.4  # cue ball this far behind the object ball, on the aim line
 
 var table: Table
@@ -85,10 +86,11 @@ func _run() -> void:
 	await _trick(Vector2(1.6, 0.3), [Vector2(1.9, 0.5)], 6.0, _p(4.0), [&"KickShot"])
 	# carom: cue splits two touching balls without potting — window ±3° around 0°
 	await _trick(Vector2(-1.4, 0.0), _pair(-0.2), 0.0, _p(3.0), [&"Carom"])
-	# combo: the same split further up pots both in opposite corners — exactly 0° (symmetric)
-	await _trick(Vector2(-1.4, 0.0), _pair(1.0), 0.0, _p(7.0), [&"Carom", &"Combo"], 2)
+	# combo: the same split further up pots both in the foot corners — exactly 0° (symmetric), pair at x 0.60..0.74 (06 P40: it was 1.0 with the
+	# 2.8 D mouths; the pair now banks off the foot rail first, so BankShot rides along)
+	await _trick(Vector2(-1.4, 0.0), _pair(0.66), 0.0, _p(7.0), [&"Carom", &"Combo"], 2)
 	# bank: one cushion, then the pocket
-	await _trick_line(BANK_OBJ, BANK_AIM, _p(7.0), [&"BankShot"], 1)
+	await _trick_line(BANK_OBJ, BANK_AIM, _p(7.0), [&"BankShot"], 1, BANK_SPAN)
 	# rail-runner: three distinct cushions, then the pocket
 	await _trick_line(RUNNER_OBJ, RUNNER_AIM, _p(7.0), [&"RailRunner", &"BankShot"], 1, RUNNER_SPAN)
 	_detector()

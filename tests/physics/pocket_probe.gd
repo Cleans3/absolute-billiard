@@ -36,7 +36,8 @@ func _run() -> void:
 	quit()
 
 
-## Mouth = tip-to-tip gap of the two cushion noses (06 P30): corner >= 2.5 D, side >= 2.7 D, at every scale.
+## Mouth = tip-to-tip gap of the two cushion noses (06 P30, resized in P40): corner 2.0-2.2 D, side 1.8-2.2 D at every scale. The hole
+## is centred ON the cloth's nose corner (corner) / nose line (side), within 1 mm, and its radius is the mouth: mouth/sqrt(2), mouth/2.
 func _mouths() -> void:
 	for scale in [1.0, 2.0]:
 		var spec := TableSpec.new()
@@ -46,10 +47,15 @@ func _mouths() -> void:
 		for ps in lay.pockets:
 			var hole: TableLayout.Hole = lay.holes[ps.id]
 			var gap := hole.inner[0].distance_to(hole.inner[hole.inner.size() - 1])
-			var need := 2.5 if String(ps.id).begins_with("corner") else 2.7
-			print("pocket: %s scale=%.1f mouth=%.2f D (need >= %.1f)" % [ps.id, scale, gap / d, need])
-			assert(gap >= need * d - 1e-6, "%s mouth %.2f D < %.1f D" % [ps.id, gap / d, need])
+			var corner := String(ps.id).begins_with("corner")
+			var lo := 2.0 if corner else 1.8
+			var nose := Vector2(signf(ps.position.x) * spec.length_m * 0.5, signf(ps.position.z) * spec.width_m * 0.5)
+			print("pocket: %s scale=%.1f mouth=%.2f D (need %.1f..2.2) centre off the nose %s by %.2f mm, radius %.3f m = %.2f D" % [
+				ps.id, scale, gap / d, lo, "corner" if corner else "line", hole.center.distance_to(nose) * 1000.0, hole.radius, hole.radius * 2.0 / d])
+			assert(gap >= lo * d - 1e-6 and gap <= 2.2 * d + 1e-6, "%s mouth %.2f D outside %.1f..2.2 D" % [ps.id, gap / d, lo])
 			assert(is_equal_approx(gap, ps.mouth_width_m), "mouth_width_m must be the tip-to-tip gap")
+			assert(hole.center.distance_to(nose) < 0.001, "%s hole centre must sit on the nose %s (off by %.2f mm)" % [ps.id, "corner" if corner else "line", hole.center.distance_to(nose) * 1000.0])
+			assert(is_equal_approx(hole.radius, gap / sqrt(2.0) if corner else gap * 0.5), "%s hole radius must be the mouth/sqrt(2) (corner) or mouth/2 (side)" % ps.id)
 			assert(hole.radius > spec.ball_radius_m, "hole must be wider than a ball")
 
 
@@ -231,9 +237,10 @@ func _moving_opening() -> void:
 	var t_pos := _time_for_offset(7, &"side_n", amp, 1.0)
 	var t_neg := _time_for_offset(7, &"side_n", amp, -1.0)
 	table.set_pocket_time(t_pos)  # the opening has slid by +amp along the tangent
+	await physics_frame  # a kinematic cover takes its new position on the next physics step: not under a ball placed in the same frame
 	var slid := tangent * Table.pocket_offset(7, &"side_n", t_pos, amp)
 	var r := table.spec.ball_radius_m
-	var drop := r + 0.3 * r  # ball centre 0.3 R past the nose line, toward the table
+	var drop := r  # ball centre one radius in from the nose line (resting against the rail's line, the hole centred on it), toward the table
 	var half := sqrt(hole.radius * hole.radius - drop * drop)  # half chord of the nominal circle at that depth
 	var p := Vector2(hole.center.x - signf(slid.x) * (half - 0.35 * r), hole.center.y - signf(hole.center.y) * drop)
 	var inside_nominal := p.distance_to(hole.center) < hole.radius

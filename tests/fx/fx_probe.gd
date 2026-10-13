@@ -11,6 +11,8 @@ const PENALTY := preload("res://src/resources/ball_types/black_penalty.tres")
 const SEED := 20260921
 const BASE := 1000  # tick of a synthetic frame's first byte
 
+const MIN_RUN_M := 0.5  # the five shots' targets are at least this far from the cue ball: one 20 m/s tick is 0.17 m (06 P40: the rack changed with the pocket keepouts)
+
 var table: Table
 var director: RoundDirector
 var fx: ImpactFx
@@ -257,6 +259,8 @@ func _real_break() -> void:
 		for b in director.get_balls():
 			if b.is_cue_ball or b.is_pocketed or b.retired:
 				continue
+			if b.global_position.distance_to(cue.global_position) < MIN_RUN_M:
+				continue  # a ball this close is hit within the strike's own tick: the cue's first event is the collision, no KICK (a layout accident of the seeded rack)
 			var closer := target == null or b.global_position.distance_to(cue.global_position) < target.global_position.distance_to(cue.global_position)
 			if target == null or closer == (k % 2 == 0):
 				target = b
@@ -366,7 +370,7 @@ func _real_combo() -> void:
 			objs.append(b)  # the pair that gets split: two scoring balls, not the penalty black
 		else:
 			rest.append(b)
-	var spots := [Vector2(1.0, r + 0.002), Vector2(1.0, -(r + 0.002))]
+	var spots := [Vector2(0.66, r + 0.002), Vector2(0.66, -(r + 0.002))]  # x 0.60..0.74 pots both in the foot corners (06 P40; 1.0 at the 2.8 D mouths)
 	cue.restore(_world(Vector2(-1.4, 0.0), cue))
 	for i in objs.size():
 		objs[i].restore(_world(spots[i], objs[i]))

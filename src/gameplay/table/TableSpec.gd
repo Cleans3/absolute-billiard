@@ -10,10 +10,12 @@ extends Resource
 const REG_LENGTH := 2.54
 const REG_WIDTH := 1.27
 const REG_BALL_RADIUS := 0.028575
-## Mouth = the tip-to-tip gap between the two cushion noses at a pocket, what a player sees (06 P30). Past
-## regulation on purpose (reg. corner ~2.06 D, side ~2.27 D): both 2.8 D here, floors are corner 2.5 D / side 2.7 D.
-const REG_CORNER_MOUTH := 0.160
-const REG_SIDE_MOUTH := 0.160
+## Mouth = the tip-to-tip gap between the two cushion noses at a pocket, what a player sees (06 P30). 2.2 D both (06 P40, was 2.8 D:
+## "huge, for no good reason"); reg. corner ~2.06 D, side ~2.27 D. The hole is centred on the cloth's nose corner / nose line, so
+## its radius is the mouth: corner R = mouth/sqrt(2), side R = mouth/2 (`TableGeometry.POCKET_OUT_RADII`). Acceptance (pocket_probe):
+## corner 2.0-2.2 D, side 1.8-2.2 D.
+const REG_CORNER_MOUTH := 0.1257
+const REG_SIDE_MOUTH := 0.1257
 const REG_CUSHION_NOSE_H := 0.036
 const REG_RAIL_WIDTH := 0.178
 const REG_RAIL_TOP_H := 0.042
@@ -22,7 +24,10 @@ const REG_JAW_RADIUS := 0.012
 const REG_CORNER_SHELF := 0.04
 const REG_SIDE_SHELF := 0.005
 const REG_CORNER_FACING_DEG := 142.0
-const REG_SIDE_FACING_DEG := 103.0
+## A facing stub leans away from the playfield by (180 - deg) / 2 off its rail line (table_geometry.gd). The side's was 103 (38.5 deg): at the
+## 2.8 D mouth that narrowed the throat to 1.6 D, at 2.2 D it would be 1.0 D, no ball fits. 40 (70 deg) leans it into the pocket's wall instead
+## and the throat stays 1.7 D (06 P40).
+const REG_SIDE_FACING_DEG := 40.0
 const REG_CUE_REACH := 1.75
 ## Pocket cups (06 P30): the bed is cut open at every pocket and a cup hangs below the cut.
 const CUP_DEPTH_RADII := 5.0   # cup floor below the cloth, in ball radii (>= 2 D)
@@ -65,9 +70,11 @@ const BASE_BOUNCE := 1.0
 @export_range(0.0, 0.2, 0.001) var rest_speed_mps := 0.02
 @export_range(0.0, 1.0, 0.01) var rest_ang_rad_s := 0.15
 @export var rest_time_sec := 0.30
-## Pocket cups (06 P30): grip and bounce of the felt pouch a dropped ball lands in.
+## Pocket cups (06 P30): grip and bounce of the felt pouch a dropped ball lands in. Bounce 0 (was 0.1, 06 P40): the smaller hole leaves a
+## ball 0.25 m (side) to cross, and at 15 m/s+ a 0.1 bounce off the back wall brought it back over the near lip before it had fallen its pot
+## depth, so a straight full-power shot never potted in a side pocket; the felt now kills it (friction 0.02 keeps a spinning ball off the wall).
 @export_range(0.0, 1.0, 0.005) var cup_friction := 0.02
-@export_range(0.0, 1.0, 0.005) var cup_bounce := 0.1
+@export_range(0.0, 1.0, 0.005) var cup_bounce := 0.0
 @export var clearance_margin_m := 0.003
 @export var jaw_restitution := 0.55
 ## Object balls get CCD only above the speed where one physics step covers this many ball radii (07 §1.2).

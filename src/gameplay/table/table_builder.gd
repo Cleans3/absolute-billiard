@@ -13,7 +13,6 @@ const LAYER_POCKET := 1 << 2
 const LAYER_WORLD := 1 << 3  # players, props, the room (08 §2.1): the lid is on it; balls (mask 1|2|3) never test it
 const BALL_LAYER := 1
 const LID_THICKNESS := 0.1
-const LID_MARGIN := 0.02  # past the outermost pocket ring
 
 const FACING_LENGTH_RATIO := 1.5  # facing-stub length as a multiple of ball radius
 const COVER_LIFT_M := 0.0015      # Moving Pockets cover top above the cloth: never coplanar with the bed (E2)
@@ -21,7 +20,7 @@ const COVER_BEVEL_M := 0.015      # ... and ramped down to the cloth over this w
 const COVER_OVERLAP_M := 0.02     # cover reaches this far past the widest cut, onto the bed
 const COVER_SEGMENTS := 32
 const BACK_WALL_TRIM_SEGS := 2     # ... and it starts this many arc segments past each cushion tip (the facing stub covers those)
-const BACK_WALL_RADII := 4.0      # pocket back wall height above the cloth: past a ball's top, so no edge kicks one upward
+const BACK_WALL_RADII := 3.0      # pocket back wall height above the cloth: past a ball's top, so no edge kicks one upward
 
 
 ## A collider a fast ball could cross within one physics step is a tunnelling/ghost-collision
@@ -49,7 +48,7 @@ static func build(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float
 		if osc_m > 0.0:
 			_build_cover(parent, spec, hole, y)
 	_build_safety_floor(parent, spec, y)
-	_build_lid(parent, spec, layout, y)
+	_build_lid(parent, spec, y)
 
 
 ## Contact materials. Jolt sums the two bounces (clamped to 1) and an `absorbent` side subtracts, against balls that carry
@@ -187,14 +186,16 @@ static func _add_facing_shape(body: StaticBody3D, spec: TableSpec, at: Vector3, 
 	var length := spec.ball_radius_m * FACING_LENGTH_RATIO
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
+	var zb := z
 	if x.dot(inward) > 0.0:
 		x = -x  # x now points outward, away from the playfield interior
+		zb = -z  # keeps (x, UP, zb) right-handed (a box is symmetric along its length); table_visuals.gd's wedge does the same
 	var anchor := at + x * depth * 0.5
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = Vector3(depth, h, length)
 	shape.shape = box
-	shape.transform = Transform3D(Basis(x, Vector3.UP, z), anchor + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
+	shape.transform = Transform3D(Basis(x, Vector3.UP, zb), anchor + z * length * 0.5 + Vector3(0, y + h * 0.5, 0))
 	body.add_child(shape)
 
 
@@ -321,26 +322,18 @@ static func _build_safety_floor(parent: Node3D, spec: TableSpec, y: float) -> vo
 
 ## The lid (adhoc-1013c U15): one slab on the player layer over the whole bed and every pocket opening, its top level with the rail tops. A
 ## player who jumps onto the table (the bed and the cushion strips are colliders on layer 2 they could stand on) stands on the lid, never in
-## the playing field or in a pocket hole, and one cannot fall into the bed while it opens for the clean-up. Balls never test it.
-static func _build_lid(parent: Node3D, spec: TableSpec, layout: TableLayout, y: float) -> void:
-	var lo := Vector2(-spec.length_m * 0.5, -spec.width_m * 0.5)
-	var hi := -lo
-	for hole: TableLayout.Hole in layout.holes.values():
-		for p in hole.ring:
-			lo = lo.min(p)
-			hi = hi.max(p)
-	var outer := Vector2(spec.length_m * 0.5 + spec.rail_width_m, spec.width_m * 0.5 + spec.rail_width_m)  # never past the wood's footprint
-	lo = (lo - Vector2.ONE * LID_MARGIN).max(-outer)
-	hi = (hi + Vector2.ONE * LID_MARGIN).min(outer)
+## the playing field or in a pocket hole, and one cannot fall into the bed while it opens for the clean-up. Balls never test it. It spans the
+## wood's whole footprint (06 P40: it used to be the pocket rings' box, clamped to the footprint, which was the same thing until the holes
+## moved onto the cloth's corner), so it covers every pocket wherever `POCKET_OUT_RADII` puts it.
+static func _build_lid(parent: Node3D, spec: TableSpec, y: float) -> void:
 	var body := StaticBody3D.new()
 	body.name = "Lid"
 	body.collision_layer = LAYER_WORLD
 	body.collision_mask = 0
 	var shape := CollisionShape3D.new()
 	var box := BoxShape3D.new()
-	box.size = Vector3(hi.x - lo.x, LID_THICKNESS, hi.y - lo.y)
+	box.size = Vector3(spec.length_m + spec.rail_width_m * 2.0, LID_THICKNESS, spec.width_m + spec.rail_width_m * 2.0)
 	shape.shape = box
-	var mid := (lo + hi) * 0.5
-	shape.position = Vector3(mid.x, y + spec.rail_height_m - LID_THICKNESS * 0.5, mid.y)
+	shape.position = Vector3(0.0, y + spec.rail_height_m - LID_THICKNESS * 0.5, 0.0)
 	body.add_child(shape)
 	parent.add_child(body)
