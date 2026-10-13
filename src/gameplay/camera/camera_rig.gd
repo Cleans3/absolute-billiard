@@ -53,7 +53,9 @@ func aim_at(point: Vector3) -> void:
 static func _model() -> ArrayMesh:
 	if _mesh != null:
 		return _mesh
-	var metal := _surface(_material(Color(0.2, 0.21, 0.24), 0.4, 0.85))
+	# Dark painted aluminium, not bare metal: at metallic 0.85 / rough 0.4 a 3 cm strut is all grazing Fresnel, so the room probe's
+	# bright pixels outline it in white while its body stays black (adhoc-1013c U4).
+	var metal := _surface(_material(Color(0.2, 0.21, 0.24), 0.65, 0.15))
 	var matte := _surface(_material(Color(0.06, 0.06, 0.07), 0.92, 0.0))
 	var optic := _surface(_optic_material())
 	var hub := Vector3(0, HUB_Y, 0)

@@ -182,10 +182,12 @@ func _lathe(st: SurfaceTool, centre: Vector3, profile: Array, seg := 16, color :
 					st.add_vertex(pts[i])
 
 
-## Commits every surface tool into one ArrayMesh (one surface each), unwraps UV2, saves and returns it.
+## Commits every surface tool into one ArrayMesh (one surface each), unwraps UV2, saves and returns it. Textured surfaces get tangents first.
 func _bake_mesh(id: String, sts: Array[SurfaceTool]) -> ArrayMesh:
 	var mesh := ArrayMesh.new()
 	for st in sts:
+		if _tiles.get(st, 0.0) > 0.0:
+			st.generate_tangents()  # the box-mapped PBR sets carry normal maps; a mesh without tangents shades black with bright edges on a phone
 		st.index()
 		st.commit(mesh)
 	var err := mesh.lightmap_unwrap(Transform3D.IDENTITY, TEXEL)
