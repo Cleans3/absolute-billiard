@@ -22,6 +22,7 @@ const FLAT_S := 0.015
 const SPECIAL_M := 0.040
 const SPECIAL_S := 0.040
 const OBJ_DEG := 6.0
+const BORDERLINE_M := 0.006  # a guide that passes the object ball by less than this has no right answer to be held to
 const WINDOW_SEC := 3.0
 
 
@@ -35,16 +36,22 @@ class Recorder extends Node:
 	var ts := PackedFloat32Array()
 	var ps := PackedVector3Array()
 	var os := PackedVector3Array()
-	var first_kind := &""
-	var first_t := 0.0     ## end of the step that reported the first contact
-	var first_prev := 0.0  ## start of that step: the contact is in (first_prev, first_t]
-	var prev_t := 0.0      ## start of the latest step (moves on every tick; use first_prev after a contact)
+	var kinds: Array[StringName] = []  ## every contact the cue ball reported, in order
+	var ends := PackedFloat32Array()   ## end of the step that reported it
+	var starts := PackedFloat32Array() ## start of that step: the contact is in (start, end]
+	var first_kind := &""              ## the first contact that counts (see `pick`)
+	var first_t := 0.0
+	var first_prev := 0.0
+	var prev_t := 0.0                  ## start of the latest step
 
 	func arm() -> void:
 		ts.clear()
 		ps.clear()
 		os.clear()
 		t = 0.0
+		kinds.clear()
+		ends.clear()
+		starts.clear()
 		first_kind = &""
 		on = true
 
@@ -58,10 +65,24 @@ class Recorder extends Node:
 		t += delta
 
 	func contact(_ball: Ball, _other: Node, kind: StringName) -> void:
-		if on and first_kind == &"":
-			first_kind = kind
-			first_t = t
-			first_prev = prev_t
+		if on:
+			kinds.append(kind)
+			ends.append(t)
+			starts.append(prev_t)
+
+	## The first contact that is one: a cushion, or a ball that really was struck. Jolt also reports a ball the cue ball only passes
+	## within its contact margin of (a near miss); the object ball not moving gives that away.
+	func pick() -> void:
+		var struck := false
+		for p in os:
+			struck = struck or p.distance_to(os[0]) > 0.01
+		first_kind = &""
+		for i in kinds.size():
+			if kinds[i] == &"RAIL" or struck:
+				first_kind = kinds[i]
+				first_t = ends[i]
+				first_prev = starts[i]
+				return
 
 
 var table: Table
@@ -142,11 +163,13 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 	var m_dir := model.obj_dir
 	var m_ts := model.path_t.duplicate()
 	var window := minf(m_end + 0.25, WINDOW_SEC)
+	var borderline := with_ball and model.hit != ShotModel.Hit.BALL and _closest(model.path, obj.global_position) - 2.0 * r < BORDERLINE_M
 	rec.arm()
 	cue.strike(intent, CUE)
 	while rec.t < window and table.sim.awake > 0:
 		await physics_frame
 	rec.on = false
+	rec.pick()
 	var tol_m := FLAT_M if flat else SPECIAL_M
 	var tol_s := FLAT_S if flat else SPECIAL_S
 	var cls := "flat" if flat else "special"
@@ -160,7 +183,9 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 		_hop = maxf(_hop, hop)
 	# 1. the same first contact
 	var host_kind := rec.first_kind
-	if m_pocket:
+	if borderline:
+		print("guide: %s: passes the object ball by under %.0f mm, first contact not held to account" % [label, BORDERLINE_M * 1000.0])
+	elif m_pocket:
 		_check(cue.is_pocketed or table.in_hole(Vector2(cue.global_position.x, cue.global_position.z)) or host_kind == &"", "%s: the guide drops the ball in a pocket, the host touched a %s" % [label, host_kind])
 	elif m_kind == &"":  # the guide's stretch ended (rolled out, ran out of length) without a contact: the host may touch something later, not sooner
 		_check(host_kind == &"" or rec.first_t >= m_end - 0.05, "%s: the guide's stretch ends untouched at %.3f s, the host hits '%s' at %.3f s" % [label, m_end, host_kind, rec.first_t])
@@ -195,6 +220,17 @@ func _case(cue: Ball, obj: Ball, spin: Vector2, elev: float, power: float, with_
 			var deg := rad_to_deg(Vector2(d.x, d.z).angle_to(Vector2(m_dir.x, m_dir.z)))
 			_worst[cls][2] = maxf(_worst[cls][2], absf(deg))
 			_check(absf(deg) <= OBJ_DEG, "%s: the struck ball leaves %.1f degrees off the guide's line" % [label, deg])
+
+
+## Shortest horizontal distance from `c` to the polyline `pts`.
+func _closest(pts: PackedVector3Array, c: Vector3) -> float:
+	var best := INF
+	for i in range(1, pts.size()):
+		var a := Vector2(pts[i - 1].x, pts[i - 1].z)
+		var b := Vector2(pts[i].x, pts[i].z)
+		var q := Geometry2D.get_closest_point_to_segment(Vector2(c.x, c.z), a, b)
+		best = minf(best, q.distance_to(Vector2(c.x, c.z)))
+	return best
 
 
 ## Linear interpolation of the model's samples at `t`.

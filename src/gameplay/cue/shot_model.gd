@@ -10,7 +10,7 @@ extends RefCounted
 ##
 ## Limits (01 §3): the first stretch runs to its first contact or `LEG1_MAX_M`; one more stretch follows a contact (the cue
 ## ball past a ball, the ball off a cushion) up to `LEG2_MAX_M` or the next contact; the struck ball's line is `OBJ_MAX_M`.
-## Jaws, pocket drops and a ball struck by the struck ball are not followed.
+## A pocket drop and a ball struck by the struck ball are not followed; the jaw stubs are cushions like the rest.
 
 enum Hit { NONE, BALL, RAIL, POCKET }
 
@@ -22,6 +22,7 @@ const LEG1_MAX_SEC := 8.0
 const LEG2_MAX_M := 2.5
 const OBJ_MAX_M := 1.2
 const MAX_STEPS := 900
+const POCKET_CORE_RADII := 1.5  # a ball is in a pocket once its centre is this many radii inside the hole's rim
 const CONTACT_LEAD_M := 0.0005  # a ball this close to a face and closing counts as touching
 ## Share of the downward speed an elevated cue gives the ball that the cloth sends back up. The cloth is dead (TableSpec.BASE_BOUNCE
 ## cancels its bounce), so a jump shot does not hop on its own: this is 0 until the probe shows the host lifting off.
@@ -149,18 +150,32 @@ func _gather() -> void:
 			if b != _cue and not b.retired and not b.is_pocketed and b.is_inside_tree():
 				_obstacles.append(b)
 	var rails := _table.layout.rails
-	_rail_a.resize(rails.size())
-	_rail_n.resize(rails.size())
-	_rail_e.resize(rails.size())
-	_rail_len.resize(rails.size())
-	_rail_ids.resize(rails.size())
-	for i in rails.size():
-		var rl := rails[i]
-		_rail_a[i] = _table.to_global(rl.a)
-		_rail_n[i] = rl.inward_normal
-		_rail_e[i] = (rl.b - rl.a).normalized()
-		_rail_len[i] = rl.a.distance_to(rl.b)
-		_rail_ids[i] = rl.id
+	_rail_a.clear()
+	_rail_n.clear()
+	_rail_e.clear()
+	_rail_len.clear()
+	_rail_ids.clear()
+	var stub := _cue.spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
+	for rl in rails:
+		_add_face(_table.to_global(rl.a), rl.inward_normal, (rl.b - rl.a).normalized(), rl.a.distance_to(rl.b), rl.id)
+		# the angled jaw stub each cushion end continues into (TableBuilder._add_facing_shape): a short cushion of its own, its face
+		# on the mouth side. Without it a ball that meets a jaw reads as a pot.
+		for end in [[rl.a, rl.facing_a], [rl.b, rl.facing_b]]:
+			var dir: Vector3 = (end[1] as Vector3).normalized()
+			if dir.is_zero_approx():
+				continue
+			var n := Vector3(-dir.z, 0.0, dir.x)
+			if n.dot(rl.inward_normal) < 0.0:
+				n = -n
+			_add_face(_table.to_global(end[0] as Vector3), n, dir, stub, rl.id)
+
+
+func _add_face(a: Vector3, n: Vector3, e: Vector3, length: float, id: StringName) -> void:
+	_rail_a.append(a)
+	_rail_n.append(n)
+	_rail_e.append(e)
+	_rail_len.append(length)
+	_rail_ids.append(id)
 
 
 ## Velocity and spin the impulse gives (L = offset x J over I = 0.4 m R²), then the cloth's answer to a downward cue: it takes the
@@ -219,7 +234,7 @@ func _march(s: BallMotion.State, params: BallMotion.Params, radius: float, pts: 
 		moved += s.pos.distance_to(_prev.pos)
 		_push(pts, ts, s.pos, t)
 		var local := s.pos - _origin
-		if _table.in_hole(Vector2(local.x, local.z)):
+		if _in_pocket(local):
 			_elapsed = t
 			return Hit.POCKET
 		if absf(local.x) > reach_x or absf(local.z) > reach_z:
@@ -229,6 +244,17 @@ func _march(s: BallMotion.State, params: BallMotion.Params, radius: float, pts: 
 			break
 	_elapsed = t
 	return Hit.NONE
+
+
+## Potted: the centre is deep in a pocket (past the stubs of its two jaws, which are cushions above - the stub ends are about 1.5 R
+## inside the hole's rim) or beyond the nose line over the hole. A centre merely inside the hole's circle is not enough: the circle
+## reaches a hand's breadth into the playfield and a ball there is still on its way to hit a jaw (it falls the pot depth, 0.13 s, later).
+func _in_pocket(local: Vector3) -> bool:
+	var p := Vector2(local.x, local.z)
+	if _table.in_hole(p, -POCKET_CORE_RADII * _r):
+		return true
+	var spec := _cue.spec
+	return (absf(local.x) > spec.length_m * 0.5 or absf(local.z) > spec.width_m * 0.5) and _table.in_hole(p)
 
 
 func _push(pts: PackedVector3Array, ts: PackedFloat32Array, p: Vector3, t: float) -> void:
