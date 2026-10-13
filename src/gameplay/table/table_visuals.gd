@@ -197,6 +197,13 @@ static func _cushion_depth(spec: TableSpec) -> float:
 	return spec.ball_radius_m * 2.0  # must match table_builder.gd's cushion collider depth
 
 
+## Where the apron's top starts, outward from the nose line: under the cushion wedge, never on the nose line itself. On the line its inner wall was
+## coplanar with the wedge's sunk nose face, and its top (the cloth plane) with the cloth's tucked jaw-tip edge (06 P40 glare audit: same-facing,
+## 0.00 mm apart, z-fighting under a GPU's depth rounding); half a cushion depth in is inside the rubber, where nothing can see it.
+static func _apron_near(spec: TableSpec) -> float:
+	return _cushion_depth(spec) * 0.5
+
+
 ## How far a visual runs into the piece it abuts (see the file header).
 static func _sink(spec: TableSpec) -> float:
 	return spec.bed_thickness_m * 0.5
@@ -313,7 +320,7 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	# is coplanar with theirs) keeps a hairline there from opening onto the room — it would show wood.
 	var inset := _sink(spec) * 0.2
 	var along := (b - a).normalized() * inset
-	_wood_slab(parent, "RailPlug_" + String(rail.id), _strip(a + along, b - along, out, depth0 + inset, spec.rail_width_m - inset), cuts, y - _sink(spec), y + _sink(spec), RAIL_COLOR)
+	_wood_slab(parent, "RailPlug_" + String(rail.id), _strip(a + along, b - along, out, depth0 + inset, spec.rail_width_m - inset), cuts, y - _sink(spec) + inset, y + _sink(spec), RAIL_COLOR)
 
 
 ## Table-local xz rectangle along a rail from `a` to `b`, `near`..`far` metres outward (`out`) from the nose line.
@@ -401,8 +408,10 @@ static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, d
 	var length := spec.ball_radius_m * TableBuilder.FACING_LENGTH_RATIO
 	var z := dir.normalized()
 	var x := Vector3.UP.cross(z).normalized()
+	var zb := z
 	if x.dot(inward) > 0.0:
 		x = -x
+		zb = -z  # (x, UP, zb) stays right-handed: a mirrored basis flips the winding, so under cull_back the wedge showed its back faces (06 P40)
 	var facing := MeshInstance3D.new()
 	facing.name = "Facing"
 	facing.mesh = _wedge_mesh(depth, h, length, _sink(spec))
@@ -411,7 +420,7 @@ static func _build_facing_visual(parent: Node3D, spec: TableSpec, at: Vector3, d
 	# fused to the cushion end instead of straddling it with a visible gap or overlap. The wedge's
 	# own nose face is at local X=0 (same convention `_build_cushion` uses), so this anchor lines
 	# up with the cushion's own X=0 face with no extra offset.
-	facing.transform = Transform3D(Basis(x, Vector3.UP, z), at + z * length * 0.5 + Vector3(0, y, 0))
+	facing.transform = Transform3D(Basis(x, Vector3.UP, zb), at + z * length * 0.5 + Vector3(0, y, 0))
 	parent.add_child(facing)
 
 
@@ -505,7 +514,7 @@ static func _build_apron_and_legs(parent: Node3D, spec: TableSpec, layout: Table
 	for rail in layout.rails:
 		# Same extent as the rail block (`_wood_extent`): the corner turns and the side pocket's two halves meet (gamma F2, 05b)
 		var ext := _wood_extent(spec, rail)
-		_wood_slab(parent, "Apron_" + String(rail.id), _strip(ext[0], ext[1], -rail.inward_normal, 0.0, spec.rail_width_m), cuts, y - spec.apron_h_m, y, APRON_COLOR)
+		_wood_slab(parent, "Apron_" + String(rail.id), _strip(ext[0], ext[1], -rail.inward_normal, _apron_near(spec), spec.rail_width_m), cuts, y - spec.apron_h_m, y, APRON_COLOR)
 
 	var hl := spec.length_m * 0.5 + spec.rail_width_m * 0.6
 	var hw := spec.width_m * 0.5 + spec.rail_width_m * 0.6

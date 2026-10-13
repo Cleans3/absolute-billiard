@@ -43,6 +43,28 @@ func _init() -> void:
 
 	for r in out.rails:
 		assert(not r.facing_a.is_zero_approx() and not r.facing_b.is_zero_approx(), "rail %s missing facing" % r.id)
+		# a facing leans away from the playfield, into its pocket (06 P40: with the hole on the nose line the old "toward the pocket centre"
+		# test was a tie), and by the facing angle's own half
+		for end in [[r.facing_a, &"a"], [r.facing_b, &"b"]]:
+			var f: Vector3 = end[0]
+			assert(f.dot(r.inward_normal) < -0.1, "rail %s facing %s must lean away from the playfield" % [r.id, end[1]])
+
+	# every pocket's hole: centre on the nose corner / line (+ POCKET_OUT_RADII), and its two crossings with the nose lines ARE the rail ends
+	# (the cushion tips): a wrong chord half-length k in TableGeometry._hole puts the cut and the cushion ends apart
+	var hl := spec.length_m * 0.5
+	var hw := spec.width_m * 0.5
+	var knob := TableGeometry.POCKET_OUT_RADII * spec.ball_radius_m
+	for ps in out.pockets:
+		var hole: TableLayout.Hole = out.holes[ps.id]
+		var want := Vector2(signf(ps.position.x) * (hl + knob), signf(ps.position.z) * (hw + knob))
+		assert(hole.center.distance_to(want) < 1e-6, "%s hole centre %s, want %s" % [ps.id, hole.center, want])
+		for tip in [hole.inner[0], hole.inner[hole.inner.size() - 1]]:
+			var on_rail_end := false
+			for r in out.rails:
+				for e in [r.a, r.b]:
+					on_rail_end = on_rail_end or Vector2(e.x, e.z).distance_to(tip) < 1e-6
+			assert(on_rail_end, "%s: hole crossing %s is not a cushion tip" % [ps.id, tip])
+	print("holes: centred on the nose (+ %.4f m knob), every crossing is a cushion tip" % knob)
 	assert(is_equal_approx(spec.bed_height_m, 0.9), "bed_height_m must stay player-relative, not scale with `scale`")
 
 	print("GEOMETRY OK")

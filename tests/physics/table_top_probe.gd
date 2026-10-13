@@ -36,7 +36,7 @@ func _run() -> void:
 	root.add_child(table)
 	await physics_frame
 	_scan(table, "default")
-	table.pocket_radius_mult = 1.3  # a shop upgrade: bigger holes, the corner ring reaches the footprint edge
+	table.pocket_radius_mult = 1.3  # a shop upgrade: bigger holes
 	table.rebuild()
 	await physics_frame
 	_scan(table, "pocket_radius_mult 1.3")

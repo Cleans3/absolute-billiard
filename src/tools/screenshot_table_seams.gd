@@ -11,6 +11,8 @@ extends SceneTree
 ## no_lamp_shadow=1, msaa=0 and scale=0.85 (the phone's QualityManager tiers 1-2). acne=1 adds a straight-down view of the
 ## cloth and prints its pixel noise (shadow acne / swimming shows as noise, peter-panning as a lit band at the cushion foot).
 ## leaks=1 [sweep=1] [jitter=<mm>] is the crack detector (`_run_leaks`).
+## topdown=1 adds straight-down views, the whole table and a close-up of every pocket (adhoc-1014a V1, before/after of the
+## hole): `<tag>_top_table.png`, `<tag>_top_<pocket id>.png`. topdown=only skips the six poses and the ratio table.
 
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const ROOM := preload("res://src/gameplay/bar_room/BarRoom.tscn")
@@ -82,13 +84,12 @@ func _run() -> void:
 	await physics_frame
 	var worst := 0.0
 	var rows: Array[String] = []
-	for pose in _poses():
+	for pose in ([] if o.get("topdown", "") == "only" else _poses()):
 		cam.global_position = table.to_global(pose.eye)
 		cam.look_at(table.to_global(pose.target), Vector3.UP)
 		for _i in 6:
 			await process_frame
-		var img := root.get_texture().get_image()
-		img.convert(Image.FORMAT_RGB8)
+		var img := _shot()
 		img.save_png("%s/%s_%s.png" % [out_dir, tag, pose.name])
 		var marked := img.duplicate() as Image
 		for seam_def in _seams(pose):
@@ -121,6 +122,8 @@ func _run() -> void:
 		marked.save_png("%s/%s_%s_marked.png" % [out_dir, tag, pose.name])
 	if o.has("acne"):
 		rows.append(await _acne(out_dir, tag))
+	if o.has("topdown"):
+		await _topdown(out_dir, tag)
 	print("--- seam luminance vs cloth, tag=%s %s" % [tag, o])
 	for r in rows:
 		print(r)
@@ -137,8 +140,7 @@ func _acne(out_dir: String, tag: String) -> String:
 	cam.look_at(table.to_global(Vector3(0.0, s.bed_height_m, 0.0)), Vector3.FORWARD)
 	for _i in 6:
 		await process_frame
-	var img := root.get_texture().get_image()
-	img.convert(Image.FORMAT_RGB8)
+	var img := _shot()
 	img.save_png("%s/%s_topdown.png" % [out_dir, tag])
 	var noise := 0.0
 	var n := 0
@@ -149,6 +151,40 @@ func _acne(out_dir: String, tag: String) -> String:
 			noise += absf(c - nb)
 			n += 1
 	return "%-24s cloth noise %.5f (mean |px - neighbours|, %d px)" % ["topdown_acne", noise / n, n]
+
+
+## The viewport as an 8-bit sRGB image: with `use_hdr_2d` (the project's setting) `get_image()` is linear, which reads far too dark and
+## would be linearised twice by `_luma`.
+func _shot() -> Image:
+	var img := root.get_texture().get_image()
+	img.convert(Image.FORMAT_RGB8)
+	if root.use_hdr_2d:
+		img.linear_to_srgb()
+	return img
+
+
+## Straight down (north up) under the ceiling, lamp layer culled and a flat fill light so the rails and pits read: the whole
+## table, then every pocket from 1.1 m with the frame centred 0.25 m in from the hole centre.
+func _topdown(out_dir: String, tag: String) -> void:
+	var s := table.spec
+	var fill := DirectionalLight3D.new()
+	fill.rotation_degrees = Vector3(-90.0, 0.0, 0.0)
+	fill.light_energy = 0.9
+	fill.shadow_enabled = false
+	root.add_child(fill)
+	cam.cull_mask = 0xFFFFF & ~CeilingCam.LAMP_LAYER
+	var views: Array[Dictionary] = [{name = "table", eye = Vector3(0.0, s.bed_height_m + 2.2, 0.0), target = Vector3(0.0, s.bed_height_m, 0.0), fov = 100.0}]
+	for id in table.pockets:
+		var at: Vector3 = table.pockets[id].position
+		var c := Vector3(at.x, s.bed_height_m, at.z) + Vector3(-signf(at.x), 0.0, -signf(at.z)) * 0.25
+		views.append({name = String(id), eye = c + Vector3(0.0, 1.1, 0.0), target = c, fov = 70.0})
+	for v in views:
+		cam.fov = v.fov
+		cam.global_position = table.to_global(v.eye)
+		cam.look_at(table.to_global(v.target), Vector3.FORWARD)
+		for _i in 6:
+			await process_frame
+		_shot().save_png("%s/%s_top_%s.png" % [out_dir, tag, v.name])
 
 
 ## Crack detector (06 P32): the table alone over a flat backdrop, rendered twice per view with two backdrop colours. A pixel

@@ -5,9 +5,15 @@ extends RefCounted
 ## no physics, deterministic and headless-callable (tests/physics/geometry_probe.gd).
 
 const DROP_CHUTE_RATIO := 40.0  # SafetyFloor depth, a multiple of ball radius (the net under everything)
-const ARC_SEG_RADII := 1.0      # hole polygon edge length, in ball radii
+const ARC_SEG_RADII := 1.0      # hole polygon edge length, in ball radii (the back wall's arc)
+const LIP_SEG_RADII := 0.5      # ... the cloth lip's (inner arc), where a ball rolls over the edge: see `_hole`
 const MIN_ARC_SEGS := 3
 const SEAM_EPS := 1e-6
+## THE pocket-position knob (06 P40): how far a pocket's centre sits outside the cloth's nose corner (corner pockets, on both
+## axes) or nose line (side pockets), in ball radii. 0 = the hole is centred ON the cloth's corner / on the nose line, the
+## user's reading ("centered from the corner table surface"); 1 was the old reading (one ball radius out, a hole mostly under
+## the rail wood). The radii, the crossing points (`_hole`), the cup, sensor, wood cuts, liner, lid and keepouts all follow.
+const POCKET_OUT_RADII := 0.0
 
 
 ## `pocket_mult` scales both mouth widths (03 `pocket_radius_mult`, e.g. the magnetic_pockets shop row). `osc_m` is
@@ -24,7 +30,7 @@ static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLa
 	var side_mouth := spec.side_mouth_m * pocket_mult
 	var c := corner_mouth / sqrt(2.0)
 	var s := side_mouth * 0.5
-	var pocket_out := r  # pocket centre sits just outside the playfield nose corner
+	var pocket_out := r * POCKET_OUT_RADII
 
 	out.kitchen_line_x = spec.kitchen_line_x
 	out.spots = {
@@ -33,16 +39,19 @@ static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLa
 		centre = Vector3.ZERO,
 	}
 
-	# [id, centre, tip-to-tip mouth, nominal hole radius = centre to a cushion tip]
+	# [id, centre, tip-to-tip mouth, nominal hole radius = centre to a cushion tip]. A corner's tips are c from the nose corner
+	# on each axis and its centre `pocket_out` outside it on both; a side's are s from the axis, its centre `pocket_out` outside
+	# the nose line. With pocket_out = 0 the radius is just c (corner) / s (side).
+	var corner_r := sqrt((c + pocket_out) * (c + pocket_out) + pocket_out * pocket_out)
+	var side_r := sqrt(s * s + pocket_out * pocket_out)
 	var pocket_defs := [
-		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
-		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
-		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
-		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), corner_mouth, sqrt((c + r) * (c + r) + r * r)],
-		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), side_mouth, sqrt(s * s + r * r)],
-		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), side_mouth, sqrt(s * s + r * r)],
+		[&"corner_nw", Vector3(-hl - pocket_out, 0.0, -hw - pocket_out), corner_mouth, corner_r],
+		[&"corner_ne", Vector3(hl + pocket_out, 0.0, -hw - pocket_out), corner_mouth, corner_r],
+		[&"corner_sw", Vector3(-hl - pocket_out, 0.0, hw + pocket_out), corner_mouth, corner_r],
+		[&"corner_se", Vector3(hl + pocket_out, 0.0, hw + pocket_out), corner_mouth, corner_r],
+		[&"side_n", Vector3(0.0, 0.0, -hw - pocket_out), side_mouth, side_r],
+		[&"side_s", Vector3(0.0, 0.0, hw + pocket_out), side_mouth, side_r],
 	]
-	var pockets_by_id := {}
 	for p in pocket_defs:
 		var id: StringName = p[0]
 		var pos: Vector3 = p[1]
@@ -52,8 +61,7 @@ static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLa
 		ps.mouth_normal = Vector2(-signf(pos.x), -signf(pos.z))  # points inward, toward table centre
 		ps.mouth_width_m = p[2]
 		out.pockets.append(ps)
-		pockets_by_id[id] = ps
-		var hole := _hole(spec, id, Vector2(pos.x, pos.z), float(p[3]), float(p[3]) + osc_m, hl, hw)
+		var hole := _hole(spec, id, Vector2(pos.x, pos.z), float(p[3]), float(p[3]) + osc_m, pocket_out, hl, hw)
 		out.holes[id] = hole
 
 	# rail segments: [id, a, b, inward_normal, pocket at a, pocket at b]
@@ -71,12 +79,10 @@ static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLa
 		seg.a = rd[1]
 		seg.b = rd[2]
 		seg.inward_normal = rd[3]
-		var pocket_a: PocketSpec = pockets_by_id[rd[4]]
-		var pocket_b: PocketSpec = pockets_by_id[rd[5]]
 		var half_a := deg_to_rad((180.0 - _facing_deg(rd[4])) * 0.5)
 		var half_b := deg_to_rad((180.0 - _facing_deg(rd[5])) * 0.5)
-		seg.facing_a = _facing_dir((seg.a - seg.b).normalized(), (pocket_a.position - seg.a).normalized(), half_a)
-		seg.facing_b = _facing_dir((seg.b - seg.a).normalized(), (pocket_b.position - seg.b).normalized(), half_b)
+		seg.facing_a = _facing_dir((seg.a - seg.b).normalized(), -seg.inward_normal, half_a)
+		seg.facing_b = _facing_dir((seg.b - seg.a).normalized(), -seg.inward_normal, half_b)
 		out.rails.append(seg)
 
 	out.sights = _sights(hl, hw, c, s, spec.rail_width_m, spec.rail_height_m)
@@ -86,10 +92,11 @@ static func layout(spec: TableSpec, pocket_mult := 1.0, osc_m := 0.0) -> TableLa
 
 ## The pocket's hole: a circle of `cup_radius` round `center`, cut into the nose rectangle where it overlaps it. The
 ## circle crosses the nose lines at two points (the cushion tips when cup_radius is the nominal radius); `inner` runs
-## between them through the playfield, `outer` the other way round.
-static func _hole(spec: TableSpec, id: StringName, center: Vector2, radius: float, cup_radius: float, hl: float, hw: float) -> TableLayout.Hole:
+## between them through the playfield, `outer` the other way round. `out` = how far `center` sits outside the nose line
+## it crosses (0: on it, the circle then crosses at right angles, k = the radius).
+static func _hole(spec: TableSpec, id: StringName, center: Vector2, radius: float, cup_radius: float, out: float, hl: float, hw: float) -> TableLayout.Hole:
 	var r := spec.ball_radius_m
-	var k := sqrt(cup_radius * cup_radius - r * r)  # the pocket centre sits r outside the nose line it crosses
+	var k := sqrt(cup_radius * cup_radius - out * out)  # half the chord the circle cuts on a nose line `out` away from its centre
 	var sx := signf(center.x)
 	var sz := signf(center.y)
 	var p1: Vector2
@@ -110,8 +117,8 @@ static func _hole(spec: TableSpec, id: StringName, center: Vector2, radius: floa
 	hole.center = center
 	hole.radius = radius
 	hole.cup_radius = cup_radius
-	hole.inner = _arc(center, cup_radius, a1, sweep, p1, p2, r)
-	hole.outer = _arc(center, cup_radius, a1 + sweep, signf(sweep) * (TAU - absf(sweep)), p2, p1, r)
+	hole.inner = _arc(center, cup_radius, a1, sweep, p1, p2, r * LIP_SEG_RADII)
+	hole.outer = _arc(center, cup_radius, a1 + sweep, signf(sweep) * (TAU - absf(sweep)), p2, p1, r * ARC_SEG_RADII)
 	hole.ring = hole.inner.duplicate()
 	for i in range(1, hole.outer.size() - 1):
 		hole.ring.append(hole.outer[i])
@@ -123,9 +130,9 @@ static func _hole(spec: TableSpec, id: StringName, center: Vector2, radius: floa
 	return hole
 
 
-## Points on the circle from angle `a0` sweeping `sweep` radians, first and last pinned to `from`/`to` exactly.
-static func _arc(center: Vector2, radius: float, a0: float, sweep: float, from: Vector2, to: Vector2, ball_r: float) -> PackedVector2Array:
-	var n := maxi(MIN_ARC_SEGS, ceili(absf(sweep) * radius / (ARC_SEG_RADII * ball_r)))
+## Points on the circle from angle `a0` sweeping `sweep` radians, about `seg_len` apart, first and last pinned to `from`/`to` exactly.
+static func _arc(center: Vector2, radius: float, a0: float, sweep: float, from: Vector2, to: Vector2, seg_len: float) -> PackedVector2Array:
+	var n := maxi(MIN_ARC_SEGS, ceili(absf(sweep) * radius / seg_len))
 	var out := PackedVector2Array()
 	for i in n + 1:
 		out.append(center + Vector2.from_angle(a0 + sweep * float(i) / float(n)) * radius)
@@ -188,12 +195,14 @@ static func _facing_deg(pocket_id: StringName) -> float:
 
 
 ## Rotate `rail_inward` (the straight-rail direction pointing from the rail end toward the
-## pocket) by `half_angle_rad` around Y, whichever sign brings it closer to `bisector` (the
-## direction from the rail end toward the pocket centre) — the angled cushion-nose facing.
-static func _facing_dir(rail_inward: Vector3, bisector: Vector3, half_angle_rad: float) -> Vector3:
+## pocket) by `half_angle_rad` around Y, whichever sign turns it `away` (the rail's outward normal,
+## away from the playfield, so the facing leans into the pocket) — the angled cushion-nose facing.
+## Not toward the pocket centre: with the centre on the nose line (POCKET_OUT_RADII 0) that direction
+## is the rail itself and the two signs tie.
+static func _facing_dir(rail_inward: Vector3, away: Vector3, half_angle_rad: float) -> Vector3:
 	var a := rail_inward.rotated(Vector3.UP, half_angle_rad)
 	var b := rail_inward.rotated(Vector3.UP, -half_angle_rad)
-	return a if a.dot(bisector) > b.dot(bisector) else b
+	return a if a.dot(away) > b.dot(away) else b
 
 
 ## 18 sights: 3 per short rail, 3 per long-rail half, on the rail top at the nose line offset

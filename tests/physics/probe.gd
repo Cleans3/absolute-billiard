@@ -190,14 +190,14 @@ func _jaw_hit() -> void:
 
 ## Loop 1 (gamma A/B/D, plan.md T4.1), rewritten for real holes (06 P30): a ball whose centre is still on the bed — a
 ## resting one, or one rolling past a pocket on a line outside the hole's rim — never reads as pocketed; one whose
-## centre is over the hole does. The hole is a circle through the cushion tips, so its rim reaches (radius - R) inside
-## the nose line at a side pocket's axis.
+## centre is over the hole does. The hole is a circle through the cushion tips centred on the nose line (06 P40), so its rim
+## reaches `radius` inside the nose line at a side pocket's axis.
 func _drop_zone_negatives() -> void:
 	var hl := table.spec.length_m * 0.5
 	var hw := table.spec.width_m * 0.5
 	var r := table.spec.ball_radius_m
 	var side: TableLayout.Hole = table.layout.holes[&"side_n"]
-	var rim_z := -hw - r + side.cup_radius  # north side pocket: the rim at its axis, table-local z
+	var rim_z := side.center.y + side.cup_radius  # north side pocket: the rim at its axis, table-local z
 
 	# A: resting ball near the NW corner mouth, centre well inside the cushion-end line.
 	var inner := -r + table.spec.corner_mouth_m * 0.5 + table.spec.corner_shelf_m
@@ -346,7 +346,10 @@ func _side_jaw_scale1() -> void:
 	var r := s.ball_radius_m
 	var sm := s.side_mouth_m * 0.5
 	var yy := s.bed_height_m + r + s.clearance_margin_m
-	var h := _ball(RED_T, table.global_position + Vector3(-sm - 6.0 * r, yy, hw - 6.0 * r))
+	# The cue ball: the one that really reaches 22 m/s, and the one with CCD from its first step. A RED ball launched from rest at 22 m/s
+	# takes its first step without CCD (Ball turns it on from the second) at the idle tick rate, 0.37 m, which from 6 R out lands it
+	# inside the pocket's back wall (06 P40: the half-disc hole's wall starts 1 R from the nose line): tunnelling no game can produce.
+	var h := _ball(CUE_T, table.global_position + Vector3(-sm - 6.0 * r, yy, hw - 6.0 * r))
 	await physics_frame
 	print("probe: side jaw 22 m/s at scale 1.0")
 	var hdir := (Vector3(-sm, 0, hw) - Vector3(-sm - 6.0 * r, 0, hw - 6.0 * r)).normalized()

@@ -108,8 +108,9 @@ func _host() -> void:
 			rest.append(b)
 	var r := table.spec.ball_radius_m
 	cue.restore(_world(Vector2(-1.4, 0.0), cue))
-	pair[0].restore(_world(Vector2(1.0, r + 0.002), pair[0]))
-	pair[1].restore(_world(Vector2(1.0, -(r + 0.002)), pair[1]))
+	# x 0.66: the pair that pots both in the foot corners at the 2.2 D mouths (06 P40; it was 1.0 at 2.8 D), as in round_probe
+	pair[0].restore(_world(Vector2(0.66, r + 0.002), pair[0]))
+	pair[1].restore(_world(Vector2(0.66, -(r + 0.002)), pair[1]))
 	for b in rest:
 		b.retire()
 		b.global_position = _world(Vector2.ZERO, b)
