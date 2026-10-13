@@ -88,6 +88,7 @@ var _pbs: Array[PhysicalBone3D] = []
 var _body_mi: MeshInstance3D
 var _head_mi: MeshInstance3D
 var _quirk := &""
+var _face: MeshInstance3D  ## the Bartender's real face (BarkeepFace): the modelled one is not painted and this takes the head surface's layers
 var _first_person := false
 var _ragdoll := false
 var _blend := 1.0               ## 0 → 1 over BLEND_SEC after get_up()
@@ -163,11 +164,21 @@ func set_quirk(quirk: StringName) -> void:
 	apply_skin(_skin)
 
 
+## The Bartender wears a real face (BarkeepFace, a mesh on the head bone) instead of the modelled head, eyes, brows, nose and mustache:
+## those are left out of the surfaces and the mesh follows the head surface's render layers. `null` paints the modelled face again.
+func set_face(face: MeshInstance3D) -> void:
+	_face = face
+	apply_skin(_skin)
+	set_first_person(_first_person)
+
+
 ## Local player: the head surface (head, face, hat, neck) leaves the camera's cull mask (the Player removes HEAD_LAYER from it)
 ## but keeps casting shadows; trunk, arms, legs and feet stay visible when looking down. A mirror camera keeps HEAD_LAYER.
 func set_first_person(on: bool) -> void:
 	_first_person = on
 	_head_mi.layers = HEAD_LAYER if on else 1 | MIRROR_LAYER  # the mirror camera draws HEAD_LAYER too
+	if _face != null:
+		_face.layers = _head_mi.layers
 
 
 ## Local player in CUE: the leaning trunk and arms would fill the aiming view, so the body joins the head on HEAD_LAYER: the
@@ -781,14 +792,15 @@ func _paint_barkeep(body: SurfaceTool, head: SurfaceTool, skin: CharacterSkin) -
 	var plum := Color(0.32, 0.1, 0.42)
 	var red := Color(0.75, 0.1, 0.12)
 	var cy := 1.62  # head centre
-	_ball(head, B.HEAD, flesh, Vector3(0, cy, 0), Vector3(0.135, 0.16, 0.145), 10, 7)
-	for sx in [-1.0, 1.0]:
-		_ball(head, B.HEAD, white, Vector3(0.055 * sx, cy + 0.04, -0.125), Vector3(0.036, 0.04, 0.03), 6, 4)
-		_ball(head, B.HEAD, dark, Vector3(0.05 * sx, cy + 0.04, -0.153), Vector3(0.014, 0.016, 0.01), 5, 3)
-		_box(head, B.HEAD, stache, Vector3(0.06 * sx, cy + 0.10, -0.12), Vector3(0.05, 0.012, 0.014))
-		for lump: Array in [[0.035, 0.0], [0.08, -0.008], [0.125, 0.0], [0.16, 0.03], [0.185, 0.065]]:  # the bar sags, then curls up
-			_ball(head, B.HEAD, stache, Vector3(lump[0] * sx, cy - 0.075 + lump[1], -0.135), Vector3(0.032, 0.02, 0.02), 6, 4)
-	_ball(head, B.HEAD, nose, Vector3(0, cy - 0.02, -0.155), Vector3(0.036, 0.034, 0.04), 6, 4)
+	if _face == null:  # with a real face on the head bone (set_face) none of this is painted
+		_ball(head, B.HEAD, flesh, Vector3(0, cy, 0), Vector3(0.135, 0.16, 0.145), 10, 7)
+		for sx in [-1.0, 1.0]:
+			_ball(head, B.HEAD, white, Vector3(0.055 * sx, cy + 0.04, -0.125), Vector3(0.036, 0.04, 0.03), 6, 4)
+			_ball(head, B.HEAD, dark, Vector3(0.05 * sx, cy + 0.04, -0.153), Vector3(0.014, 0.016, 0.01), 5, 3)
+			_box(head, B.HEAD, stache, Vector3(0.06 * sx, cy + 0.10, -0.12), Vector3(0.05, 0.012, 0.014))
+			for lump: Array in [[0.035, 0.0], [0.08, -0.008], [0.125, 0.0], [0.16, 0.03], [0.185, 0.065]]:  # the bar sags, then curls up
+				_ball(head, B.HEAD, stache, Vector3(lump[0] * sx, cy - 0.075 + lump[1], -0.135), Vector3(0.032, 0.02, 0.02), 6, 4)
+		_ball(head, B.HEAD, nose, Vector3(0, cy - 0.02, -0.155), Vector3(0.036, 0.034, 0.04), 6, 4)
 	var hat_y := cy + 0.14
 	_cyl(head, B.HEAD, plum, Vector3(0, hat_y, 0), 0.014, Vector2(0.2, 0.2), Vector2(0.2, 0.2), 10)
 	for i in 5:
