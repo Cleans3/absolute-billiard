@@ -15,6 +15,7 @@ const PAIR_TRAVEL_TICKS := 3.0  # events land 1-2 ticks after the contact: balls
 const RAIL_BAND_RADII := 4.0  # a rail impact is seen up to this many radii off the cushion (the event trails the bounce)
 const POCKET_REACH_RADII := 4.0  # past the pocket's half mouth: where a bounce is a jaw's
 const ECHO_TICKS := 4  # the host rescales a rebound one tick after the bounce (Ball._rail_rebound): that re-send is not a second hit
+const PAIR_ECHO_TICKS := 4  # the same two balls hitting again this soon, where they are, is the host re-sending the impact (a packed rack's balls rattle)
 
 var radius := 0.05715
 var origin := Vector3.ZERO  # Table.global_position: the codec's frame origin and the table-local zero
@@ -29,6 +30,7 @@ var _tick := {}  # net_id -> tick of the newest event seen
 var _state := {}  # net_id -> BallMotion.State of that event
 var _gone := {}  # net_id -> true while pocketed: a ball bouncing in its cup is no hit
 var _rail := {}  # net_id -> {tick, n} of its last cushion hit
+var _pair_tick := {}  # ball pair key -> tick of the last ball-ball hit reported for it
 
 
 ## A Shot starts with every ball at rest: forget the last Shot's history.
@@ -37,6 +39,7 @@ func reset() -> void:
 	_state.clear()
 	_gone.clear()
 	_rail.clear()
+	_pair_tick.clear()
 
 
 ## Pocket centres (table-local XZ) and the widest mouth, for the jaw zone.
@@ -85,8 +88,12 @@ func process(frame: PackedByteArray, now_tick: int) -> Array[Dictionary]:
 		if paired.has(key):
 			continue
 		paired[key] = true
+		var pair_key: int = mini(e.id, partner.id) * 64 + maxi(e.id, partner.id)
+		if e.tick - int(_pair_tick.get(pair_key, -1000)) <= PAIR_ECHO_TICKS:
+			continue
 		var strength := ((e.pre as Vector3) - (partner.pre as Vector3)).length()
 		if strength >= MIN_DV:
+			_pair_tick[pair_key] = e.tick
 			var a: Vector3 = e.post.pos
 			var b: Vector3 = partner.post.pos
 			out.append({kind = Kind.BALL, tick = e.tick, pos = (a + b) * 0.5, normal = (b - a).normalized(), strength = strength})

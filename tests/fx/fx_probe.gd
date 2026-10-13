@@ -380,7 +380,7 @@ func _real_combo() -> void:
 	_kinds.clear()
 	var intent := ShotIntent.new()
 	intent.aim_dir = Vector2.RIGHT
-	intent.power = 0.7
+	intent.power = CueSpec.new().power_for(7.0)  # the two-pot split was tuned at the old linear 0.7 x 10 m/s
 	table.sim.request_shot(intent)
 	await director.shot_ended
 	await create_timer(0.1).timeout

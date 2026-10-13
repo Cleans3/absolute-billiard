@@ -17,3 +17,17 @@ extends Resource
 func speed_at(power: float) -> float:
 	var p := maxf(power, 0.0)
 	return power_cap_speed_mps * lerpf(p, p * p * p, power_top_boost)
+
+
+## The slider power (0..1) that launches at `speed` m/s: `speed_at` inverted. Scripted probe strokes and the bot state a speed, so the
+## scenario they were tuned for survives a change of the cap or the curve.
+func power_for(speed: float) -> float:
+	var lo := 0.0
+	var hi := 1.0
+	for i in 24:
+		var mid := (lo + hi) * 0.5
+		if speed_at(mid) < speed:
+			lo = mid
+		else:
+			hi = mid
+	return hi
