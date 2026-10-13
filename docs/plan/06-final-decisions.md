@@ -229,3 +229,19 @@ Rewrite 01/02/03/04 against D1–D7 **as amended by P1–P5**, add 07. Then Play
 **P31 — The black ball starts in the middle.** In every opening formation, authored or seeded, the black ball takes the spot nearest the formation's centre: the middle of the triangle's third row in a triangle rack, the most central slot in a scatter. If a rack has more than one black ball, the others keep their spots.
 
 **P32 — No glare in the table's seams.** Where the cushions meet the rails and the cloth, nothing shines: no bright line, sparkle or light leak at any camera angle a player can reach. P28's matte materials stay; the seams themselves are closed.
+
+# Cleanse's rulings (2026-10-13) — "a few problems I found" (override 08 §2.7 "CUE body shadow only", 07/08 "mirror only within 8 m", 02's two base camera rigs and five-Night campaign, 09 §2.1 "lost a bet", P29 "no cutscene system")
+
+**P33 — You see yourself shoot.** In CUE the player still drives the cue and the camera, but their own body is a real body: the hands stay on the cue, the rest of the body leans and stands where a player would, and it all shows in the mirror. The mirror stays sharp up close and stays live from anywhere in the room.
+
+**P34 — Two stream cameras: one tripod, one in the ceiling.** One tripod is removed; a fixed camera in the ceiling looks straight down at the table. The TV is wider and shows both feeds live, without noise. The ceiling feed is an overview, not a scoring rig.
+
+**P35 — Controls show only what you can do.** Shoot appears only to the player whose turn it is, only when a shot is possible; sabotage (hostile interaction) prompts appear only when they would be accepted. A prompt appears only for what the player is facing. Stools and sofas can be sat on. Jump is an up-arrow icon. The Bartender's menu shows a target only when there is a choice.
+
+**P36 — A break is chaos, and the shot is readable.** A full-power break sends most of the rack moving. The shooter sees a guide of where the cue ball will go (cushions, the first ball, curve for massé, arc for jump), and the cue's tip sits where the spin setting says.
+
+**P37 — An easier start.** The first quota, the scratch penalty and the Round timer are set so a new crew can make Night 1: lower quota and fines early, much longer Rounds. Numbers are calibrated with the playtest bot.
+
+**P38 — The table is staged.** At the end of a Round the table bed opens and the balls fall into a pit (no player can fall in). At the start of a Round a ceiling vent opens above the table's end nearest the blackboard, a UFO flies out, materialises the rack ball by ball for every formation and ball type, then dematerialises; nothing in either sequence collides. Shots and the Round clock wait for it.
+
+**P39 — Campaign and Endless; the abduction.** The Lobby offers Campaign (3 Nights, then the win) and Endless (Nights forever). The story is reframed: the crew is abducted, driven hooded and gagged to a cabin in the woods that hides the bar, thrown in and locked up; Moe, Gus, the Rope and velvet stay. Cutscenes exist now (overrides P29's "presentation through what the game already has"): the intro (van → cabin → thrown in), the quota failure (red alert, black screens, a bloody mirror, the floor opens onto a fleshy mouth, then the main menu) and the campaign win (green light, Gus celebrates, green gas, then the crew riding a truck while the run's stats and a D–S+ grade show). Alpha decided the details Cleanse left open; they are in 09 and the card contract.
