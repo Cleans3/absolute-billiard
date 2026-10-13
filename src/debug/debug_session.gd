@@ -6,10 +6,14 @@ extends Node
 ## under tests/debug drive it. Host-only (clients see their own numbers move at the next shot start, 04 §5). Gameplay never
 ## references this file.
 ##
-## Replay is a RE-SIMULATION, not a recording: rewind puts every ball back where it was and zeroes it, then the recorded
-## ShotIntent goes through the normal shot path (validator, scoring, tricks). Jolt on one machine reproduces a shot from
-## the same state closely but not bit for bit (contact caches, float order), and a miscue draws `randf` — so each replay
-## reports how far the balls ended from the original run (`ShotRecord.error_m`) instead of promising an identical one.
+## Replay is a RE-SIMULATION, not a recording: rewind puts every ball back where it was (the exact transform, orientation too: a
+## sphere's spin axis is invisible, but a different rotation matrix is float noise) and zeroes it, then the recorded ShotIntent
+## goes through the normal shot path (validator, scoring, tricks). Jolt on one machine reproduces a shot from the same state
+## closely but not bit for bit (contact caches, float order), and a miscue draws `randf` — so each replay reports how far the
+## balls ended from the original run (`ShotRecord.error_m`) instead of promising an identical one. How far depends on the shot:
+## a stun shot ends within a hundredth of a millimetre, a break into a packed rack is chaotic (adhoc-1013c W2: the same record
+## replayed from restored states lands anywhere from 10 mm to 2.2 m from the original, one ball potting or not, flipped by float
+## noise below what a transform prints) and its `error_m` is a report, not a gate.
 
 signal changed  ## recorded shots, tuning or table state changed: panels re-read
 signal said(text: String)  ## one line of feedback for the panel's status bar
@@ -34,7 +38,7 @@ class ShotRecord extends RefCounted:
 	var shot_id := ""  # "n<night>-r<round>-s<n>" (RoundDirector's), or "free" for a shot outside a live Round
 	var intent: ShotIntent
 	var shooter_id := 0
-	var balls: Array[Dictionary] = []  # {net_id, type: BallType, pos: Vector3, active: bool}
+	var balls: Array[Dictionary] = []  # {net_id, type: BallType, pos: Vector3, xform: Transform3D, active: bool}
 	var shots_left := 0
 	var round_points := 0
 	var time_left := 0.0
@@ -239,7 +243,7 @@ func _on_sim_shot_started(_ball: Ball, intent: ShotIntent) -> void:
 	rec.intent = _copy_intent(intent)
 	rec.shooter_id = intent.shooter_id
 	for b in director.get_balls():
-		rec.balls.append({net_id = b.net_id, type = b.ball_type, pos = b.global_position, active = _on_table(b)})
+		rec.balls.append({net_id = b.net_id, type = b.ball_type, pos = b.global_position, xform = b.global_transform, active = _on_table(b)})
 	if game_loop != null:
 		rec.shots_left = game_loop.shots_left
 		rec.round_points = game_loop.round_points
@@ -326,6 +330,7 @@ func rewind(rec: ShotRecord) -> bool:
 		var e: Dictionary = by_id[b.net_id]
 		if e.active:
 			b.restore(e.pos)
+			b.global_transform = e.xform
 			b.reset_physics_interpolation()
 		elif not b.retired:
 			b.retire()
