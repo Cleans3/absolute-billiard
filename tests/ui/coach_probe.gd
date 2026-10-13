@@ -83,7 +83,7 @@ func _run() -> void:
 	await _after_the_shot()
 	await _wait_card_and_skip()
 	await _replay_and_limits()
-	_shots_label()
+	await _shots_label()
 	finished = true
 	print("COACH OK" if fails == 0 else "COACH FAIL (%d)" % fails)
 	quit(0 if fails == 0 else 1)
@@ -108,6 +108,9 @@ func _go_live() -> void:
 	_check(coach._body.text.contains("GO LIVE") and coach._title.text == "Getting started", "it names the button: %s" % coach._body.text)
 	_check(pedestal._hint != null and pedestal._hint.visible and pedestal._hint.text.contains("ready to play"), "the floating hint is over the GO LIVE button")
 	_check(not hud._turn.visible, "no turn line between Rounds")
+	var cfg := loop.current_night()
+	var secs := ceili(cfg.round_time_limit_sec)
+	_check(hud._shots.text == "Shots %d/%d" % [cfg.shots_per_round, cfg.shots_per_round] and hud._time.text == "%d:%02d" % [secs / 60, secs % 60], "before Round 1 the HUD shows the full count and time, not 0: '%s' '%s'" % [hud._shots.text, hud._time.text])
 	await create_timer(1.0).timeout
 	_check(coach.step == Coach.Step.GO_LIVE, "the step never advances on a timer")
 	loop.ready_peers.append(1)
@@ -252,3 +255,10 @@ func _shots_label() -> void:
 	loop.shots_left = total + 2  # a debug top-up
 	loop.state_changed.emit()
 	_check(hud._shots.text == "Shots %d/%d" % [total + 2, total + 2], "a top-up never reads n/N with n > N: '%s'" % hud._shots.text)
+	loop.shots_left = 3  # a Round just ended with shots and time to spare: the Intermission shows the next Round's full values
+	loop.time_left = 7.0
+	loop.phase = GameLoop.Phase.INTERMISSION
+	loop.phase_changed.emit(GameLoop.Phase.INTERMISSION)
+	await _frames(2)
+	var secs := ceili(loop.current_night().round_time_limit_sec)
+	_check(hud._shots.text == "Shots %d/%d" % [total, total] and hud._time.text == "%d:%02d" % [secs / 60, secs % 60], "an Intermission after a Round shows the full count and time: '%s' '%s'" % [hud._shots.text, hud._time.text])

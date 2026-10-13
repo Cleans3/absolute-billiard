@@ -40,7 +40,9 @@ func _ready() -> void:
 		game_loop.state_changed.connect(_refresh_round)
 		game_loop.shot_settled.connect(_on_shot_settled)
 		game_loop.cue_respawned.connect(func(reason: StringName) -> void: _toast("Cue ball reset (%s)" % reason))
-		game_loop.phase_changed.connect(func(_p: int) -> void: _refresh_turn())
+		game_loop.phase_changed.connect(func(_p: int) -> void:
+			_refresh_round()  # a client's state_changed comes before its phase moves
+			_refresh_turn())
 		game_loop.staging_changed.connect(func(_on: bool) -> void: _refresh_turn())
 		_rd = game_loop.get_parent().get_node_or_null("RoundDirector") as RoundDirector  # the level's; a bare probe loop has none
 		if _rd != null:
@@ -83,7 +85,7 @@ func _on_settings_changed() -> void:
 func _refresh_time() -> void:
 	if game_loop == null:
 		return
-	var secs := ceili(game_loop.time_left)
+	var secs := ceili(_time_now())
 	if secs != _shown_secs:
 		_shown_secs = secs
 		_time.text = "%d:%02d" % [floori(secs / 60.0), secs % 60]
@@ -92,15 +94,30 @@ func _refresh_time() -> void:
 
 func _refresh_round() -> void:
 	if game_loop != null:
-		_shots.text = "Shots %d/%d" % [game_loop.shots_left, _shots_total()]
-		_warn(_shots, game_loop.shots_left <= LOW_SHOTS)
-		_warn(_time, ceili(game_loop.time_left) <= LOW_SECS)  # the phase may have changed under an unchanged number
+		var left := _shots_now()
+		_shots.text = "Shots %d/%d" % [left, _shots_total(left)]
+		_warn(_shots, left <= LOW_SHOTS)
+		_warn(_time, ceili(_time_now()) <= LOW_SECS)  # the phase may have changed under an unchanged number
+
+
+## Before a Round starts (the Night's start and every Intermission) the clock and the shots show the next Round's full values from
+## the Night's config, not the last Round's leftovers (or 0 before the first): host and clients read the same config.
+func _before_round() -> bool:
+	return (game_loop.phase == GameLoop.Phase.NIGHT_START or game_loop.phase == GameLoop.Phase.INTERMISSION) and not game_loop.nights.is_empty()
+
+
+func _shots_now() -> int:
+	return game_loop.current_night().shots_per_round if _before_round() else game_loop.shots_left
+
+
+func _time_now() -> float:
+	return game_loop.current_night().round_time_limit_sec if _before_round() else game_loop.time_left
 
 
 ## N of "Shots n/N": the Night's allowance (a debug top-up can pass it, and n/N must not read as an error).
-func _shots_total() -> int:
-	var total := game_loop.current_night().shots_per_round if not game_loop.nights.is_empty() else game_loop.shots_left
-	return maxi(total, game_loop.shots_left)
+func _shots_total(left: int) -> int:
+	var total := game_loop.current_night().shots_per_round if not game_loop.nights.is_empty() else left
+	return maxi(total, left)
 
 
 ## The persistent turn line under the clock: whose shot it is, while a Round is live (and the table is not being set up).
