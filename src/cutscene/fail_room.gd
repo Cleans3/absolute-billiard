@@ -64,6 +64,14 @@ func _build() -> void:
 	_siren = CutsceneSfx.play(self, CutsceneSfx.Kind.ALARM, -10.0)
 
 
+## S6 (adhoc-1014b): the beacon and its spot, and the red wash's screen pass, parked under `level` so that the first shown frame of the beat
+## compiles nothing. Touches nothing of the world. The caller draws the returned node for two frames, then hides it and KEEPS it (freeing it
+## frees the shaders and their pipelines). Null when there is no level.
+static func prewarm(level: Node) -> Node:
+	var warm := RoomPrewarm.make(level, &"FailPrewarm", RED, false)
+	return warm.finish() if warm != null else null
+
+
 func _update(time: float, _dt: float) -> void:
 	var power := smoothstep(0.0, 0.4, time)
 	_alert.pose(time, RED, power, SPIN_HZ)
