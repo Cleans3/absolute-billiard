@@ -208,6 +208,27 @@ func _run() -> void:
 	for l: Label3D in tv.find_children("Live*", "Label3D", false, false):
 		_check(l.visible, "on: the LIVE bugs show")
 
+	# --- warm (adhoc-1014b): the intro's black prepare draws every feed of the tier once, whatever the viewer sees; the glass stays black ---
+	tv.apply_tier(0)
+	tv.set_feeds_on(true)
+	var warm_before := tv.renders.duplicate()
+	_check(tv.is_in_group(Cutscene.WARM_GROUP) and tv.warm(), "warm: asks for the feeds")
+	_check(tv.renders[0] == warm_before[0] + 1 and tv.renders[1] == warm_before[1] + 1, "warm: tier 0 draws both feeds once: %s -> %s" % [warm_before, tv.renders])
+	_check(tv._vp[0].render_target_update_mode == SubViewport.UPDATE_ONCE and tv._vp[1].render_target_update_mode == SubViewport.UPDATE_ONCE, "warm: both passes are requested")
+	_check(tv._lit == Vector2.ZERO, "warm: the glass stays black (a feed is lit by a pass of the game's own timing)")
+	_check(tv.tick(1.0, false) == -1 and tv._vp[0].render_target_update_mode == SubViewport.UPDATE_ONCE and tv._vp[1].render_target_update_mode == SubViewport.UPDATE_ONCE, "warm: the TV off screen does not cancel them on the next frame")
+	_check(tv.tick(1.0, false) == -1 and tv._vp[0].render_target_update_mode == SubViewport.UPDATE_DISABLED and tv._vp[1].render_target_update_mode == SubViewport.UPDATE_DISABLED and tv._lit == Vector2.ZERO, "warm: the frame after is the gates' again, still black")
+	QualityManager.current_tier = 2
+	warm_before = tv.renders.duplicate()
+	_check(tv.warm() and tv.renders[0] == warm_before[0] and tv.renders[1] == warm_before[1] + 1, "warm: tier 2 draws the one wide feed only")
+	tv.tick(1.0, false)
+	tv.tick(1.0, false)
+	tv.set_feeds_on(false)
+	_check(not tv.warm() and tv._vp[1].render_target_update_mode == SubViewport.UPDATE_DISABLED, "warm: nothing while the TV is off")
+	QualityManager.current_tier = 0
+	tv.apply_tier(0)
+	tv.set_feeds_on(true)
+
 	# --- the glass shader: the camera's picture, no noise, scanlines or time ---
 	var code: String = preload("res://src/shaders/tv.gdshader").code
 	_check(not code.contains("TIME") and not code.contains("hash") and not code.contains("noise") and not code.contains("rand") and not code.contains("sin("), "tv.gdshader has no noise, scanlines or time")

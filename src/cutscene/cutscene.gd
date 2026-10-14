@@ -21,6 +21,7 @@ const MAX_CREW := 4
 const MAX_STEP_SEC := 0.1  ## a hitch longer than this does not skip the choreography
 const STAGE_LAYER := 1 << 15  ## render layer 16 (the bar and its mirror use 10-14 and 20): a stage part and its camera live on this one alone
 const STAGE_FAR := 250.0  ## the stage camera's far plane: nothing a stage part builds is farther, and the bar (~700 m away) is never in range
+const WARM_GROUP := &"viewport_warm"  ## nodes with `warm() -> bool` that draw their own SubViewports once on request (Mirror's window pass, StreamTv's feeds): the intro's black prepare asks
 const HOLD_GROUP := &"cutscene_hold"  ## nodes with `cutscene_hold(on: bool, on_stage: bool)`: told when a cutscene takes the camera and when it gives it back
 
 ## Playback speed of every engine-driven cutscene clock (probes, the preview tool: 20 = a 6 s beat in 0.3 s). 1 in the game.

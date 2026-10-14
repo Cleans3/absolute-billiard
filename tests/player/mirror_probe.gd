@@ -174,6 +174,18 @@ func _run() -> void:
 	QualityManager.current_tier = 0
 	_check(mirror.tick(Vector3(-3.4, 1.6, -3.8), FOCAL) and bool(mirror._mat.get_shader_parameter(&"avatars_on")), "back on tier 0 the pass draws and shows again")
 
+	# warm (adhoc-1014b): the intro's black prepare draws the pass once from in front of the glass, whatever the viewer sees
+	var warm_before := mirror.renders
+	_check(mirror.is_in_group(Cutscene.WARM_GROUP) and mirror.warm(), "warm: asks for one window pass")
+	_check(mirror.renders == warm_before + 1 and view.render_target_update_mode == SubViewport.UPDATE_ONCE and mirror.in_front(mirror.to_global(Mirror.CAPTURE_AT)) and not mirror.in_front(cam.global_position), "warm: drawn for a viewer in front of the glass (its camera is the mirror image, behind it)")
+	mirror._process(0.0)  # headless: no camera, the glass 'off screen': the gates would cancel the pass
+	_check(view.render_target_update_mode == SubViewport.UPDATE_ONCE and mirror.renders == warm_before + 1, "warm: the next frame leaves the pass alone")
+	mirror._process(0.0)
+	_check(view.render_target_update_mode == SubViewport.UPDATE_DISABLED, "warm: the frame after is the gates' again")
+	QualityManager.current_tier = 2
+	_check(not mirror.warm() and mirror.renders == warm_before + 1, "warm: tier 2 draws no pass, so nothing to warm")
+	QualityManager.current_tier = 0
+
 	# the room cube: 1024 / 512 / 384 px faces, mipmapped (the shader samples them with filter_linear_mipmap)
 	_check(Mirror.FACE_PX.size() == 3 and Mirror.FACE_PX[0] == 1024 and Mirror.FACE_PX[1] == 512 and Mirror.FACE_PX[2] == 384, "cube faces 1024 / 512 / 384 by tier: %s" % [Mirror.FACE_PX])
 	_check(FileAccess.get_file_as_string("res://src/gameplay/bar/mirror.gd").contains("generate_mipmaps"), "each face gets its mipmaps")
