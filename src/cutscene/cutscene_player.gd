@@ -13,9 +13,9 @@ extends Node
 ##
 ## PREPARE (adhoc-1014b C3). A STAGE part (van, cabin, truck: far from the room, nothing of the bar in it) is built and drawn twice under
 ## black BEFORE it is shown, so its first shown frame builds and compiles nothing. When one is due and not ready, the player raises a black
-## cover (a CutsceneShell on fade 1, which also holds the game's input), waits until that black is on screen, lets the bar draw its first
-## frames under it (its pipelines compile now), waits for the Mirror's capture, then builds each part (one per frame), draws each twice with
-## its camera current, and plays. At the intro's start that covers the van and the cabin together; at the end of the win's room it covers the
+## cover (a CutsceneShell on fade 1, which also holds the game's input), waits until that black is on screen, lets a fresh level's bar draw
+## from every side under it (BAR_VIEWS: its pipelines compile now), waits for the Mirror's capture, then builds each part (one per frame),
+## draws each at a few moments of its timeline (Cutscene.warm_times: a light that comes on later is lit once under the black), and plays. At the intro's start that covers the van and the cabin together; at the end of the win's room it covers the
 ## truck. Room parts build at their own start (they work the level's fixtures: no undo, remote players may not exist yet). A skip, an abort or
 ## a stall (PREPARE_STALL_SEC without a step finishing) during it frees what was built and still acks once. A `manual` play (probes, the
 ## preview tools) prepares and plays in the one call, as it always did: nothing is drawn, so nothing is covered.
@@ -26,7 +26,18 @@ signal played(id: StringName, skipped: bool)  ## once per play(): the last part 
 const PREPARE_MAX_SEC := 4.0  ## the worst the black prepare is allowed to take (a slow phone); the host's ack wait grows by it
 const ACK_MARGIN_SEC := 5.0 + PREPARE_MAX_SEC
 const PREPARE_STALL_SEC := 6.0  ## a prepare step that takes this long is stuck (a window that draws nothing): play unprepared instead
-const BAR_WARM_FRAMES := 3  ## frames the bar draws under the first black, once per run of the app
+## Where the bar is drawn from under the first black, once per run of the app: from the middle of the room all the way round, up and down, with a
+## camera that culls nothing (a first-person camera never draws the local player's head, a cutscene's camera does). Every instance the room
+## cutscenes will show is in one of these frustums, so none builds its surface cache or compiles its draw while the cutscene is on screen.
+const BAR_VIEWS: Array[Transform3D] = [
+	Transform3D(Basis(Vector3.UP, 0.0), Vector3(0.0, 1.6, 0.0)),
+	Transform3D(Basis(Vector3.UP, PI * 0.5), Vector3(0.0, 1.6, 0.0)),
+	Transform3D(Basis(Vector3.UP, PI), Vector3(0.0, 1.6, 0.0)),
+	Transform3D(Basis(Vector3.UP, PI * 1.5), Vector3(0.0, 1.6, 0.0)),
+	Transform3D(Basis(Vector3.RIGHT, PI * 0.5), Vector3(0.0, 1.6, 0.0)),
+	Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0.0, 1.6, 0.0)),
+]
+const BAR_FOV := 100.0
 const WARM_FRAMES := 2  ## frames each prepared part is drawn under black: the first uploads and compiles, the second proves it
 const MIRROR_WAIT_SEC := 1.5  ## how long the prepare waits for the Mirror's cube capture (seam S5)
 const FIRST_WATCH_IDS: Array[StringName] = [&"intro"]  ## skippable only after this player has seen them once (D13)
@@ -48,7 +59,7 @@ const SEQUENCES := {
 ## Sequences whose last part must play even when an earlier one is skipped: the win's truck is the payoff and carries the stats card.
 const SKIP_KEEPS_LAST: Array[StringName] = [&"win"]
 
-## True once the bar has drawn under a black prepare (its pipelines are compiled): the next prepare need not wait for it.
+## True once the bar has drawn under the intro's black prepare (its pipelines are compiled): a later level in the same run of the app skips it.
 static var bar_warmed := false
 
 var current: Cutscene  ## the part on screen now, null between plays
@@ -252,11 +263,10 @@ func _black_prepare(run: Array[StringName], gen: int) -> void:
 	await _drawn()  # the black is on screen before anything below can stall a frame
 	if gen != _gen:
 		return
-	if not bar_warmed:  # the bar draws under the black: its pipelines compile here, not in the first room beat
-		for i in BAR_WARM_FRAMES:
-			await _drawn()
-			if gen != _gen:
-				return
+	if not bar_warmed and playing_id == &"intro":  # a fresh level's bar has never been drawn: it does now, under the black, not in the first room beat
+		await _sweep_bar(gen)
+		if gen != _gen:
+			return
 		bar_warmed = true
 	await _mirror_captured(gen)
 	if gen != _gen:
@@ -288,6 +298,22 @@ func _black_prepare(run: Array[StringName], gen: int) -> void:
 			if gen != _gen:
 				return
 	_set_hold(false)
+
+
+## The bar from every side (BAR_VIEWS), one drawn frame each, then the game's camera back.
+func _sweep_bar(gen: int) -> void:
+	_warm_prev = get_viewport().get_camera_3d()
+	_warm_cam = Camera3D.new()
+	_warm_cam.fov = BAR_FOV
+	_warm_own_cam = true
+	add_child(_warm_cam)
+	for v in BAR_VIEWS:
+		_warm_cam.global_transform = v
+		_warm_cam.make_current()
+		await _drawn()
+		if gen != _gen:
+			return
+	_leave_warm()
 
 
 ## Draws `holder` with `cam` current, under the black: a prepared `part` at each of its warm times (the first for WARM_FRAMES frames, the

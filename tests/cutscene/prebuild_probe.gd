@@ -278,7 +278,7 @@ func _player_intro() -> void:
 	_check(events == ["start intro"], "intro: started is announced at once")
 	var frames := await _frames_until(func() -> bool: return player.current != null)
 	_check(player.current is IntroVan and player.current.playing and player.current.visible, "intro: the van plays when the prepare is done")
-	_check(frames >= CutscenePlayer.BAR_WARM_FRAMES + 3, "intro: the bar drew first (%d frames before the van)" % frames)
+	_check(frames >= CutscenePlayer.BAR_VIEWS.size() + 3, "intro: the bar drew from every side first (%d frames before the van)" % frames)
 	var cabin := player._ready_parts.get(&"intro_cabin") as Cutscene
 	_check(cabin != null and cabin.prepared and not cabin.visible and not cabin.playing and not cabin.shell.visible and not cabin.camera.is_current(), "intro: the cabin was built with the van, hidden, shut, waiting")
 	_check(Cutscene.holding == 1 and not player._held, "intro: one hold, the van's; the prepare's own is released")
