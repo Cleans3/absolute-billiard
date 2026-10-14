@@ -3,10 +3,17 @@ extends ColorRect
 ## The screen pass the in-room cutscenes use (docs/plan/09 §3.8, adhoc-1013c F3b): a colour wash over the room (red alert, green gas), a blur
 ## and a fade to black, one ColorRect + one shader, uniforms only. Hidden (no pass at all) while idle. Local presentation; it is not the
 ## drink effects' ViewOverlay, so an Effect expiring mid-cutscene cannot switch it off and the effects never pay for the mip chain.
+## Two shaders (adhoc-1014b C6): the mip one reads the screen (a copy of it plus its mip chain every frame) and only runs when the scene
+## says it `blurs` and the tier is below 2; every other wash is `cut_screen_flat`, a blend-unit multiply that reads nothing.
 
 const SHADER := preload("res://src/shaders/cut_screen.gdshader")
+const FLAT := preload("res://src/shaders/cut_screen_flat.gdshader")
 
 var active := false
+var blurs := false  ## the running scene blurs / swims the picture (WinRoom sets it once, clear() resets it); tier 2 ignores it
+
+var _mip := ShaderMaterial.new()
+var _flat := ShaderMaterial.new()
 
 
 func _init() -> void:
@@ -14,9 +21,9 @@ func _init() -> void:
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	z_index = -1  # under the HUD, like the ViewOverlay
 	visible = false
-	var mat := ShaderMaterial.new()
-	mat.shader = SHADER
-	material = mat
+	_mip.shader = SHADER
+	_flat.shader = FLAT
+	material = _flat
 
 
 ## `tint` washes the picture by `amount` 0..1, `blur` 0..1 is the gas, `dark` 0..1 fades to black, `wobble` 0..1 swims the picture.
@@ -25,13 +32,17 @@ func set_wash(tint: Color, amount: float, blur := 0.0, dark := 0.0, wobble := 0.
 	visible = active
 	if not active:
 		return
-	var mat := material as ShaderMaterial
+	var mat := _mip if blurs and QualityManager.current_tier < 2 else _flat  # fixed for the whole scene: a tier never changes mid-cutscene
+	if material != mat:
+		material = mat
 	mat.set_shader_parameter(&"tint", tint)
 	mat.set_shader_parameter(&"amount", clampf(amount, 0.0, 1.0))
-	mat.set_shader_parameter(&"blur", clampf(blur, 0.0, 1.0))
 	mat.set_shader_parameter(&"dark", clampf(dark, 0.0, 1.0))
-	mat.set_shader_parameter(&"wobble", clampf(wobble, 0.0, 1.0))
+	if mat == _mip:
+		mat.set_shader_parameter(&"blur", clampf(blur, 0.0, 1.0))
+		mat.set_shader_parameter(&"wobble", clampf(wobble, 0.0, 1.0))
 
 
 func clear() -> void:
+	blurs = false
 	set_wash(Color.BLACK, 0.0)

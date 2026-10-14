@@ -60,7 +60,8 @@ func configure(opts: Dictionary) -> void:
 
 
 func _environment() -> Environment:
-	return CutsceneKit.sky_env(Color(0.14, 0.18, 0.36), Color(0.98, 0.62, 0.42), Color(0.2, 0.17, 0.2), Color(0.42, 0.36, 0.4), 1.0, 0.012)
+	# ambient 1.01: the old 110 m sun omni's share (it moved the picture by under 1 %), folded in
+	return CutsceneKit.sky_env(Color(0.14, 0.18, 0.36), Color(0.98, 0.62, 0.42), Color(0.2, 0.17, 0.2), Color(0.42, 0.36, 0.4), 1.01, 0.012)
 
 
 func _build() -> void:
@@ -143,21 +144,23 @@ func _build_sky() -> void:
 	sun.material_override = CutsceneKit.glow(Color(1.0, 0.86, 0.55))
 	sun.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(sun)
-	var halo := MeshInstance3D.new()
-	var big := SphereMesh.new()
-	big.radius = 16.0
-	big.height = 32.0
-	big.radial_segments = 16
-	big.rings = 8
-	halo.mesh = big
-	halo.position = sun.position
-	var halo_mat := CutsceneKit.glow(Color(1.0, 0.7, 0.4))
-	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	halo_mat.albedo_color.a = 0.16
-	halo.material_override = halo_mat
-	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(halo)
-	CutsceneKit.omni(self, Vector3(-40.0, 6.0, -30.0), Color(1.0, 0.72, 0.45), 3.5, 110.0)  # low sun from the far side, a rim on the crew
+	if QualityManager.current_tier < 1:  # a 32 m alpha sphere over the sky: tier 0 only (C6)
+		var halo := MeshInstance3D.new()
+		var big := SphereMesh.new()
+		big.radius = 16.0
+		big.height = 32.0
+		big.radial_segments = 16
+		big.rings = 8
+		halo.mesh = big
+		halo.position = sun.position
+		var halo_mat := CutsceneKit.glow(Color(1.0, 0.7, 0.4))
+		halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		halo_mat.albedo_color.a = 0.16
+		halo.material_override = halo_mat
+		halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+		add_child(halo)
+	# Two realtime lights on every tier (C6: 4 / 3 / 2, ranges <= 25 m). The 110 m sun omni that rimmed the crew from 50 m away is gone: its 1/d
+	# falloff left it almost nothing there (hiding it moved the picture by 0.2 of 255, the sky fill by 1.4); the ambient carries it.
 	CutsceneKit.omni(self, Vector3(8.0, 4.0, 3.0), Color(0.75, 0.8, 1.0), 1.3, 16.0)  # sky fill from the camera's side
 
 

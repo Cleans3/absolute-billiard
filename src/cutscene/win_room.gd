@@ -6,6 +6,7 @@ extends RoomCutscene
 ## Vent opens (`Vent.open`) and sprays a bounded green plume (one CPUParticles3D, GAS_PARTICLES quads), the view turns up to it, then swims, blurs
 ## (the screen's mip chain, CutScreen) and goes black. The next part, TruckOutro, fades up from that black. The crew is not moved.
 ## Cost (07 §2): the beacon's one realtime spot, one CPUParticles3D of GAS_PARTICLES soft quads (alpha, no depth write, ~3 s of overdraw), one screen pass.
+## Tier 2 (adhoc-1014b C6): half the quads, and the screen pass is CutScreen's flat one: the wash and the black, no blur or swim, no screen read.
 
 const LENGTH_SEC := 6.5
 const T_CHEER := 0.8
@@ -20,6 +21,7 @@ const T_DARK_TO := 6.4
 const SPIN_HZ := 0.45
 const GREEN := Color(0.15, 1.0, 0.3)
 const GAS_PARTICLES := 60
+const GAS_PARTICLES_TIER2 := 30  ## half of them, a little larger (C6)
 const CHEER_LINE := "Paid in full! Drinks are on Moe!"
 
 var _alert: AlertLight
@@ -50,6 +52,8 @@ func _build() -> void:
 	_eye0 = local_eye()
 	_fov0 = local_fov()
 	_cut = _node(^"UILayer/CutScreen") as CutScreen
+	if _cut != null:
+		_cut.blurs = true  # the one scene that reads the screen's mip chain; CutScreen ignores it on tier 2
 	_vent = _node(^"Vent") as Vent
 	_gus = _node(^"Bar/Bartender") as Bartender
 	_alert = AlertLight.new()
@@ -62,7 +66,8 @@ func _build() -> void:
 func _build_gas() -> void:
 	_gas = CPUParticles3D.new()
 	_gas.name = "Gas"
-	_gas.amount = GAS_PARTICLES
+	var lean := QualityManager.current_tier >= 2
+	_gas.amount = GAS_PARTICLES_TIER2 if lean else GAS_PARTICLES
 	_gas.lifetime = 3.2
 	_gas.emitting = false
 	_gas.local_coords = false
@@ -75,8 +80,8 @@ func _build_gas() -> void:
 	_gas.gravity = Vector3(0.0, -0.45, 0.0)
 	_gas.damping_min = 0.3
 	_gas.damping_max = 0.8
-	_gas.scale_amount_min = 1.0
-	_gas.scale_amount_max = 1.7
+	_gas.scale_amount_min = 1.2 if lean else 1.0
+	_gas.scale_amount_max = 2.0 if lean else 1.7
 	var grow := Curve.new()
 	grow.add_point(Vector2(0.0, 0.35))
 	grow.add_point(Vector2(1.0, 1.0))

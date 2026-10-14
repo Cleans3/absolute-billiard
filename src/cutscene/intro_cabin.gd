@@ -23,8 +23,8 @@ var _head: SpotLight3D
 var _tail_glow: OmniLight3D
 var _tail_mat: StandardMaterial3D
 var _porch: OmniLight3D
-var _inside: OmniLight3D
 var _door_beam: SpotLight3D
+var _tier := 0  ## QualityManager.current_tier, read once in _build
 var _glow_mat: StandardMaterial3D
 var _ph := PackedFloat32Array()
 
@@ -38,12 +38,14 @@ func length_sec() -> float:
 
 
 func _environment() -> Environment:
-	return CutsceneKit.night_env(Color(0.008, 0.012, 0.026), Color(0.1, 0.12, 0.22), 1.0, Color(0.03, 0.045, 0.08), 0.025)
+	# ambient 1.02: the old 90 m moon omni's share (it moved the picture by 0.03 of 255), folded in
+	return CutsceneKit.night_env(Color(0.008, 0.012, 0.026), Color(0.1, 0.12, 0.22), 1.02, Color(0.03, 0.045, 0.08), 0.025)
 
 
 func _build() -> void:
 	fade_in = 0.3
 	fade_out = 0.35
+	_tier = QualityManager.current_tier
 	for i in 8:
 		_ph.append(rng.randf() * TAU)
 	_build_ground()
@@ -52,10 +54,13 @@ func _build() -> void:
 	_build_porch()
 	_build_van()
 	_build_sky()
+	# Realtime lights per tier (C6: 4 / 3 / 2, every range <= 25 m). Each hidden in turn moved the picture by (of 255, on average): the 90 m moon
+	# omni 0.03, the omni inside the doorway 0.03, the door beam 0.2, the porch 0.3, the headlights 0.3, the brake glow 1.0. So the moon (its
+	# disc and the ambient are the moonlight now) and the doorway omni are gone on every tier, the door beam on tier 1 (the porch takes its
+	# glow), the headlights on tier 2 (the only pair that keeps 90 % of the luma while the van brakes is brake glow + porch).
 	_porch = CutsceneKit.omni(self, Vector3(-1.2, 2.3, FRONT_Z + 2.3), Color(1.0, 0.72, 0.35), 2.2, 9.0)
-	_inside = CutsceneKit.omni(self, Vector3(0.0, 2.2, CABIN_Z + 0.5), Color(1.0, 0.6, 0.3), 0.0, 7.0)
-	_door_beam = CutsceneKit.spot(self, Vector3(0.0, 1.4, FRONT_Z - 0.6), Vector3(0.0, 0.0, FRONT_Z + 6.0), Color(1.0, 0.65, 0.3), 0.0, 14.0, 42.0)
-	CutsceneKit.omni(self, Vector3(-18.0, 30.0, -35.0), Color(0.45, 0.55, 0.9), 1.1, 90.0)  # moonlight, no shadow
+	if _tier < 1:
+		_door_beam = CutsceneKit.spot(self, Vector3(0.0, 1.4, FRONT_Z - 0.6), Vector3(0.0, 0.0, FRONT_Z + 6.0), Color(1.0, 0.65, 0.3), 0.0, 14.0, 42.0)
 
 
 # --- the world --------------------------------------------------------------------------------------------------------------------
@@ -110,16 +115,30 @@ func _build_sky() -> void:
 	moon.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(moon)
 	var halo := MeshInstance3D.new()
-	var big := SphereMesh.new()
-	big.radius = 6.0
-	big.height = 12.0
-	big.radial_segments = 16
-	big.rings = 8
-	halo.mesh = big
-	halo.position = moon.position
 	var halo_mat := CutsceneKit.glow(Color(0.6, 0.72, 1.0))
-	halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
-	halo_mat.albedo_color.a = 0.1
+	if _tier < 1:
+		var big := SphereMesh.new()
+		big.radius = 6.0
+		big.height = 12.0
+		big.radial_segments = 16
+		big.rings = 8
+		halo.mesh = big
+		halo.position = moon.position
+		halo_mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		halo_mat.albedo_color.a = 0.1
+	else:  # no alpha sphere: the same 10 % blue over the flat sky as an opaque disc just behind the moon, facing the shot's start
+		var disc := CylinderMesh.new()
+		disc.top_radius = 6.2
+		disc.bottom_radius = 6.2
+		disc.height = 0.05
+		disc.radial_segments = 24
+		disc.rings = 1
+		disc.cap_bottom = false
+		var away := (moon.position - Vector3(-3.0, 1.15, 5.2)).normalized()
+		halo.mesh = disc
+		halo.position = moon.position + away * 3.0
+		halo.basis = Basis(Quaternion(Vector3.UP, -away))
+		halo_mat.albedo_color = Color(0.008, 0.012, 0.026).srgb_to_linear().lerp(Color(0.6, 0.72, 1.0).srgb_to_linear(), 0.1).linear_to_srgb()  # the sky colour is sRGB too
 	halo.material_override = halo_mat
 	halo.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	add_child(halo)
@@ -300,7 +319,8 @@ func _build_van() -> void:
 		lamp.position = Vector3(sx, 1.0, 2.125)
 		lamp.material_override = _tail_mat
 		_van.add_child(lamp)
-	_head = CutsceneKit.spot(_van, Vector3(0.0, 0.8, -3.1), Vector3(0.0, 0.1, -16.0), Color(1.0, 0.95, 0.8), 8.0, 30.0, 32.0)
+	if _tier < 2:
+		_head = CutsceneKit.spot(_van, Vector3(0.0, 0.8, -3.1), Vector3(0.0, 0.1, -16.0), Color(1.0, 0.95, 0.8), 8.0, 25.0, 32.0)
 	_tail_glow = CutsceneKit.omni(_van, Vector3(0.0, 1.0, 2.7), Color(1.0, 0.1, 0.05), 0.0, 5.0)
 
 
@@ -318,16 +338,17 @@ func _update(time: float, _dt: float) -> void:
 	var brake := 1.0 if (time > 0.35 and time < 2.3) else 0.0
 	_tail_mat.albedo_color = Color(1.0, 0.05, 0.03) * (0.35 + 0.65 * brake)
 	_tail_glow.light_energy = 1.6 * brake
-	_head.light_energy = 8.0 * (1.0 - smoothstep(2.1, 2.7, time))
+	if _head != null:
+		_head.light_energy = 8.0 * (1.0 - smoothstep(2.1, 2.7, time))
 	var flick := 0.88 + 0.12 * sin(time * 41.0 + _ph[0]) * sin(time * 13.0 + _ph[1])
 	if fposmod(time * 1.3 + _ph[2], 2.4) < 0.1:
 		flick *= 0.3  # the porch light stutters
-	_porch.light_energy = 2.2 * flick
 	var open := smoothstep(DOOR_AT, DOOR_AT + DOOR_SEC, time)
+	_porch.light_energy = 2.2 * flick * (1.0 if _door_beam != null else 1.0 + 0.4 * open)  # no door beam: the open door's glow rides on the porch
 	_door.rotation.y = open * deg_to_rad(105.0)
 	_glow_mat.albedo_color = Color(1.0, 0.62, 0.28) * (0.15 + 0.85 * open)
-	_inside.light_energy = 2.2 * open
-	_door_beam.light_energy = 5.0 * open
+	if _door_beam != null:
+		_door_beam.light_energy = 5.0 * open
 	var cam := Vector3(-3.0, 1.15, 5.2 - 1.0 * time)
 	var look := Vector3(0.0, 1.2, z - 1.0).lerp(Vector3(0.0, 1.5, FRONT_Z), smoothstep(1.2, 2.7, time))
 	camera.transform = CutsceneKit.look_from(cam, look)
