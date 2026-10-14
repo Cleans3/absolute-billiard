@@ -6,7 +6,7 @@ extends RefCounted
 ## Settings > Debug mode > DEBUG > View > "Glare hypotheses" flips them live (debug builds, which the phone APK is), or `AB_GLARE=a,b:c`
 ## in the environment on a desktop. A flag is the FIX applied (glow_off = the glow turned off), so the flags that ship on are `DEFAULTS`;
 ## the panel's "Baseline" turns all of them off to see the glare, then each flag back on one by one. QualityManager owns the
-## application (`apply`, on change and when the viewport's camera changes). Nothing here touches the wire or the scene files.
+## application (`apply`, on change and when the viewport's camera is one nobody has seen; a cutscene's camera gets `apply_under` its part alone). Nothing here touches the wire or the scene files.
 ## `apply` also carries the tier's cheap-mode switches (glow, reflection probes, the lamp's shadow, QualityManager.TIERS): they
 ## override the same nodes the flags do, so one pass decides each value and one meta slot restores the scene's own.
 ##
@@ -49,6 +49,7 @@ static var _loaded := false
 static var path := "user://glare_flags.cfg"
 static var persist := true             ## probes and tools turn it off
 static var _mats_touched := false      ## a material flag was applied: the next pass must walk the meshes to put the originals back
+static var walks := 0                  ## whole-tree passes (`apply`) so far: probes and perf tools read it, a cutscene camera cut must not move it
 
 
 static func get_flags() -> Dictionary:
@@ -165,8 +166,21 @@ const NEAR_FIX := 0.1   ## a 24-bit buffer's resolution at distance z is z^2 / (
 
 
 static func apply(tree: SceneTree) -> void:
-	_ensure()
+	walks += 1
 	var root := tree.root
+	apply_under(root)
+	for name in [&"Mirror", &"Tv"]:
+		var n := root.find_child(String(name), true, false) as Node3D
+		if n != null:
+			_force(n, "visible", false, on(&"mirror_off" if name == &"Mirror" else &"tv_off"))
+	_force(root, "use_hdr_2d", false, on(&"hdr2d_off"))
+	RenderingServer.screen_space_roughness_limiter_set_active(not on(&"rough_limiter_off"), 0.25, 0.18)
+
+
+## The per-node switches over `root`'s subtree alone: what a cutscene part's own nodes need when its camera takes over (the rest of
+## the tree was done by the last whole pass and does not change with the camera), at the cost of the part and not of the bar.
+static func apply_under(root: Node) -> void:
+	_ensure()
 	var tier: Dictionary = QualityManager.TIERS[clampi(QualityManager.current_tier, 0, QualityManager.TIERS.size() - 1)]
 	var glow_off: bool = on(&"glow_off") or not tier.glow
 	var probes_off: bool = on(&"probes_off") or not tier.probes
@@ -185,12 +199,6 @@ static func apply(tree: SceneTree) -> void:
 			_force(n, "shadow_enabled", false, shadow_off))
 	_materials(root)
 	_cameras(root)
-	for name in [&"Mirror", &"Tv"]:
-		var n := root.find_child(String(name), true, false) as Node3D
-		if n != null:
-			_force(n, "visible", false, on(&"mirror_off" if name == &"Mirror" else &"tv_off"))
-	_force(root, "use_hdr_2d", false, on(&"hdr2d_off"))
-	RenderingServer.screen_space_roughness_limiter_set_active(not on(&"rough_limiter_off"), 0.25, 0.18)
 
 
 ## The viewport settings a tier asks for, after the AA / MSAA / scale flags (QualityManager._apply_tier).
