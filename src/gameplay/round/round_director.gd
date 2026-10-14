@@ -241,6 +241,7 @@ func start_round(config: NightConfig, round_index: int, seed: int) -> void:
 		_begin_turn()  # staged: the shooter's clock is armed when the set-up ends (`_on_staging_finished`)
 	if not multiplayer.get_peers().is_empty():
 		_push_rack_rpc.rpc(_round_id, seed, _rack_blob(), table.sim.pocket_time())
+		table.sim.send_motion_stats()  # a hazard's tilt was set before this rack had balls to send it for (06 P49)
 	rack_ready.emit(seed)
 
 

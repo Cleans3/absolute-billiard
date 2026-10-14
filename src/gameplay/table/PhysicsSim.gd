@@ -83,9 +83,11 @@ var _snap_r := PackedFloat32Array()
 var _snap_moving := PackedInt32Array()  # ids of the balls that were moving: only they can start an impact
 var _scratch := BallMotion.State.new()
 var _hb_state := BallMotion.State.new()
+var _announced := {}  # host: net_id -> Vector3i, the 0.1 mm cell the last rest frame put each ball in (`_announce_if_moved`)
 var _check_epoch := 0  # client: bumped by every newer host digest / shot start / snapshot, so an old pending look is dropped
 var desyncs := 0  # client: how many times the digest stayed wrong after the second look
 var net_rest_bytes := 0
+var reannounced := 0  # host: how often `_announce_if_moved` found a resting ball somewhere else than the last rest frame said
 ## Probes only: the next N event frames / rest frames this client receives are dropped on the floor.
 var debug_drop_events := 0
 var debug_drop_rest := 0
@@ -195,7 +197,13 @@ func _sync_motion_params() -> void:
 		b.motion.friction_mult = cloth_friction_mult
 		b.motion.tilt = tilt_direction * tilt_accel(b.spec)
 		b.motion.hazard = hazard
-	if _is_host() and not _balls.is_empty() and not multiplayer.get_peers().is_empty():  # no balls = no Round yet: the clients' level may not be up
+	if not _balls.is_empty():  # no balls = no Round yet: the clients' level may not be up (RoundDirector.start_round sends them with the rack)
+		send_motion_stats()
+
+
+## Host: the motion numbers to every client, at this tick mid-Shot and just past the last Shot's stream otherwise.
+func send_motion_stats() -> void:
+	if _is_host() and not multiplayer.get_peers().is_empty():
 		_motion_stats_rpc.rpc(Engine.get_physics_frames() if _shot_live else after_shot_tick(), motion_stats())
 
 
@@ -449,6 +457,7 @@ func _peers_listening() -> bool:
 func _begin_shot_stream(shooter_id: int) -> void:
 	if not _is_host():
 		return
+	_announce_if_moved()  # clients rebase from their last rest frame: it must be where the host's balls really are
 	shot_id = (shot_id + 1) & 0xFFFF
 	_base_tick = Engine.get_physics_frames()
 	_shot_live = true
@@ -647,6 +656,8 @@ func _send_heartbeat(off: int) -> void:
 func _on_rest_beat() -> void:
 	if not _is_host() or _shot_live or awake > 0 or _balls.is_empty() or multiplayer.get_peers().is_empty():
 		return
+	if _announce_if_moved():
+		return  # the rest frame it sent carries the digest
 	var c := _check()
 	if c != 0:
 		_push_heartbeat_rpc.rpc(Engine.get_physics_frames(), PackedByteArray(), c)
@@ -654,6 +665,35 @@ func _on_rest_beat() -> void:
 
 func _check(at_tick := NAN) -> int:
 	return check_source.call(at_tick) if check_source.is_valid() else 0
+
+
+## Where the host's body really is. `Ball.global_position` is the node's copy, and a ball that is "resting" (Ball snaps its velocity
+## to zero) yet still creeping 0.1 to 1.4 mm per step (rack balls pushed apart, a ball tipping off a seam) has stepped once more by
+## the time the deferred rest handler freezes it: the node is a step behind, the body is where it is frozen (06 P49, the 2.6 mm
+## the integration gate caught). Everything the host announces about a resting ball reads the body.
+func body_position(b: Ball) -> Vector3:
+	return (PhysicsServer3D.body_get_state(b.get_rid(), PhysicsServer3D.BODY_STATE_TRANSFORM) as Transform3D).origin
+
+
+func _cell(p: Vector3) -> Vector3i:
+	var q := (p - origin()) * BallEventCodec.POS_SCALE
+	return Vector3i(roundi(q.x), roundi(q.y), roundi(q.z))
+
+
+## Host: the guarantee (06 P49) that no ball is ever somewhere other than the last rest frame says while the table is at rest, whatever
+## moved it: if any ball's body is in another 0.1 mm cell than the one announced, everyone gets a new rest frame at once. Checked at
+## every beat and before every Shot starts. Returns whether it sent one.
+func _announce_if_moved() -> bool:
+	if _shot_live or awake > 0 or not _peers_listening():
+		return false
+	for b in _balls:
+		if b.retired or not b.is_inside_tree():
+			continue
+		if _announced.get(b.net_id) != _cell(body_position(b)):
+			reannounced += 1
+			_send_rest(_last_end_off + 1)
+			return true
+	return false
 
 
 ## Host: the authoritative rest state of EVERY ball still in play (06 P49), at tick offset `off`: position (height too) and
@@ -666,10 +706,12 @@ func _send_rest(off: int) -> void:
 	BallEventCodec.begin(f, shot_id, _base_tick)
 	for b in _balls:
 		if b.retired or not b.is_inside_tree():
+			_announced.erase(b.net_id)
 			continue
-		_scratch.pos = b.global_position
+		_scratch.pos = body_position(b)
 		_scratch.lin = Vector3.ZERO
 		_scratch.ang = Vector3.ZERO
+		_announced[b.net_id] = _cell(_scratch.pos)
 		BallEventCodec.append(f, b.net_id, BallEventCodec.Flag.NONE, off, _scratch, origin())
 	_count_frame(f, false)
 	if not multiplayer.get_peers().is_empty():
@@ -825,7 +867,7 @@ func snapshot_frame() -> PackedByteArray:
 	for b in _balls:
 		if not b.is_inside_tree():
 			continue
-		_scratch.pos = b.global_position
+		_scratch.pos = body_position(b)  # the body, not the node's copy of it (a late join must get what the digest says)
 		var still := b.is_resting or b.freeze
 		_scratch.lin = Vector3.ZERO if still else b.linear_velocity
 		_scratch.ang = Vector3.ZERO if still else b.angular_velocity
@@ -845,10 +887,10 @@ func add_digest(h: TableHash, at_tick := NAN) -> void:
 			continue
 		h.add_int(b.net_id)
 		h.add_str(String(b.ball_type.id))
-		h.add_int((1 if b.retired else 0) | (2 if b.is_pocketed else 0))
+		h.add_int(1 if b.retired else (2 if b.is_pocketed else 0))  # a retired ball was nearly always potted first, and a client that was given it as RETIRED (a rebuilt table) never saw the pot
 		if b.retired or b.is_pocketed:
 			continue  # hidden, or settling on a cup floor the client models a little differently
-		var p := b.global_position
+		var p := body_position(b) if _is_host() else b.global_position
 		if not _is_host() and _replica.sample(b.net_id, t, b.motion, _scratch):
 			p = _scratch.pos
 		var q := (p - o) * BallEventCodec.POS_SCALE

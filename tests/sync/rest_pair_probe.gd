@@ -3,8 +3,10 @@ extends SceneTree
 ## Two-peer table-sync probe (06 P49, run through tests/net/pair.sh): after every step the client's table must be the host's:
 ## every ball within 1 mm in 3D (height too), the same balls in play, and the same table digest (`RoundDirector.table_check`).
 ##   1. the rack at rest, 2. a healthy shot, 3. a shot whose whole event stream the client drops (the rest frame carries it),
-##   4. a shot whose stream AND rest frame it drops (the digest finds it, the full state mends it), 5. a RETIRED flag it drops,
-##   6. a late join (the client's table wiped: no balls, no Round), 7. healthy shots again with no desync counted.
+##   4. a shot whose stream AND rest frame it drops (the digest finds it, the full state mends it), 5. a pot and retire it never hears,
+##   6. a late join (the client's table wiped: no balls, no Round), 7. healthy shots again with no desync counted,
+##   9. a frozen host ball nudged 4 mm behind the net's back (whatever moves a resting ball): the host's guard sends a new rest
+##   frame within a beat, the client matches with no desync counted.
 ##   tests/net/pair.sh tests/sync/rest_pair_probe.gd
 ## Prints `RESTPAIR HOST OK` / `RESTPAIR CLIENT OK`.
 
@@ -159,14 +161,23 @@ func _host() -> void:
 	for b in rd.get_balls():
 		if not b.is_cue_ball and not b.retired:
 			victim = b
-	victim.retire()
-	await _publish(5)  # a retire the client never heard of
+	victim.pocket(table.pockets.keys()[0])  # a pot (and, 0.4 s later, the retire) the client never heard of
+	await _publish(5)
 	await _until(func() -> bool: return _has("armed_6"), "client wiped", 40.0)
 	await _publish(6)  # a client with no table at all
 	await _shot(0.6)
 	await _publish(7)
 	await _shot(0.9)
 	await _publish(8)
+	var r0: int = table.sim.reannounced
+	var moved: Ball = null
+	for b in rd.get_balls():
+		if not b.is_cue_ball and not b.retired and b.freeze:
+			moved = b
+	assert(moved != null, "a frozen ball to nudge")
+	moved.global_position += Vector3(0.004, 0.0, -0.003)  # a static body moved by something the net knows nothing about
+	await _publish(9)
+	assert(table.sim.reannounced > r0, "the host noticed the ball had moved and sent a new rest frame")
 	await _until(func() -> bool: return _has("client_done"), "client verdict", 40.0)
 	print("RESTPAIR HOST OK")
 	quit(0)
@@ -212,8 +223,8 @@ func _client() -> void:
 	table.sim.debug_drop_events = 100000
 	table.sim.debug_drop_rest = 1
 	_touch("armed_4")
-	await _step(4, MEND_WITHIN_SEC, true)
-	table.sim.debug_drop_events = 1
+	await _step(4, MEND_WITHIN_SEC, false)  # usually the digest finds it; a later settle frame can mend it first
+	table.sim.debug_drop_events = 2  # the POCKETED frame and the RETIRED one
 	_touch("armed_5")
 	await _step(5, MEND_WITHIN_SEC, true)
 	table.sim.debug_drop_events = 0
@@ -225,7 +236,8 @@ func _client() -> void:
 	var before: int = table.sim.desyncs
 	await _step(7, 4.0, false)
 	await _step(8, 4.0, false)
-	assert(table.sim.desyncs == before, "healthy shots after a mend are no desync")
+	await _step(9, 4.0, false)
+	assert(table.sim.desyncs == before, "healthy shots after a mend, and a moved resting ball, are no desync")
 	_touch("client_done")
 	print("RESTPAIR CLIENT OK")
 	quit(0)

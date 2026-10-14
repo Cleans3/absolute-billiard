@@ -9,7 +9,7 @@ extends SceneTree
 ## Prints `HAZPAIR HOST OK` / `HAZPAIR CLIENT OK`.
 
 const KINDS: Array[StringName] = [&"sunken_ship", &"vacation", &"pinball", &"double_ball"]
-const END_MM := 6.0  ## client vs host after the shot (04 §2.4: events within 2 mm, the playback's own settling on top)
+const END_MM := 1.0  ## client vs host after the shot: the host's rest frame (06 P49) puts it at the 0.1 mm wire step; it was 6 mm before
 
 var role := ""
 var port := 0
@@ -93,6 +93,10 @@ func _host() -> void:
 		for i in 60:
 			await physics_frame
 		_touch("state_%s" % kind, JSON.stringify({state = fx.hazard_state(), balls = rd.get_balls().size(), tilt = [table.sim.tilt_direction.x, table.sim.tilt_direction.y], pins = _pins_of(table.sim.hazard)}))
+		await _until(func() -> bool: return table.sim.awake == 0, "table at rest")
+		await create_timer(0.7).timeout
+		_touch("check_%s" % kind, str(rd.table_check()))  # the table digest (06 P49) holds the hazard's parameters: both peers must agree on it
+		await _until(func() -> bool: return FileAccess.file_exists(_file("digest_%s" % kind)), "the client's digest for %s" % kind)
 		if kind == &"pinball":
 			await _shot()
 		await _until(func() -> bool: return FileAccess.file_exists(_file("ok_%s" % kind)), "client verdict on %s" % kind)
@@ -160,6 +164,10 @@ func _client() -> void:
 		for b in rd.get_balls():
 			if b.motion.hazard != sim.hazard:
 				_fail("%s: ball %d does not model the live hazard" % [kind, b.net_id])
+		await _until(func() -> bool: return FileAccess.file_exists(_file("check_%s" % kind)), "the host's digest for %s" % kind)
+		var want_check := int(_read("check_%s" % kind))
+		await _until(func() -> bool: return rd.table_check() == want_check, "%s: the same table digest as the host" % kind, 8.0)
+		_touch("digest_%s" % kind)
 		if kind == &"pinball":
 			await _until(func() -> bool: return FileAccess.file_exists(_file("shot_pinball")), "the host's shot")
 			await _until(func() -> bool: return not rd.shot_in_progress and table.sim.awake == 0, "the shot over on the client", 60.0)
@@ -175,6 +183,8 @@ func _client() -> void:
 			print("hazpair: pinball shot: worst client-host error at rest %.2f mm over %d balls" % [worst * 1000.0, host_pos.size()])
 			if worst * 1000.0 > END_MM:
 				_fail("pinball: the client ended %.1f mm from the host (limit %.0f)" % [worst * 1000.0, END_MM])
+		if table.sim.desyncs != 0:
+			_fail("%s: the client's digest was wrong %d times" % [kind, table.sim.desyncs])
 		_touch("ok_%s" % kind)
 		await _until(func() -> bool: return fx.hazard_state().is_empty() and table.sim.hazard == null, "%s gone with the Round" % kind, 60.0)
 		_touch("gone_%s" % kind)

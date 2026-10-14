@@ -117,6 +117,7 @@ func _run() -> void:
 	print("syncgate[%s]: %d shots (%d breaks, %d Rounds) | end-of-shot error: max %s mm, p95 %.3f mm, mean %.3f mm, %d shots over %.1f mm | in-flight max %.2f mm (ball %d, tick +%d)" % [
 		"legacy" if legacy else "rest frames", shots, breaks, round_index, "inf" if is_inf(worst) else "%.3f" % (worst * 1000.0),
 		sorted[int(sorted.size() * 0.95)] * 1000.0, mean * 1000.0, wrong, GATE_M * 1000.0, diff.max_err_m * 1000.0, diff.max_err_ball, diff.max_err_tick])
+	print("syncgate: the rest guard re-announced the table %d times" % table.sim.reannounced)
 	print("syncgate: bytes/shot  stream %.0f  live heartbeat %.0f  rest %.0f" % [float(stream_b) / shots, float(hb_b) / shots, float(rest_b) / shots])
 	if not legacy:
 		if worst > GATE_M:
