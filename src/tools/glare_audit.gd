@@ -13,6 +13,7 @@ extends SceneTree
 const GAP_MAX := 0.012                    ## metres: two planes closer than this are "near-coplanar"
 const D_BUCKET := 0.001
 const N_BUCKET := 0.02
+const PARALLEL_MIN := 0.9995             ## two facets count as one plane only when their normals agree this well
 const OVERLAP_MIN := 1e-4                 ## metres of in-plane overlap that counts (touching edges do not)
 const TOP := 25
 
@@ -164,10 +165,14 @@ func _coplanar(tris: Array) -> void:
 					var tb: Array = tris[ib]
 					if ta[0] == tb[0]:
 						continue
-					var gap := absf(info[ia][1] - info[ib][1])
+					var cn: Vector3 = info[ia][0]
+					if cn.dot(info[ib][0] as Vector3) < PARALLEL_MIN:
+						continue
+					# the separation along the normal between a vertex of each: the planes' distances from the origin differ by
+					# (normal error) x (distance from the origin) too, which at the table (3.5 m out) read a hidden 4 mm gap as 0.6 mm
+					var gap := absf(cn.dot((ta[2] as Vector3) - (tb[2] as Vector3)))
 					if gap > GAP_MAX:
 						continue
-					var cn: Vector3 = info[ia][0]
 					if not _overlap2d(ta, tb, cn):
 						continue
 					var same: bool = info[ia][2] == info[ib][2]

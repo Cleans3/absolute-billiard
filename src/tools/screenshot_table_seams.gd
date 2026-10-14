@@ -13,6 +13,7 @@ extends SceneTree
 ## leaks=1 [sweep=1] [jitter=<mm>] is the crack detector (`_run_leaks`).
 ## topdown=1 adds straight-down views, the whole table and a close-up of every pocket (adhoc-1014a V1, before/after of the
 ## hole): `<tag>_top_table.png`, `<tag>_top_<pocket id>.png`. topdown=only skips the six poses and the ratio table.
+## pockets=1 adds the close-up of every pocket (from inside the table, 0.45 m up, and a low one at 0.08 m): `<tag>_pocket_<id>_in|low.png`.
 
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const ROOM := preload("res://src/gameplay/bar_room/BarRoom.tscn")
@@ -124,6 +125,8 @@ func _run() -> void:
 		rows.append(await _acne(out_dir, tag))
 	if o.has("topdown"):
 		await _topdown(out_dir, tag)
+	if o.has("pockets"):
+		await _pockets(out_dir, tag)
 	print("--- seam luminance vs cloth, tag=%s %s" % [tag, o])
 	for r in rows:
 		print(r)
@@ -161,6 +164,16 @@ func _shot() -> Image:
 	if root.use_hdr_2d:
 		img.linear_to_srgb()
 	return img
+
+
+func _pockets(out_dir: String, tag: String) -> void:
+	for v in _pocket_views():
+		cam.fov = 70.0
+		cam.global_position = table.to_global(v.eye)
+		cam.look_at(table.to_global(v.target), Vector3.UP)
+		for _i in 6:
+			await process_frame
+		_shot().save_png("%s/%s_%s.png" % [out_dir, tag, String(v.name).replace("pocket_", "pocket_")])
 
 
 ## Straight down (north up) under the ceiling, lamp layer culled and a flat fill light so the rails and pits read: the whole

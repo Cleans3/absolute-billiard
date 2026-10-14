@@ -44,7 +44,7 @@ const SIGHT_COLOR := Color(0.42, 0.38, 0.30)  # dim inlay: near-white sights und
 const LINER_COLOR := Color(0.12, 0.09, 0.07)
 
 const SIGHT_SIZE_RATIO := 0.35       # sight marker size as a multiple of ball radius
-const CUT_GAP := 0.002               # the wood's pocket cut stands this far behind the liner wall (hidden, never touching)
+const CUT_GAP := 0.004               # the wood's pocket cut stands this far behind the liner wall (hidden; >= 3 mm so no depth buffer fights them, 06 P40)
 const EDGE_INSET := 0.0015           # a pocket ring never reaches the outer footprint: a sliver of wood stays outside it
 
 ## PBR sets (Poly Haven CC0, src/tools/make_textures.py): the felt's nap and the rails' wood grain. Both albedos are detail
@@ -320,7 +320,7 @@ static func _build_rail_block(parent: Node3D, spec: TableSpec, rail: TableLayout
 	# is coplanar with theirs) keeps a hairline there from opening onto the room — it would show wood.
 	var inset := _sink(spec) * 0.2
 	var along := (b - a).normalized() * inset
-	_wood_slab(parent, "RailPlug_" + String(rail.id), _strip(a + along, b - along, out, depth0 + inset, spec.rail_width_m - inset), cuts, y - _sink(spec) + inset, y + _sink(spec), RAIL_COLOR)
+	_wood_slab(parent, "RailPlug_" + String(rail.id), _strip(a + along, b - along, out, depth0 + inset, spec.rail_width_m - inset), cuts, y - _sink(spec) * 0.6, y + _sink(spec), RAIL_COLOR)  # bottom 4 mm above the cushion wedge's sunk base: never near-coplanar
 
 
 ## Table-local xz rectangle along a rail from `a` to `b`, `near`..`far` metres outward (`out`) from the nose line.
@@ -451,9 +451,14 @@ static func _build_pocket_liner(parent: Node3D, spec: TableSpec, hole: TableLayo
 	var ring := PackedVector2Array()
 	for p in hole.ring:
 		ring.append(_grown(spec, hole, p, grow, EDGE_INSET + CUT_GAP))
+	# The floor runs on past the wood's cut wall (`CUT_GAP` + `_sink` behind the liner wall): between the liner and that wall there is a
+	# slot, and with the floor stopping at the liner a sight line down it went out under the table (a pale ring at the jaw tips, 06 P40).
+	var floor_ring := PackedVector2Array()
+	for p in hole.ring:
+		floor_ring.append(_grown(spec, hole, p, grow + CUT_GAP + _sink(spec), EDGE_INSET + CUT_GAP))
 	for i in ring.size():
 		_wall_quad(st, ring[i], ring[(i + 1) % ring.size()], hole.center, floor_y, top)
-		_facing_tri(st, _at(hole.center, floor_y), _at(ring[i], floor_y), _at(ring[(i + 1) % ring.size()], floor_y), Vector3.UP)
+		_facing_tri(st, _at(hole.center, floor_y), _at(floor_ring[i], floor_y), _at(floor_ring[(i + 1) % ring.size()], floor_y), Vector3.UP)
 	for i in hole.outer.size() - 1:
 		# starts well under the ring wall's top: outside the nose rectangle there is no cloth rim wall, so a back wall that
 		# began at the cloth plane left a `bed_thickness_m` slit round the pocket's rear showing the room behind it

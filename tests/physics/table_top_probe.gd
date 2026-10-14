@@ -8,6 +8,8 @@ extends SceneTree
 ##              (a corner pocket's outer half used to be capped by the apron top at cloth height)
 ##   cushion    the strip between the nose line and the rail block: something at or above the cloth plane
 ##   playfield  inside the nose rectangle, outside every hole: cloth
+##   see-through  anywhere in the footprint: some visual mesh below the ray (a grid as fine as the CUT_GAP slot; a slot between the pocket liner and the wood's cut
+##              once let a sight line down to the floor under the table, a pale ring at the jaw tips, 06 P40)
 ## Rays are cast straight down on a 1 cm grid against `Cloth`, `Visual_wood`, `Visual_dark`, `Visual_liner` (CPU triangle meshes).
 ##   godot --path . --headless -s tests/physics/table_top_probe.gd
 ## Prints counts, the first misses, and "TABLE TOP PROBE OK" when none.
@@ -15,6 +17,7 @@ extends SceneTree
 const TABLE := preload("res://src/gameplay/table/Table.tscn")
 const STEP := 0.01
 const MARGIN := 0.004      # clear of a cut edge: the wall between wood and liner is not a surface to test
+const LEAK_STEP := TableVisuals.CUT_GAP  # the see-through grid: no wider than the slot it looks for
 const RIM_CLEAR := 0.003   # a pit point this far inside the footprint edge: the corner pocket leaves a hair of wood out there
 
 var _fails := 0
@@ -91,7 +94,20 @@ func _scan(table: Table, label: String) -> void:
 						printerr("  miss %s at (%.3f, %.3f): topmost %.3f (all) %.3f (wood+cloth), cloth plane %.3f, rail top %.3f" % [kind, x, z, hit.all, hit.cover, y, rail_top])
 			z += STEP
 		x += STEP
-	print("%s: samples %s, misses %s" % [label, counts, misses])
+	var leaks := 0
+	var first := ""
+	x = -fx + 0.0007
+	while x < fx - 0.002:
+		var z := -fz + 0.0009
+		while z < fz - 0.002:
+			if _hits(Vector3(x, y + 1.0, z)).all == -INF:
+				leaks += 1
+				if first == "":
+					first = "(%.3f, %.3f)" % [x, z]
+			z += LEAK_STEP
+		x += LEAK_STEP
+	_check(leaks == 0, "%s: %d see-through samples in the footprint, first at %s" % [label, leaks, first])
+	print("%s: samples %s, misses %s, see-through %d" % [label, counts, misses, leaks])
 	for k in misses:
 		_check(counts[k] > 0, "%s: some %s samples" % [label, k])
 		_check(misses[k] == 0, "%s: %d %s samples are wrong" % [label, misses[k], k])
