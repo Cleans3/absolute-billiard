@@ -64,35 +64,46 @@ func _build() -> void:
 
 ## A bounded plume out of the vent's mouth: GAS_PARTICLES billboard quads with a soft radial sprite, tinted by a colour ramp that fades them in and out.
 func _build_gas() -> void:
-	_gas = CPUParticles3D.new()
-	_gas.name = "Gas"
+	_gas = _make_gas()
+	add_child(_gas)
+	_gas.global_transform = _mouth_of(_vent)
+
+
+static func _mouth_of(vent: Vent) -> Transform3D:
+	return vent.mouth_transform() if vent != null else Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD), Vector3(2.5, 3.1, -3.5))
+
+
+## The plume, not yet in the tree and not emitting: the one place its particles and material are configured (the beat and `prewarm` both use it).
+static func _make_gas() -> CPUParticles3D:
+	var gas := CPUParticles3D.new()
+	gas.name = "Gas"
 	var lean := QualityManager.current_tier >= 2
-	_gas.amount = GAS_PARTICLES_TIER2 if lean else GAS_PARTICLES
-	_gas.lifetime = 3.2
-	_gas.emitting = false
-	_gas.local_coords = false
-	_gas.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
-	_gas.emission_box_extents = Vector3(0.8, 0.8, 0.05)  # the vent mouth's plane (x east-west, y north-south)
-	_gas.direction = Vector3(0.0, 0.0, -1.0)  # out of the mouth = down
-	_gas.spread = 32.0
-	_gas.initial_velocity_min = 1.0
-	_gas.initial_velocity_max = 2.4
-	_gas.gravity = Vector3(0.0, -0.45, 0.0)
-	_gas.damping_min = 0.3
-	_gas.damping_max = 0.8
-	_gas.scale_amount_min = 1.2 if lean else 1.0
-	_gas.scale_amount_max = 2.0 if lean else 1.7
+	gas.amount = GAS_PARTICLES_TIER2 if lean else GAS_PARTICLES
+	gas.lifetime = 3.2
+	gas.emitting = false
+	gas.local_coords = false
+	gas.emission_shape = CPUParticles3D.EMISSION_SHAPE_BOX
+	gas.emission_box_extents = Vector3(0.8, 0.8, 0.05)  # the vent mouth's plane (x east-west, y north-south)
+	gas.direction = Vector3(0.0, 0.0, -1.0)  # out of the mouth = down
+	gas.spread = 32.0
+	gas.initial_velocity_min = 1.0
+	gas.initial_velocity_max = 2.4
+	gas.gravity = Vector3(0.0, -0.45, 0.0)
+	gas.damping_min = 0.3
+	gas.damping_max = 0.8
+	gas.scale_amount_min = 1.2 if lean else 1.0
+	gas.scale_amount_max = 2.0 if lean else 1.7
 	var grow := Curve.new()
 	grow.add_point(Vector2(0.0, 0.35))
 	grow.add_point(Vector2(1.0, 1.0))
-	_gas.scale_amount_curve = grow
+	gas.scale_amount_curve = grow
 	var ramp := Gradient.new()
 	ramp.offsets = PackedFloat32Array([0.0, 0.2, 1.0])
 	ramp.colors = PackedColorArray([Color(0.3, 1.0, 0.4, 0.0), Color(0.35, 1.0, 0.45, 0.55), Color(0.3, 0.9, 0.4, 0.0)])
-	_gas.color_ramp = ramp
+	gas.color_ramp = ramp
 	var puff := QuadMesh.new()
 	puff.size = Vector2(1.0, 1.0)
-	_gas.mesh = puff
+	gas.mesh = puff
 	var soft := Gradient.new()
 	soft.offsets = PackedFloat32Array([0.0, 1.0])
 	soft.colors = PackedColorArray([Color(1.0, 1.0, 1.0, 1.0), Color(1.0, 1.0, 1.0, 0.0)])
@@ -110,10 +121,26 @@ func _build_gas() -> void:
 	mat.vertex_color_use_as_albedo = true
 	mat.albedo_texture = sprite
 	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
-	_gas.material_override = mat
-	_gas.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	add_child(_gas)
-	_gas.global_transform = _vent.mouth_transform() if _vent != null else Transform3D(Basis.looking_at(Vector3.DOWN, Vector3.FORWARD), Vector3(2.5, 3.1, -3.5))
+	gas.material_override = mat
+	gas.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	return gas
+
+
+## S6 (adhoc-1014b): the pieces this beat builds that no frame has drawn yet, parked under `level` (the beacon and its spot, one plume that has
+## just burst with its material, the screen pass on the shader the tier will use) so that the first shown frame of the beat compiles nothing.
+## Touches nothing of the world. The caller draws the returned node for two frames, then hides it and KEEPS it (freeing it frees the shaders and
+## their pipelines). Null when there is no level.
+static func prewarm(level: Node) -> Node:
+	var warm := RoomPrewarm.make(level, &"WinPrewarm", GREEN, true)
+	if warm == null:
+		return null
+	var gas := _make_gas()
+	gas.one_shot = true
+	gas.explosiveness = 1.0  # every quad exists in the first frame
+	warm.add_child(gas)
+	gas.global_transform = _mouth_of(level.get_node_or_null(^"Vent") as Vent)
+	gas.emitting = true  # in the tree and placed: starting it reads its transform
+	return warm.finish()
 
 
 func _update(time: float, _dt: float) -> void:
