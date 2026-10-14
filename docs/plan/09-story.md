@@ -299,6 +299,20 @@ lights. No shadows, no particles, no new textures beyond the existing CC0 `metal
 porch), no DirectionalLight, ≤ 8 lights per mesh. `preview_cutscenes.gd` prints draw calls, triangles and texture memory per frame; the
 phone is unmeasured.
 
+**Prepare and hold (adhoc-1014b, 07 §2 status).**
+- *Stage parts.* A stage part (`on_stage`) is prepared before it shows. `Cutscene.prepare()` builds it hidden: its camera exists but is not current, its shell exists but is unopened, and it walks every `VisualInstance3D` onto `Cutscene.STAGE_LAYER` (render layer 16). The camera has `cull_mask = STAGE_LAYER` and `far = STAGE_FAR` (250 m). `play()` prepares the part if nobody did, then opens the shell, shows the part and takes the camera.
+- *Black prepare.* `CutscenePlayer` runs it before the first stage part of a sequence that is not prepared yet: the intro's van and cabin at its start, and the truck at win_room's black end. Its steps are:
+  1. a black cover is presented;
+  2. once per app run, a sweep of the bar from six views, plus the mirror pass and the TV feeds;
+  3. `Mirror.captured` is awaited for at most 1.5 s;
+  4. one part is built per frame;
+  5. each part is drawn at its `warm_times()`;
+  6. the part plays.
+  A generation token makes Skip or abort during the prepare safe (the ack fires once), and a `PREPARE_STALL_SEC` watchdog plays unprepared.
+- *Room parts* (intro_room, fail_room, win_room, fall) still build at their own start: they have world side effects, and remote players may not exist yet. Their new visual pieces are warmed at level load through `FailRoom.prewarm` / `WinRoom.prewarm`, which `CutsceneDirector._prebuild` parks hidden and alive, together with `CutsceneSfx.prerender()` and the `MonsterMouth`.
+- *Hold.* `Cutscene.holding` (static) and the group call `cutscene_hold(on, on_stage)` are raised right before a part's camera goes current and dropped right before it is restored (also in `_exit_tree`). `QualityManager` receives them (`cutscene_holds`): there is no idle cap, no ladder window and no benchmark during a hold, and a cut costs a part-scoped glare pass. Its stale-hold watchdog keys on the camera name `CutsceneCamera`, so that name is load-bearing.
+- *Crew and acks.* Crew Humanoids are built with `ragdoll_enabled = false`. `ACK_MARGIN_SEC` is 9 s (5 + the prepare's `PREPARE_MAX_SEC` 4).
+
 ## 5. Interfaces to other modules
 
 | from | to | what |
