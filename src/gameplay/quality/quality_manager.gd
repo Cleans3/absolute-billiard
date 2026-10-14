@@ -4,7 +4,9 @@ extends Node
 ## Frame-rate and quality governor (07 §2 modes, §7). Owns the fps side only — PhysicsSim owns the
 ## tick (LIVE_TICK live / REST_TICK at rest). Downclocks to 30 fps when the table is at rest and no
 ## input arrived for IDLE_AFTER_MS, climbs the thermal ladder on a 10 s mean-fps window, and exposes
-## app pause/resume for NET/SYNC to hook (07 §3.5, §7.5).
+## app pause/resume for NET/SYNC to hook (07 §3.5, §7.5). A cutscene that has the screen (`cutscene_hold`, adhoc-1014b) is not the bar:
+## its frames neither feed the ladder's window nor the first-run benchmark, the idle cap stays off, and its camera cut costs the part's
+## nodes a glare pass and not the whole tree.
 
 signal tier_changed(tier: int)
 signal app_paused
@@ -15,6 +17,10 @@ const IDLE_AFTER_MS := 2000
 const IDLE_FPS := 30
 const BACKGROUND_FPS := 10
 const BATTERY_FPS := 30
+const HOLD_GROUP := &"cutscene_hold"      ## Cutscene calls `cutscene_hold(on, stage)` on it right before its camera goes current and right before it is restored
+const CUTSCENE_CAMERA := "CutsceneCamera" ## the name Cutscene.play() gives its fresh Camera3D (a part's own, a child of the part)
+const _SEEN := &"glare_seen"                ## meta on a camera the glare switches have been applied for
+const HOLD_STALE_FRAMES := 30             ## a hold with no cutscene camera current this long was never released (the part was freed): dropped
 ## Per tier (07 §7.4): the viewport (3D scale, MSAA, screen-space AA, the lamp's shadow atlas px), the fps cap, the trails, and the
 ## cheap-mode switches GlareFlags.apply puts on the scene (the lamp's shadow, the Environment's glow, the two reflection probes);
 ## Mirror and StreamTv read `current_tier` for their own sizes and rates (tier 2: a static mirror, one slow TV feed). Tiers 1-2 drop MSAA
@@ -33,6 +39,7 @@ const TICK_CAP_TIER2 := 120
 @export var active_fps := 60  # 120 is PC-only (07 §2 modes)
 
 static var current_tier := 0
+static var cutscene_holds := 0     ## cutscenes holding the screen right now (this level's `_hold`, 0 once it leaves the tree): Mirror's capture waits on it
 var battery_mode := false: set = set_battery_mode
 var ladder := QualityLadder.new()
 var paused := false
@@ -50,11 +57,14 @@ var _bench_at := 0                 ## the tier it measures at
 var _bench_cost := PackedFloat32Array()
 var _bench_delta := PackedFloat32Array()
 var _bench_gpu_seen := false
+var _hold := 0                     ## cutscenes holding the screen right now (`cutscene_hold`); this node's own count, so a freed level leaks nothing
+var _stale := 0                    ## consecutive frames with a hold and no cutscene camera current
 
 
 func _ready() -> void:
 	add_to_group(Settings.GROUP)
 	add_to_group(GlareFlags.GROUP)
+	add_to_group(HOLD_GROUP)
 	if sim != null:
 		sim.shot_started.connect(func(_b: Ball, _i: ShotIntent) -> void: _resting = false)
 		sim.all_resting.connect(func() -> void: _resting = true)
@@ -117,7 +127,10 @@ func _process(delta: float) -> void:
 	var cam := get_viewport().get_camera_3d()
 	if cam != _cam:
 		_cam = cam
-		GlareFlags.apply(get_tree())
+		_camera_changed(cam)
+	if _hold > 0:
+		_held_frame(cam)
+		return
 	if _bench >= 0.0:
 		_bench_step(delta)
 		return
@@ -144,8 +157,59 @@ func _process(delta: float) -> void:
 			tier_changed.emit(ladder.tier)
 
 
+## Group call from Cutscene (adhoc-1014b S2): `on` right before its camera goes current, off right before it is restored; a cut between
+## two parts is off then on, so a count and not a flag. A hold ends the frames that belong to the bar's window (the ladder starts a fresh one).
+func cutscene_hold(on: bool, _stage := false) -> void:
+	var before := _hold
+	_hold = maxi(_hold + (1 if on else -1), 0)
+	cutscene_holds = _hold
+	if (before == 0) != (_hold == 0):
+		_reset_window()
+		_stale = 0
+
+
+## A frame a cutscene shows is not the bar's: awake at the tier's own cap (never the idle 30 fps), nothing for the ladder's window, and a
+## first-run benchmark that starts over once it ends (its warm-up then covers the cut between two parts). `_prev_us` keeps up, so the
+## first frame after the hold is a frame's dt and not the whole cutscene's. A hold whose part was freed never calls off: with no
+## cutscene camera current for HOLD_STALE_FRAMES it is dropped.
+func _held_frame(cam: Camera3D) -> void:
+	_prev_us = Time.get_ticks_usec()
+	keep_awake()
+	if _bench >= 0.0:
+		_bench_restart()
+	_stale = 0 if _is_cutscene_camera(cam) else _stale + 1
+	if _stale > HOLD_STALE_FRAMES:
+		push_warning("QualityManager: a cutscene hold with no cutscene camera for %d frames, dropped" % HOLD_STALE_FRAMES)
+		_hold = 0
+		cutscene_holds = 0
+		_stale = 0
+		_reset_window()
+
+
+static func _is_cutscene_camera(cam: Camera3D) -> bool:
+	return cam != null and String(cam.name).begins_with(CUTSCENE_CAMERA)
+
+
+## The viewport's camera changed. The whole tree is walked only for a camera nobody has seen: a cutscene's own camera gets the switches
+## over its part alone (a Cutscene builds its nodes before its camera takes over), and one seen before (the game's, back from a cutscene)
+## nothing, the tree did not change under it. Four cuts in the intro used to be four walks over the bar.
+func _camera_changed(cam: Camera3D) -> void:
+	if cam != null:
+		if cam.has_meta(_SEEN):
+			return
+		cam.set_meta(_SEEN, true)
+		if _hold > 0 or _is_cutscene_camera(cam):
+			GlareFlags.apply_under(cam.get_parent())
+			return
+	GlareFlags.apply(get_tree())
+
+
 func _notification(what: int) -> void:
 	match what:
+		NOTIFICATION_EXIT_TREE:
+			if _hold > 0:  # the level went mid-cutscene: nothing is holding any more
+				_hold = 0
+				cutscene_holds = 0
 		NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_WINDOW_FOCUS_OUT:
 			_set_paused(true)
 		NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_WM_WINDOW_FOCUS_IN:
@@ -234,6 +298,19 @@ func _bench_step(delta: float) -> void:
 	_apply_fps()
 	if ladder.tier != before:
 		tier_changed.emit(ladder.tier)
+
+
+## A cutscene took the screen mid-benchmark: what it measured so far is the cutscene's. The renderer's timers and the uncapped fps go
+## back and it starts over (`_bench` 0.0 = its warm-up first) from the frames after the hold.
+func _bench_restart() -> void:
+	if _bench > 0.0:  # it had started: its first step took the timers and uncapped the fps
+		RenderingServer.viewport_set_measure_render_time(get_viewport().get_viewport_rid(), false)
+		_applied_fps = -1
+		_apply_fps()
+	_bench = 0.0
+	_bench_cost.clear()
+	_bench_delta.clear()
+	_bench_gpu_seen = false
 
 
 static func _median(a: PackedFloat32Array) -> float:
