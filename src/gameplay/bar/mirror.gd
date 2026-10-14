@@ -53,6 +53,7 @@ var _capturing := false
 var _recapture := false
 var _avatars_on := true                   ## the glass shows the window pass (false: tier 2, the static cube alone)
 var _calm := 0                            ## frames a pending capture has seen without a cutscene hold
+var _warm := 0                            ## frames `_process` leaves the window pass alone after `warm()` (the pass it asked for is drawn at the end of the first)
 
 @onready var _view: SubViewport = $View
 @onready var _cam: Camera3D = $View/Cam
@@ -63,6 +64,7 @@ var _calm := 0                            ## frames a pending capture has seen w
 
 func _ready() -> void:
 	add_to_group(&"mirror")
+	add_to_group(Cutscene.WARM_GROUP)
 	_view.size = view_size(VIEW_MIN_H)
 	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_view.transparent_bg = true
@@ -111,6 +113,9 @@ func _process(_delta: float) -> void:
 			capture()
 	elif _held():
 		_calm = 0
+	if _warm > 0:
+		_warm -= 1
+		return
 	var vp := get_viewport()
 	var cam := vp.get_camera_3d()
 	if cam == null or not _notifier.is_on_screen():
@@ -141,6 +146,18 @@ func tick(eye: Vector3, focal := 0.0) -> bool:
 	if h > cur or h <= cur - 2 * VIEW_STEP:
 		_view.size = view_size(h)
 	render_for(eye)
+	return true
+
+
+## Draws the window pass once from where the room capture stands, whatever the viewer sees: the pass has its own framebuffer format, so its pipelines
+## compile on its first draw, and the intro's black prepare (CutscenePlayer) makes that now, not in the first room beat that shows the glass.
+## True when a pass was asked for (tier 2 draws none).
+func warm() -> bool:
+	if not has_window_pass():
+		return false
+	_show_avatars(true)
+	render_for(to_global(CAPTURE_AT))
+	_warm = 1
 	return true
 
 

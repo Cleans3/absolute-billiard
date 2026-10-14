@@ -32,6 +32,19 @@ class Hear extends Node:
 		calls.append([on, on_stage])
 
 
+## A render target of the level (the mirror's window pass, the TV's feeds): the sweep asks it to draw once.
+class Target extends Node:
+	var warms := 0
+	var drew := true
+
+	func _init() -> void:
+		add_to_group(Cutscene.WARM_GROUP)
+
+	func warm() -> bool:
+		warms += 1
+		return drew
+
+
 func _init() -> void:
 	call_deferred("_run")
 
@@ -273,12 +286,18 @@ func _player_intro() -> void:
 	var player := _new_player(events)
 	Cutscene.time_scale = FAST
 	CutscenePlayer.bar_warmed = false
+	var target := Target.new()
+	var idle_target := Target.new()
+	idle_target.drew = false
+	root.add_child(target)
+	root.add_child(idle_target)
 	_check(player.play(&"intro", {"seed": 31, "crew_size": 2, "skippable": true}), "intro: starts")
 	_check(player.is_playing() and player.current == null and UIRouter.blocking() and root.get_camera_3d() == base_cam, "intro: under a black cover that holds the input, the level's camera still current, nothing shown yet")
 	_check(events == ["start intro"], "intro: started is announced at once")
 	var frames := await _frames_until(func() -> bool: return player.current != null)
 	_check(player.current is IntroVan and player.current.playing and player.current.visible, "intro: the van plays when the prepare is done")
-	_check(frames >= CutscenePlayer.BAR_VIEWS.size() + 3, "intro: the bar drew from every side first (%d frames before the van)" % frames)
+	_check(frames >= CutscenePlayer.BAR_VIEWS.size() + 4, "intro: the bar drew from every side first, then one more frame for the level's render target (%d frames before the van)" % frames)
+	_check(target.warms == 1 and idle_target.warms == 1, "intro: every render target of the level was asked to draw once under the black (%d, %d)" % [target.warms, idle_target.warms])
 	var cabin := player._ready_parts.get(&"intro_cabin") as Cutscene
 	_check(cabin != null and cabin.prepared and not cabin.visible and not cabin.playing and not cabin.shell.visible and not cabin.camera.is_current(), "intro: the cabin was built with the van, hidden, shut, waiting")
 	_check(Cutscene.holding == 1 and not player._held, "intro: one hold, the van's; the prepare's own is released")
@@ -293,6 +312,8 @@ func _player_intro() -> void:
 	await _frames_until(func() -> bool: return not player.is_playing())
 	_check(events == ["start intro", "played intro false"], "intro: one start, one ack, not skipped (%s)" % [events])
 	_check(SaveManager.cutscene_seen(&"intro") and CutscenePlayer.bar_warmed, "intro: seen, and the bar is marked warm")
+	target.free()
+	idle_target.free()
 	await process_frame
 	_check(_cutscenes_under(player) == 0 and player._ready_parts.is_empty(), "intro: nothing is left built")
 	_camera_back("the intro")

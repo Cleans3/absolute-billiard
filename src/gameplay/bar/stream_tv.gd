@@ -48,9 +48,11 @@ var _lit := Vector2.ZERO                  ## 1 per feed once it has drawn since 
 var _pending: Array[bool] = [false, false]  ## a pass was requested last frame: the picture exists next frame
 var _accum := 0.0
 var _next := 0                            ## the feed that draws next (tier 0 / 1 alternate)
+var _warm := 0                            ## frames `tick` leaves the feeds alone after `warm()` (the passes it asked for are drawn at the end of the first)
 
 
 func _ready() -> void:
+	add_to_group(Cutscene.WARM_GROUP)
 	_build_frame()
 	_build_screen()
 	_build_feeds()
@@ -82,6 +84,9 @@ func set_feeds_on(on: bool) -> void:
 ## Draws nothing while off, off screen, or between two periods.
 func tick(delta: float, on_screen: bool) -> int:
 	_settle()
+	if _warm > 0:
+		_warm -= 1
+		return -1
 	if not feeds_on or not on_screen or cameras == null:
 		_idle()
 		return -1
@@ -95,6 +100,24 @@ func tick(delta: float, on_screen: bool) -> int:
 	var i := 1 if tier >= 2 else _next
 	_next = 1 - _next
 	return i if _render(i) else -1
+
+
+## Draws every feed of this tier once, whatever the viewer sees: the feeds' framebuffers differ from the main view's, so their pipelines compile on
+## their first draw, and the intro's black prepare (CutscenePlayer) makes that now, not in the first room beat that shows the TV. The glass stays
+## black (a feed is lit by a real pass of the game's own timing). True when any pass was asked for.
+func warm() -> bool:
+	if not feeds_on or cameras == null:
+		return false
+	var tier := clampi(QualityManager.current_tier, 0, PERIOD.size() - 1)
+	if tier != _tier:
+		apply_tier(tier)
+	var drew := false
+	for i in range(1 if _tier >= 2 else 0, 2):
+		if _render(i):
+			_pending[i] = false
+			drew = true
+	_warm = 1 if drew else 0
+	return drew
 
 
 ## Sizes, rate and layout for a quality tier. Resizing clears the pictures, so the glass goes black until each feed has drawn again.

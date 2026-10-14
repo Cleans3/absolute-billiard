@@ -301,7 +301,7 @@ func _black_prepare(run: Array[StringName], gen: int) -> void:
 	_set_hold(false)
 
 
-## The bar from every side (BAR_VIEWS), one drawn frame each, then the game's camera back.
+## The bar from every side (BAR_VIEWS), one drawn frame each, then each render target of the level once (Cutscene.WARM_GROUP), then the game's camera back.
 func _sweep_bar(gen: int) -> void:
 	_warm_prev = get_viewport().get_camera_3d()
 	_warm_cam = Camera3D.new()
@@ -314,6 +314,11 @@ func _sweep_bar(gen: int) -> void:
 		await _drawn()
 		if gen != _gen:
 			return
+	for n in get_tree().get_nodes_in_group(Cutscene.WARM_GROUP):  # the level's own render targets (the mirror's window pass, the TV's feeds): their passes compile too
+		if bool(n.call(&"warm")):
+			await _drawn()
+			if gen != _gen:
+				return
 	_leave_warm()
 
 
