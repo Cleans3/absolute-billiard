@@ -2,6 +2,8 @@ class_name SaveProfile
 extends RefCounted
 ## The crew's campaign state at a Round boundary (docs/plan/04 §2.6). JSON under 1 KB; SaveManager reads and writes it.
 
+const CUES := 5  ## CueRack.SLOTS: the campaign's cues (named here so the save layer pulls in no gameplay class)
+
 var save_version := SaveManager.SAVE_VERSION
 var crew_cash := 0
 var current_night := 1  # NightConfig.night_number
@@ -18,6 +20,8 @@ var stock_left: Array[int] = []
 var crew_size := 0  # peers in the lobby when it was written (0 = unknown); informational, resume never seat-locks
 var mode := &"campaign"  # v3: GameLoop.MODE_*, the run's end; a v2 file migrates to Campaign (Night <= 3) or Endless (SaveManager.migrate)
 var run_stats: Dictionary = {}  # v3: RunStats.to_dict() at this boundary
+var cues_left := CUES  # v4 (08 §2.9): the campaign's cues still intact; a resume racks them all
+var cue_debt := 0  # v4 (08 §2.9 step 3): the crew's unwashed debt at the sink; a resume puts it on the host's seat
 
 
 func to_dict() -> Dictionary:
@@ -56,6 +60,8 @@ func to_dict() -> Dictionary:
 		"crew_size": crew_size,
 		"mode": String(mode),
 		"run": run_stats,
+		"cues_left": cues_left,
+		"cue_debt": cue_debt,
 		"bar_stock": {"key": stock_key, "ids": stock, "left": stock_left},
 	}
 
@@ -78,6 +84,8 @@ static func from_dict(d: Dictionary) -> SaveProfile:
 	p.mode = &"endless" if str(d.get("mode", "campaign")) == "endless" else &"campaign"
 	var run: Variant = d.get("run", {})
 	p.run_stats = run if run is Dictionary else {}
+	p.cues_left = clampi(int(d.get("cues_left", CUES)), 0, CUES)
+	p.cue_debt = maxi(int(d.get("cue_debt", 0)), 0)
 	var bar: Dictionary = d.get("bar_stock", {})
 	p.stock_key = int(bar.get("key", -1))
 	var ids: Array = bar.get("ids", [])

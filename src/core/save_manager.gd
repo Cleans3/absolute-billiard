@@ -3,7 +3,7 @@ extends RefCounted
 ## Static save I/O (docs/plan/04 §2.6, 02 §3.7): Round checkpoints every peer keeps, plus the run-surviving
 ## persistent-unlock file. Not an autoload. `root` is swappable so probes never touch the real user dir.
 
-const SAVE_VERSION := 3  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them; v3 adds mode + run stats
+const SAVE_VERSION := 4  # v1 = the 04 sketch (no owned_items / viewers / hype); v2 adds them; v3 adds mode + run stats; v4 the cues left (08 §2.9)
 const KEEP_CHECKPOINTS := 10  # newest files kept; an older campaign falls off the Resume list
 const CAMPAIGN_NIGHTS := 3  # a v2 file past this Night was an old 5-Night campaign: it resumes as Endless at the same index
 
@@ -68,6 +68,9 @@ static func migrate(d: Dictionary) -> Dictionary:
 		d["mode"] = "campaign" if int(d.get("current_night", 1)) <= CAMPAIGN_NIGHTS else "endless"
 		d["run"] = {}
 		d["save_version"] = 3
+	if v < 4:  # v3 had no cue rack: all five cues are still there
+		d["cues_left"] = SaveProfile.CUES
+		d["save_version"] = 4
 	return d
 
 

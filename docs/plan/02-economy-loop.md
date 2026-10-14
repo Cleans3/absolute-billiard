@@ -131,6 +131,8 @@ Every 500-viewer milestone rolls a tip ($25–$150 `[tune]`) straight into Cash.
 ### 3.4 Quota curve and the reckoning
 Quota is `×1.5` per Night from Night 2, sized to ~60% of modelled income (§3.5). Night 1 is set lower still (06 P37): a new crew must be able to make it. **Every number in this section marked provisional is one `NightConfig` field (or one `EconomyManager` / `RunStats` constant), wired now and calibrated afterwards with the playtest bot (`src/tools/playtest.gd`): Night 1's quota must be reachable by the bot with margin, fines scale with the Night, Rounds start long and taper. A calibration is a numbers-only change to the `.tres` files.**
 
+**A crew in debt loses the Night (08 §2.9, 06 P57).** A cue bought on credit is owed by the buyer until washed off at the sink; `GameLoop._reckon` passes the debt to `EconomyManager.evaluate_quota(config, is_final, owed)`, and any debt left fails the Night as a shortfall would (nothing is paid, `quota_evaluated` reports the demand unpaid).
+
 **Two modes (06 P39), `GameLoop.mode`, chosen in the Lobby (Solo, or the host's room until Start):**
 - **Campaign** is `NightConfig` Nights 1–3 and ends on a win: Night 3 is the finale. Its demand is the Buyout and it plays the `finale_racks`. Paying it sets `CAMPAIGN_WON`.
 - **Endless** starts at Night 1 with the same three Nights, then plays generated Nights 4, 5, … forever. It has no Buyout, no finale racks and never reaches `CAMPAIGN_WON`; it ends only on a missed quota (`GAME_OVER`).

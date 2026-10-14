@@ -137,7 +137,18 @@ func start_campaign(p_mode: StringName = MODE_CAMPAIGN, p_seed := 0) -> void:
 	mode = p_mode
 	run_stats.apply({})
 	economy.wipe()  # keeps the persistent unlocks only (02 §3.7)
+	_rack_reset(SaveProfile.CUES)
 	_begin_night()
+
+
+## The campaign's cues back on the wall (08 §2.9): all five for a new run, the saved count for a resume. By path: a probe's level may have no rack.
+func _rack_reset(cues: int, debt := 0) -> void:
+	var rack := get_node_or_null(^"../CueRack")
+	if rack != null:
+		rack.call(&"reset_campaign", cues)
+	var sink := get_node_or_null(^"../DishStation")
+	if sink != null:
+		sink.call(&"reset_campaign", debt)
 
 
 ## Host only. Rebuilds a checkpoint's Round boundary: Cash, Shop, viewers, then the Intermission before the next Round.
@@ -147,6 +158,7 @@ func resume_from(profile: SaveProfile) -> void:
 	run_stats.apply(profile.run_stats)
 	night_index = maxi(profile.current_night - 1, 0)
 	economy.restore(profile)
+	_rack_reset(profile.cues_left, profile.cue_debt)
 	if profile.round_index <= 0:
 		_begin_night()
 		return
@@ -252,7 +264,9 @@ func _end_round(reason: StringName) -> void:
 
 func _reckon() -> void:
 	var is_final := is_final_night()
-	var passed := economy.evaluate_quota(current_night(), is_final)
+	var sink := get_node_or_null(^"../DishStation")
+	var owed := int(sink.call(&"total_debt")) if sink != null else 0  # 08 §2.9 step 3: a Night that ends in debt is lost
+	var passed := economy.evaluate_quota(current_night(), is_final, owed)
 	if passed:
 		run_stats.on_night_cleared()
 	_set_phase(Phase.RECKONING)
@@ -503,6 +517,12 @@ func build_profile() -> SaveProfile:
 	p.campaign_seed = campaign_seed
 	p.mode = mode
 	p.run_stats = run_stats.to_dict()
+	var rack := get_node_or_null(^"../CueRack")
+	if rack != null:
+		p.cues_left = int(rack.call(&"intact_count"))
+	var sink := get_node_or_null(^"../DishStation")
+	if sink != null:
+		p.cue_debt = int(sink.call(&"total_debt"))
 	var net := get_node_or_null(^"/root/NetManager")
 	p.crew_size = int(net.call(&"get_roster").size()) if net != null else 1
 	return p

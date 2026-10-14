@@ -46,6 +46,7 @@ const SHOOT_POLL_SEC := 0.1          # how often the Shoot button re-reads can-s
 var mode := Mode.WALK
 var is_local := false
 var prompt := ""
+var _rack: CueRack  # MainLevel/CueRack (08 §2.9), null in a probe without one
 var seated := false                  # WALK sub-state (06 P33 U7): on a stool or sofa, camera lowered, body in the SIT stance
 
 var _rd: Node                        # RoundDirector
@@ -156,8 +157,19 @@ func bind(level: Node) -> void:
 		_controls.power.released.connect(cue.release_power)
 		_controls.spin_pad.changed.connect(cue.set_spin)
 		_controls.elevation.changed.connect(cue.set_elevation)
+		_controls.swing_pressed.connect(swing_cue)
+		_controls.throw_pressed.connect(throw_cue)
 		if not _controls.touch:
 			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	_rack = level.get_node_or_null("CueRack") as CueRack
+	if _rack != null and _controls != null:
+		_rack.changed.connect(_sync_hands)
+	var grab := level.get_node_or_null("BallGrab")
+	if grab != null and _controls != null:
+		grab.changed.connect(_sync_hands)
+	var prints := level.get_node_or_null("Footprints")
+	if prints != null and _controls != null:
+		prints.changed.connect(_sync_hands)
 	_net = get_tree().root.get_node(^"NetManager")
 	_net.host_away_changed.connect(_on_host_away)
 	if _loop != null:
@@ -177,13 +189,53 @@ func _unhandled_input(event: InputEvent) -> void:
 		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED and mode != Mode.CUE:
 			var k := mouse_sensitivity * float(Settings.value(&"mouse_sens"))
 			look(-event.relative.x * k, -event.relative.y * k * _y_sign())
-	elif event is InputEventMouseButton and event.pressed:
+	elif event is InputEventMouseButton and event.pressed and Input.mouse_mode != Input.MOUSE_MODE_CAPTURED:
 		if _controls == null or not _controls.touch:
-			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED  # the first click takes the mouse and does nothing else
 	elif event.is_action_pressed(&"interact"):
 		interact()
 	elif event.is_action_pressed(&"cue_mode"):
 		toggle_cue()
+	elif event.is_action_pressed(&"swing_cue"):
+		swing_cue()
+	elif event.is_action_pressed(&"throw_cue"):
+		throw_cue()
+
+
+## Touch Swing / Throw show while something is in hand: a cue, a grabbed ball (08 §2.9).
+func _sync_hands() -> void:
+	var me := multiplayer.get_unique_id()
+	var grab := get_tree().get_first_node_in_group(&"ball_grab") as BallGrab
+	var prints := get_tree().get_first_node_in_group(&"footprints") as Footprints
+	_controls.set_has_cue((_rack != null and _rack.holds(me)) or (grab != null and grab.holds(me)) or (prints != null and prints.holds_towel(me)))
+
+
+## Left click (touch: Swing) with a cue in hand, walking: the host decides who it hits (08 §2.9).
+func swing_cue() -> void:
+	if mode != Mode.WALK or UIRouter.blocking():
+		return
+	var prints := get_tree().get_first_node_in_group(&"footprints") as Footprints
+	if prints != null and prints.holds_towel(multiplayer.get_unique_id()):  # the towel wipes instead (08 §2.9 step 4)
+		var ahead := -global_basis.z
+		ahead.y = 0.0
+		prints.request_wipe(global_position + ahead.normalized() * Footprints.WIPE_AHEAD)
+		return
+	if _rack == null or not _rack.holds(multiplayer.get_unique_id()):
+		return
+	_rack.request_swing()
+
+
+## G (touch: Throw): a grabbed ball first (08 §2.9 step 4), else the cue, flies where the camera looks.
+func throw_cue() -> void:
+	if mode != Mode.WALK or UIRouter.blocking():
+		return
+	var grab := get_tree().get_first_node_in_group(&"ball_grab") as BallGrab
+	if grab != null and grab.holds(multiplayer.get_unique_id()):
+		grab.request_throw(-cam.global_basis.z)
+		return
+	if _rack == null or not _rack.holds(multiplayer.get_unique_id()):
+		return
+	_rack.request_throw(-cam.global_basis.z)
 
 
 func _on_settings_changed() -> void:
@@ -493,6 +545,18 @@ func enter_cue() -> bool:
 		return false
 	if _rd.current_shooter_id != multiplayer.get_unique_id():
 		_toast(WaitText.shot(&"not_your_turn", _shooter_name()))
+		return false
+	var rack := get_tree().get_first_node_in_group(&"cue_rack") as CueRack
+	if CueRack.required and rack != null and not rack.holds(multiplayer.get_unique_id()):  # 08 §2.9: a real cue in hand
+		_toast(WaitText.shot(&"no_cue"))
+		return false
+	var grabbed := get_tree().get_first_node_in_group(&"ball_grab") as BallGrab
+	if grabbed != null and grabbed.any_out():  # 08 §2.9 step 4
+		_toast(WaitText.shot(&"ball_out"))
+		return false
+	var sink := get_tree().get_first_node_in_group(&"dish_station") as DishStation
+	if sink != null and sink.owes(multiplayer.get_unique_id()):  # 08 §2.9 step 3
+		_toast("Wash off your $%d debt at the sink first" % sink.debt_of(multiplayer.get_unique_id()))
 		return false
 	var ball := _cue_ball()
 	if ball == null or _sim.awake > 0 or not _rd.can_strike(ball):

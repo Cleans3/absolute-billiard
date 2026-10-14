@@ -95,6 +95,64 @@ The host entry point is `PlayerSpawner.knock(peer_id, impulse, seconds := 2.0)` 
 
 **Settings** (`Settings`, static, `user://settings.cfg`, loaded at boot by `NetManager._ready`): master volume · quality Auto / High / Medium / Low (`QualityManager`: Auto = `QualityLadder`, else tier 0 / 1 / 2 pinned) · FOV 60-110 · mouse / touch-look / cue-aim sensitivity (multipliers on the Player / CueController rates, 0.25-3x) · invert Y · touch mirror · show FPS · a **Help** tab with Replay tutorial (06 P44). **Controls**: every gameplay key / mouse action (not `debug_*`, not the dormant `reset`), click-to-rebind (physical keys and mouse buttons), a clash swaps the two actions' bindings, reset to defaults; only changes from the defaults are written.
 
+### 2.9 The cue rack and the held cue (06 P57, 2026-10-14)
+
+Five real cues for the whole campaign. A player shoots with the cue in their hand, carries it while walking, and gets one from the rack on the wall.
+
+**Built (step 1): the rack and the held cue.**
+
+| rule | value |
+|---|---|
+| where | `MainLevel/CueRack` (`src/gameplay/bar/cue_rack.gd`), on the north wall right of the door, at `(3.0, 0, -7.0)` (the wall plane) facing +z, under the neon bars (wall keep-clear `N`): a wooden board with 5 slots, each a standing stick when it holds a cue |
+| the stock | 5 cues for the campaign (`CueRack.SLOTS`, ids 1–5). State, host-owned: `slot_cue` (per slot: the cue id in it, 0 = empty) and `held` (peer → cue id). Saved as `cues_left` (SaveProfile v4, 04 §2.6; a v3 file migrates to 5): a resume puts every intact cue back on the rack. Nothing loses a cue yet (that is step 2) |
+| take / put back | one bare world interaction `cue_rack` at the rack's `Interactable` (reach 2.0 m, any phase, not in CUE): payload `{op: take}` gives the first full slot's cue to a player who holds none, `{op: put}` puts the held cue in the first empty slot; the host fills `slot` and `cue` into the payload and the broadcast (`world_interaction_applied`) carries them, so every peer applies the same change. Refusals: `has_cue`, `rack_empty`, `no_cue`. The prompt reads *Take a cue* / *Put the cue back* / *No cues on the rack* from the local player's state |
+| shooting needs a cue | `Player.enter_cue` toasts `WaitText.SHOT.no_cue` and the host's shot validator refuses `no_cue` when the shooter holds none (`CueRack.holds(peer)`). `CueRack.required` is false in a headless run (no probe that predates the rack needs a cue) and in the playtest bot |
+| a peer leaves | the host puts their cue back on the rack (`peer_disconnected`) |
+| the held cue | every peer draws each holder's stick from the rack's state (no pose field): in WALK / CARRY / SIT the right hand holds it upright beside the body like a staff (`Humanoid.set_hand`, the stick from the hand to just off the floor, leaning out 8° and its tip 12° forward, the hand 0.3 m ahead of the body so its owner sees it in first person); in CUE the stick is the CueController's / the puppet's aim stick as before and the walking one is hidden; limp (RAGDOLL) hides it. The local player sees their own in first person (layer 1 + the mirror layer) |
+| resync | `cue_rack_state(slots, holders, floor_ids, floor_pos)` (04 §5, H→A): sent to every peer when the campaign starts or resumes, and to one peer in `RoundDirector.send_full_state` (`resync_peer`) |
+
+**Built (step 2): throw, swing, wear, break, buy.** Four more bare world interactions on the rack (`CueRack.validate_kind` / `fill_kind`, the host decides every outcome into the payload, every peer plays it from the broadcast; no new `@rpc`):
+
+| rule | value |
+|---|---|
+| swing (`cue_swing`, left mouse `swing_cue`, touch **Swing**) | WALK with a cue, cooldown `0.8 s`; every peer plays a `0.4 s` overhead swing (hand from up-back to forward-low, the stick held near its butt). The host picks the nearest other player within `1.7 m` of the swinger and `50°` of their facing: knocked (`PlayerSpawner.knock`, `3.5 m/s` away from the swinger + `2 m/s` up, `2 s`), the cue gains a hit; a miss wears nothing |
+| throw (`cue_throw`, key `G` `throw_cue`, touch **Throw**) | WALK with a cue, cooldown `1.0 s`; the stick leaves the hand along the camera's aim (+6° up) at `9 m/s` under gravity, tumbling. The host flies it at request time against the room (world layer, the thrower excluded, `≤ 2 s`): the first player it meets is knocked the same way at the moment of the hit and the stick drops at their feet; a wall drops it to the floor under the hit; it lands where it lands (a floor, the table's lid). The payload carries `from`, `vel`, `t_land`, `land`, `land_yaw`, `hit`, `breaks`; every peer flies the same arc from those numbers |
+| on the floor | a landed cue lies there with an `Interactable` (`cue_pickup`, `target_id` = cue id, *Pick up the cue*); anyone holding none may pick it up once it has landed (`not_landed`), within `2.0 m`. Floor cues count as intact |
+| wear and break | the **3rd throw** of a cue breaks it on landing; the **4th hit** of a swing breaks it in the hand [tune]. A broken cue is gone for the campaign (two halves lie `2.5 s`, then vanish), and the crew pays the Night's scratch fine (`EconomyManager.fine_for`, reason `cue_broken`, 02 §3.8: `fined` on every peer, *Cue broken! -$N*). Wear is not saved (a resume racks every intact cue as new) |
+| buy (`cue_buy`) | at the counter, the Bartender's **Upgrades** tab, its first row (*Cue rack*; unlike the other Upgrades it is open in any phase): *New cue*, `2 ×` the scratch fine, put straight in the buyer's hand. Refused when the buyer holds one (`has_cue`), when all five are still intact (`cues_full`) or out of the counter's reach; when Cash does not cover it the cue is bought **on credit** (step 3) |
+| the griefing guard | P57: swing and throw are the user's chosen chaos: no per-Turn cap and no cost, but the host toggle still rules a **hit** (`hostile_world_interactions` off: the stick swings and flies, nobody is knocked; friends-only: only those may knock). The shooter in CUE can be knocked (a knock leaves CUE, 08 §2.7) |
+
+**Built (step 3): the shock and the sink.** `MainLevel/DishStation` (`src/gameplay/bar/dish_station.gd`), a sink cabinet on the north wall left of the door (the cue rack's mirror image) at `(-3.4, 0, -7.0)` facing +z, under the Corner Pocket sign, with a stack of dirty plates and a clean one (the kitchen corner by the fridge put its prompt within 0.6 m of where the jukebox is used).
+
+| rule | value |
+|---|---|
+| on credit | a `cue_buy` the crew's Cash does not cover is not refused any more: the cue still goes into the buyer's hand, the Cash is untouched, and the buyer **owes** its price (`DishStation.debts`, peer → $; the host fills `credit: true` into the payload, every peer adds the debt from it) |
+| the shock | the same moment the debtor is shocked: knocked limp (`PlayerSpawner.knock`, `1.2 s`, a hop), a `ZAP!` over them, the zap sound, a cyan flash on their own screen. Once they stand, their own client puts them at the sink, facing it ("dragged to the sink") |
+| washing (`wash_dish`) | the sink's `Interactable` (bare kind, target 0): a debtor within reach washes one plate per press, `0.9 s` cooldown; each plate takes `ceil(price / 10)` off that player's debt (ten plates per cue) and moves a plate from the dirty stack to the clean one; every peer plays the scrub (both hands in the basin for the `0.9 s`) and the splash. Refused: `no_debt`, `too_far`, `cooldown`. Prompt: *Wash a plate (-$N, $M left)* for a debtor, *Dirty dishes* otherwise |
+| nobody in debt shoots | `enter_cue` toasts `in_debt` (*Wash off your $N debt at the sink first*), the host's shot validator refuses `in_debt`, the shooter rotation passes over a debtor (`RoundDirector._rotate_shooter`; if everyone owes, the Turn is the next seat's anyway), and a debtor whose Turn it is when the debt starts hands the Turn on at once (`RoundDirector.pass_turn`) |
+| the Night's end | a Night that ends with any debt left is **lost** (02 §3.4: `evaluate_quota(..., owed)`), whatever the Cash says; debts are cleared when a campaign starts |
+| resync and save | `dish_state(peers, amounts)` (04 §5, H→A) at a campaign start / resume and in `resync_peer`; the checkpoint saves the crew's total as `cue_debt` (SaveProfile v4), which a resume puts on the host's seat (the seats of a resumed crew are not the same peers) |
+
+**Built (step 4): grab a ball, footprints, the towel.**
+
+*Grab and throw a ball* (`MainLevel/BallGrab`, `src/gameplay/bar/ball_grab.gd`; bare kinds `ball_grab`, `ball_throw`, and the host's own `ball_back` broadcast; no new `@rpc`):
+
+| rule | value |
+|---|---|
+| grab (`ball_grab`, target = the ball's `net_id`) | **Interact** at a resting object ball (never the cue ball) within `2.0 m`, in a live Round with nothing rolling and nothing staged, holding no ball; obeys the host toggle (`hostile_off`) like any hostile move. A moving prompt (*Grab the ball (foul!)*) sits on the nearest such ball in front of the local player |
+| the real ball | the host freezes it and turns its collider off, every peer hides it: it is *out* (`BallGrab.out`) and **no Shot starts while a ball is out** (`ball_out`). Every peer shows a replica in the grabber's left hand |
+| throw (`ball_throw`, **G** / touch **Throw**, the ball before the cue) | flown by the host like a thrown cue (`CueRack._fly`: `9 m/s`, a hit knocks); held `8 s` it slips back by itself |
+| back on the table (`ball_back`) | when the replica lands (or slips), the host puts the real ball back on the cloth at a free spot near where it was (`RackDropper.place_near`, `Ball.restore`), which the rest-frame guard announces (06 P49); every peer shows it again |
+| the foul | at the grab, host: the crew pays the Night's scratch fine (reason `ball_grab`, *Ball grab! -$N*); the grabber **loses a Turn** (theirs now: it passes on at once; else their next one is skipped, `RoundDirector.skip_next_turn`); the **second and later** grab of a Night also **shocks** them (`DishStation.zap_fx`) and **stuns** them limp for `3 s` |
+
+*Footprints and the towel* (`MainLevel/Footprints`, `src/gameplay/bar/footprints.gd`; **a picture only**, they never touch a ball):
+
+| rule | value |
+|---|---|
+| footprints | every peer stamps them itself from the bodies it draws: a player standing on the table (on its lid, inside the rails) leaves a muddy print every `0.32 m` walked, left and right in turn; a `256 × 128` dirt image over the cloth (one unshaded alpha quad, `+1` draw call, uploaded only when it changes) |
+| the towel | hangs on a hook at the table's south-east corner (`take_towel`, bare kind: take / hang back, one towel). Holding it, the swing key (touch **Swing**) wipes instead (`towel_wipe`, payload `{at}`, `0.35 s` cooldown, within `1.4 m` of the cloth's edge or on it): every peer clears the prints within `0.4 m` of `at` |
+| sync | positions are the pose stream's, so two peers' prints differ by a few cm; wipes are broadcast, so a wiped patch is clean everywhere. Nothing is saved; a new Round starts clean |
+
 ## 3. Rules & numbers
 | knob | value |
 |---|---|

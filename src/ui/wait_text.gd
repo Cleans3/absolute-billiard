@@ -10,6 +10,9 @@ const SHOT := {
 	bad_power = "Pull the power slider back first",
 	bad_aim = "Aim at the table first",
 	call_pocket = "Call a pocket first (1-6)",
+	no_cue = "Grab a cue from the rack on the wall first",
+	in_debt = "Wash off your debt at the sink first",
+	ball_out = "A ball is off the table: wait for it to come back",
 }
 
 const INTERACTION := {
@@ -36,6 +39,21 @@ const INTERACTION := {
 	slot_closed = "The slot is dark between Nights",
 	shooter_busy = "Your shot is still in play: watch it first",
 	busy = "The reels are still turning",
+	has_cue = "You already hold a cue",
+	rack_empty = "No cues left on the rack",
+	no_cue = "You're not holding a cue",
+	not_walking = "Stand up and walk first",
+	not_landed = "Wait for it to land",
+	cues_full = "All five cues are still around: find one",
+	no_debt = "You owe nothing: the dishes can wait",
+	balls_moving = "Wait for the balls to stop",
+	has_ball = "You already hold a ball",
+	no_ball = "You're not holding a ball",
+	hands_full = "Your hands are full",
+	host_only = "Only the house does that",
+	has_towel = "Someone has the towel",
+	no_towel = "You're not holding the towel",
+	not_at_table = "Get to the table first",
 }
 
 

@@ -99,9 +99,9 @@ func _migrate_v3() -> void:
 		var v2 := {"save_version": 2, "crew_cash": 700, "current_night": pair[0], "round_index": 1, "quota_target": 900, "viewers": 300, "hype": 0.2,
 			"owned_items": {"tier2_rack": 1}, "persistent_unlocks": [], "seed": 11, "crew_size": 1}
 		var p := SaveManager.decode(JSON.stringify(v2).to_utf8_buffer())
-		_check(p != null and p.save_version == 3 and p.mode == pair[1] and p.current_night == pair[0], "v2 at Night %d resumes as %s, same index" % [pair[0], pair[1]])
+		_check(p != null and p.save_version == SaveManager.SAVE_VERSION and p.mode == pair[1] and p.current_night == pair[0] and p.cues_left == SaveProfile.CUES, "v2 at Night %d resumes as %s, same index, all five cues" % [pair[0], pair[1]])
 		_check(p.run_stats.is_empty() and p.crew_cash == 700 and p.owned_items.get(&"tier2_rack") == 1, "...with the rest carried and an empty tally")
-	_check(SaveManager.SAVE_VERSION == 3, "SAVE_VERSION is 3")
+	_check(SaveManager.SAVE_VERSION == 4, "SAVE_VERSION is 4 (v4: cues_left, 08 §2.9)")
 	var lobby_ui: GDScript = load("res://src/ui/lobby_ui.gd")
 	_check(lobby_ui.resume_label({modified = 0, crew = 1, night = 4, round_index = 1, cash = 5, mode = &"endless"}).begins_with("Endless · Night 4"), "the Resume list marks an Endless run")
 	_check(not lobby_ui.resume_label({modified = 0, crew = 1, night = 2, round_index = 1, cash = 5, mode = &"campaign"}).contains("Endless"), "...and not a Campaign")

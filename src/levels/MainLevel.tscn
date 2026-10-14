@@ -39,6 +39,11 @@
 [ext_resource type="Script" path="res://src/gameplay/staging/vent.gd" id="staging_vent"]
 [ext_resource type="Script" path="res://src/gameplay/staging/trapdoor.gd" id="staging_trapdoor"]
 [ext_resource type="Script" path="res://src/gameplay/staging/round_staging.gd" id="round_staging"]
+[ext_resource type="Script" path="res://src/gameplay/fx/instant_replay.gd" id="instant_replay"]
+[ext_resource type="Script" path="res://src/gameplay/bar/cue_rack.gd" id="cue_rack"]
+[ext_resource type="Script" path="res://src/gameplay/bar/dish_station.gd" id="dish_station"]
+[ext_resource type="Script" path="res://src/gameplay/bar/ball_grab.gd" id="ball_grab"]
+[ext_resource type="Script" path="res://src/gameplay/bar/footprints.gd" id="footprints"]
 [ext_resource type="Script" path="res://src/gameplay/bar_room/entrance_door.gd" id="entrance_door"]
 [ext_resource type="Script" path="res://src/cutscene/cutscene_director.gd" id="cutscene_director"]
 [ext_resource type="Script" path="res://src/ui/cut_screen.gd" id="cut_screen"]
@@ -175,6 +180,31 @@ script = ExtResource("staging_trapdoor")
 script = ExtResource("round_staging")
 table = NodePath("../Table")
 vent = NodePath("../Vent")
+
+[node name="InstantReplay" type="Node" parent="." node_paths=PackedStringArray("round_director", "table", "game_loop")]
+script = ExtResource("instant_replay")
+round_director = NodePath("../RoundDirector")
+table = NodePath("../Table")
+game_loop = NodePath("../GameLoop")
+
+[node name="CueRack" type="Node3D" parent="." node_paths=PackedStringArray("world")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 0, -7)
+script = ExtResource("cue_rack")
+world = NodePath("../WorldInteractions")
+
+[node name="DishStation" type="Node3D" parent="." node_paths=PackedStringArray("world")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3.4, 0, -7)
+script = ExtResource("dish_station")
+world = NodePath("../WorldInteractions")
+
+[node name="BallGrab" type="Node3D" parent="." node_paths=PackedStringArray("world")]
+script = ExtResource("ball_grab")
+world = NodePath("../WorldInteractions")
+
+[node name="Footprints" type="Node3D" parent="." node_paths=PackedStringArray("world", "table")]
+script = ExtResource("footprints")
+world = NodePath("../WorldInteractions")
+table = NodePath("../Table")
 
 [node name="EntranceDoor" type="Node3D" parent="."]
 script = ExtResource("entrance_door")

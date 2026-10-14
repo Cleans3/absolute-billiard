@@ -27,6 +27,7 @@ func _ready() -> void:
 	_quality(video)
 	_slider(video, "Field of view", &"fov", func(v: float) -> String: return "%d°" % roundi(v))
 	_check(video, "Show FPS", &"show_fps")
+	_check(video, "Instant replay of trick shots", &"instant_replay")
 	if OS.is_debug_build():
 		_check(video, "Debug mode (physics, replay, table)", &"debug_mode")
 	var input := _page("Input")

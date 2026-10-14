@@ -79,6 +79,9 @@ var _shot_index := 0
 var _round_active := false
 var _balls: Array[Ball] = []
 var _stager: RoundStaging  # ../Staging, null where there is none (the `-s` probes): then there is nothing to wait for
+var _replay: Node  # ../InstantReplay (10 §3.7), null where there is none: a replay of the last Shot holds the clean-up
+var _cleanup_held := false
+var _skip_turns := {}  # peer -> true: their next Turn is skipped once (a ball grab, 08 §2.9 step 4)
 var _cue_ball: Ball
 var _log := ContactLog.new()
 var _shot_id := ""
@@ -118,6 +121,7 @@ func _ready() -> void:
 	_stager = get_node_or_null(^"../Staging") as RoundStaging
 	if _stager != null:
 		_stager.finished.connect(_on_staging_finished)
+	_replay = get_node_or_null(^"../InstantReplay")
 	var loop := get_node_or_null(^"../GameLoop")
 	if loop != null and loop.has_signal(&"round_ended"):
 		loop.connect(&"round_ended", _on_loop_round_ended)
@@ -138,6 +142,14 @@ func _validate_shot(peer_id: int, intent: ShotIntent) -> StringName:
 		return &"balls_moving"
 	if peer_id != current_shooter_id:
 		return &"not_your_turn"
+	var rack := get_tree().get_first_node_in_group(&"cue_rack") as CueRack
+	if CueRack.required and rack != null and not rack.holds(peer_id):  # 08 §2.9: the shooter strikes with the cue in their hand
+		return &"no_cue"
+	if _owes(peer_id):  # 08 §2.9 step 3: nobody in debt shoots
+		return &"in_debt"
+	var grab := get_tree().get_first_node_in_group(&"ball_grab") as BallGrab
+	if grab != null and grab.any_out():  # 08 §2.9 step 4: a grabbed ball is off the table
+		return &"ball_out"
 	if not (intent.power >= 0.0 and intent.power <= 1.001):
 		return &"bad_power"
 	if not intent.aim_dir.is_finite() or intent.aim_dir.length_squared() < 0.000001:
@@ -162,8 +174,44 @@ func _rotate_shooter() -> void:
 	if order.is_empty():
 		return
 	var i := order.find(current_shooter_id)
-	_set_shooter_rpc.rpc(order[(i + 1) % order.size()])
+	var next := order[(i + 1) % order.size()]
+	for k in range(1, order.size() + 1):  # a debtor is passed over (08 §2.9 step 3); if everyone owes, the next seat anyway
+		var cand := order[(i + k) % order.size()]
+		if _skip_turns.has(cand) and k < order.size():  # a ball grab's lost Turn (08 §2.9 step 4), skipped once
+			_skip_turns.erase(cand)
+			continue
+		if not _owes(cand):
+			next = cand
+			break
+	_set_shooter_rpc.rpc(next)
 	_begin_turn()
+
+
+## Host: `peer_id` just went into debt; if it is their Turn and nothing is rolling, the Turn goes on to the next seat that may shoot.
+func pass_turn(peer_id: int) -> void:
+	if not multiplayer.is_server() or not _round_active or shot_in_progress or staging or current_shooter_id != peer_id:
+		return
+	if _seat_order().size() > 1:
+		_rotate_shooter()
+
+
+## Host: `peer_id` grabbed a ball out of Turn: their next Turn is skipped once (08 §2.9 step 4).
+func skip_next_turn(peer_id: int) -> void:
+	_skip_turns[peer_id] = true
+
+
+## Host: a grabbed ball goes back on the cloth at a free spot near where it was (08 §2.9 step 4); the rest-frame guard announces it.
+func place_back(ball: Ball) -> void:
+	if not _balls.has(ball):
+		return
+	var region := RackDropper.interior(table.spec)
+	var spot := RackDropper.place_near(table.spec, table.layout, _local(ball).clamp(region.position, region.end), region, _positions_except(ball), hash([_seed, _shot_index, ball.spawn_index, &"grab"]), _pin_discs())
+	ball.restore(_world(spot, ball))
+
+
+func _owes(peer_id: int) -> bool:
+	var sink := get_tree().get_first_node_in_group(&"dish_station") as DishStation
+	return sink != null and sink.owes(peer_id)
 
 
 ## Host: a Turn begins — arm the shot clock if 03's `shot_clock_sec` is live for the current shooter.
@@ -352,7 +400,7 @@ func send_full_state(peer_id: int) -> void:
 	if _round_id == "":
 		return
 	_full_state_rpc.rpc_id(peer_id, _round_id, _seed, _shot_index, current_shooter_id, _round_active, shot_in_progress, shot_clock_left, _rack_blob(), table.sim.snapshot_frame(), table.sim.pocket_time(), table.sim.motion_stats())
-	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager", &"../BarSkins", &"../StoryDirector"]:
+	for n in [&"../GameLoop", &"../EconomyManager", &"../EffectManager", &"../BarSkins", &"../StoryDirector", &"../CueRack", &"../DishStation", &"../Footprints"]:
 		var node := get_node_or_null(NodePath(n))
 		if node != null and node.has_method(&"resync_peer"):
 			node.call(&"resync_peer", peer_id)
@@ -683,18 +731,39 @@ func _begin_setup() -> bool:
 	return true
 
 
-## The Round is over: the bed opens and the balls fall into the pit. They are cleared when it has played.
+## The Round is over: the bed opens and the balls fall into the pit. They are cleared when it has played. While this peer's instant
+## replay of the last Shot is decided or playing (10 §3.7) the pit waits for it, `staging` already on, until `release_cleanup()`.
 func _begin_cleanup() -> void:
 	if skip_staging or _stager == null or _balls.is_empty() or staging:
 		return
+	if _replay != null and bool(_replay.call(&"holds_table")):
+		_cleanup_held = true
+		staging = true
+		return
 	_stager.play_cleanup(_balls)
 	staging = true
+
+
+## InstantReplay: its replay ended or was cancelled, so a clean-up it held plays now.
+func release_cleanup() -> void:
+	if not _cleanup_held:
+		return
+	_cleanup_held = false
+	if _stager == null or _balls.is_empty():
+		staging = false
+		return
+	_stager.play_cleanup(_balls)
+
+
+func is_cleanup_held() -> bool:
+	return _cleanup_held
 
 
 ## Snaps a playing sequence to its end state (a new rack, a full state, a re-rack: nobody waits for a picture of the old one).
 func _abort_staging() -> void:
 	if _stager != null and _stager.is_playing():
 		_stager.finish()
+	_cleanup_held = false
 	staging = false
 
 

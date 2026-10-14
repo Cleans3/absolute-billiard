@@ -15,8 +15,9 @@ extends RefCounted
 ## The cutscenes (the intro, the failure, the win, 09 §3.8, adhoc-1013c F3b) are skipped the same way (`CutsceneDirector.skip_cutscenes`): the campaign
 ## starts at once and Game over / Campaign won are the PhaseScreen's. `keep_cutscenes` leaves them on for tests/cutscene/room_cutscene_probe.gd.
 
-static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false, keep_staging := false, keep_cutscenes := false, keep_coach := false) -> void:
+static func until_playable(tree: SceneTree, sec := 60.0, keep_story := false, keep_pour := false, keep_staging := false, keep_cutscenes := false, keep_coach := false, keep_cues := false) -> void:
 	RoundDirector.skip_staging = not keep_staging
+	CueRack.required = keep_cues  # 08 §2.9: a probe or a windowed tool shoots without fetching a cue unless it tests the rack
 	CutsceneDirector.skip_cutscenes = not keep_cutscenes
 	StoryDirector.auto_intro_cards = keep_story
 	Coach.enabled = keep_coach

@@ -158,7 +158,7 @@ func _settings() -> void:
 			continue
 		if not n.begins_with("godot") and not Settings.action_names().has(a):
 			_check(false, "gameplay action %s is missing from Settings.ACTIONS" % n)
-	_check(Settings.action_names().size() == 21, "Controls lists every gameplay action")
+	_check(Settings.action_names().size() == 23, "Controls lists every gameplay action (21 + swing_cue, throw_cue: 08 §2.9)")
 
 	var key_b := InputEventKey.new()
 	key_b.physical_keycode = KEY_B
