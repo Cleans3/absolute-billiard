@@ -1,0 +1,8 @@
+[Unit]
+Description=Restart noray when it stops answering (absolute-billiard)
+After=noray.service
+
+[Service]
+Type=oneshot
+EnvironmentFile=/opt/noray/.env
+ExecStart=/opt/noray/noray-health.sh

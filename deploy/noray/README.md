@@ -23,8 +23,10 @@ docker compose up -d
 
 ## Bare host without Docker (what the reference VPS runs)
 Noray needs `bun`; a host with no direct outbound can be fed from a workstation. `vps/deploy.sh`
-builds the bundle (bun + noray + prod `node_modules`), copies it over SSH, installs the three systemd
-units in `vps/`, and opens exactly the ports above.
+builds the bundle (bun + noray + prod `node_modules`), copies it over SSH, installs the systemd
+units in `vps/`, and opens exactly the ports above. `noray-health.timer` asks noray for a host id every minute
+and restarts it when no answer comes in 5 s (it once went silent after ~17 h: alive, accepting TCP, never
+answering, and every host read "can't reach the relay").
 `RELAY_SSH="user@host -i key" ./vps/deploy.sh`
 
 ## Lobby flow
