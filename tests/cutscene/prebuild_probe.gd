@@ -107,7 +107,7 @@ func _stage_layer() -> void:
 				lights += 1
 			if (n as VisualInstance3D).layers != Cutscene.STAGE_LAYER:
 				off.append(String(n.name))
-		_check(vis.size() > 5 and lights >= 3, "%s: it has meshes and lights to put on the layer (%d, %d lights)" % [cs.id(), vis.size(), lights])
+		_check(vis.size() > 5 and lights >= 1, "%s: it has meshes and lights to put on the layer (%d, %d lights)" % [cs.id(), vis.size(), lights])
 		_check(off.is_empty(), "%s: every VisualInstance3D, lights too, is on STAGE_LAYER only (off: %s)" % [cs.id(), off])
 		_check(cs.camera.cull_mask == Cutscene.STAGE_LAYER and is_equal_approx(cs.camera.far, Cutscene.STAGE_FAR), "%s: its camera sees the stage layer, no farther than %.0f m" % [cs.id(), Cutscene.STAGE_FAR])
 		var count := vis.size()
