@@ -73,13 +73,24 @@ func _ready() -> void:
 
 
 ## Level load, behind the LoadingScreen (adhoc-1014b C3, C9): what the endings need is built now, not on their first frame. The sounds are rendered, and
-## the monster is built hidden in the Trapdoor's Pit; CutscenePlayer draws it once under the next black (the intro's, or the failure's own) so
-## its pipelines are compiled before the fall shows it.
+## the monster is built hidden in the Trapdoor's Pit and the failure's and the win's new pieces are parked hidden under the level (`prewarm`, S6);
+## CutscenePlayer draws each once under the next black (the intro's, or the failure's own) so their pipelines are compiled before a beat shows them.
 func _prebuild() -> void:
 	CutsceneSfx.prerender()
 	_make_mouth()
 	if _mouth != null:
 		cutscenes.add_warm(_mouth, MOUTH_VIEW)
+	_park_rooms.call_deferred()  # the level is still setting up its children: it takes none until this frame's end
+
+
+## S6: each in-room beat's new pieces (beacon, spot, gas, wash shader) parked hidden under the level, drawn once under the black like the monster.
+func _park_rooms() -> void:
+	for room: Script in [FailRoom, WinRoom]:
+		if room.has_method(&"prewarm"):  # ponytail: guard until c-scenes' prewarm is on main
+			var warm := room.call(&"prewarm", level) as Node3D
+			if warm != null:
+				warm.visible = false
+				cutscenes.add_warm(warm, Transform3D.IDENTITY)  # the pieces are kept out of the culler's reach: any view draws them
 
 
 func is_busy() -> bool:

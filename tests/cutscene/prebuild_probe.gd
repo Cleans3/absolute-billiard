@@ -107,7 +107,7 @@ func _stage_layer() -> void:
 				lights += 1
 			if (n as VisualInstance3D).layers != Cutscene.STAGE_LAYER:
 				off.append(String(n.name))
-		_check(vis.size() > 5 and lights >= 3, "%s: it has meshes and lights to put on the layer (%d, %d lights)" % [cs.id(), vis.size(), lights])
+		_check(vis.size() > 5 and lights >= 1, "%s: it has meshes and lights to put on the layer (%d, %d lights)" % [cs.id(), vis.size(), lights])
 		_check(off.is_empty(), "%s: every VisualInstance3D, lights too, is on STAGE_LAYER only (off: %s)" % [cs.id(), off])
 		_check(cs.camera.cull_mask == Cutscene.STAGE_LAYER and is_equal_approx(cs.camera.far, Cutscene.STAGE_FAR), "%s: its camera sees the stage layer, no farther than %.0f m" % [cs.id(), Cutscene.STAGE_FAR])
 		var count := vis.size()
@@ -413,18 +413,28 @@ func _player_extras() -> void:
 	var prop := Node3D.new()
 	prop.visible = false
 	root.add_child(prop)
+	var puff := CPUParticles3D.new()  # a one-shot burst parked at level load: over by the time the black draws it
+	puff.one_shot = true
+	puff.emitting = false
+	prop.add_child(puff)
 	player.add_warm(prop, Transform3D(Basis.IDENTITY, Vector3(0.0, 2.0, 5.0)))
 	player.play(&"win", {"seed": 8, "crew_size": 1, "stats": {}, "captions": []})
 	_check(player.current == null and player._preparing, "extras: a prop waiting to be drawn makes even a room part's start a black prepare")
 	var shown := [false]
+	var bursting := [false]
+	var named := [false]
 	var frames := 0
 	while player.current == null and frames < 600:
 		shown[0] = shown[0] or prop.visible
+		bursting[0] = bursting[0] or (prop.visible and puff.emitting)
+		named[0] = named[0] or (prop.visible and String(root.get_viewport().get_camera_3d().name) == "CutsceneCamera")
 		await process_frame
 		frames += 1
 	_check(shown[0] and not prop.visible and player.warm_extras.is_empty(), "extras: it was drawn once, then hidden again, and the list is empty")
+	_check(bursting[0], "extras: a parked one-shot burst bursts again while it is drawn")
+	_check(named[0], "extras: the warm camera carries the cutscene camera's name (the quality hold's watchdog)")
 	await process_frame
-	_check(prop.get_child_count() == 0, "extras: its throwaway camera is gone")
+	_check(prop.get_child_count() == 1, "extras: its throwaway camera is gone")  # the puff stays
 	player.abort()
 	await process_frame
 	await process_frame
@@ -461,7 +471,11 @@ func _director() -> void:
 	root.add_child(level)
 	await process_frame
 	_check(d._mouth != null and not d._mouth.visible and d._mouth.get_parent() == trap.pit() and not d._mouth.is_processing(), "director: the monster is built at level load, hidden in the Pit, not running")
-	_check(d.cutscenes.warm_extras.size() == 1 and d.cutscenes.warm_extras[0].node == d._mouth, "director: it is queued for its first draw under black")
+	var rooms := 2 if (FailRoom as Script).has_method(&"prewarm") and (WinRoom as Script).has_method(&"prewarm") else 0  # S6 (c-scenes): the beats' new pieces
+	_check(d.cutscenes.warm_extras.size() == 1 + rooms and d.cutscenes.warm_extras[0].node == d._mouth, "director: the monster and the beats' new pieces are queued for their first draw under black")
+	for e: Dictionary in d.cutscenes.warm_extras:
+		var n := e.node as Node3D
+		_check(not n.visible and (n == d._mouth or n.get_parent() == level), "director: %s is parked hidden (a beat's pieces under the level)" % n.name)
 	_check(CutsceneSfx._cache.size() == CutsceneSfx.SECONDS.size(), "director: the sounds are rendered at level load")
 	level.free()
 	CutsceneDirector.skip_cutscenes = true

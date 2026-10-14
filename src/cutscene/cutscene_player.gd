@@ -292,6 +292,7 @@ func _black_prepare(run: Array[StringName], gen: int) -> void:
 		var holder := e.node as Node3D
 		if is_instance_valid(holder):
 			var cam := Camera3D.new()
+			cam.name = &"CutsceneCamera"  # the hold's watchdog looks for this name (QualityManager.CUTSCENE_CAMERA)
 			holder.add_child(cam)
 			cam.transform = e.view
 			await _warm(holder, cam, true, null, gen)
@@ -323,6 +324,9 @@ func _warm(holder: Node3D, cam: Camera3D, own_cam: bool, part: Cutscene, gen: in
 	_warm_cam = cam
 	_warm_own_cam = own_cam
 	holder.visible = true
+	if part == null:
+		for p: CPUParticles3D in holder.find_children("*", "CPUParticles3D", true, false):
+			p.restart()  # a one-shot burst parked at level load is long over by the black: it bursts again for the warm frames
 	cam.make_current()
 	var times := part.warm_times() if part != null else PackedFloat32Array([0.0])
 	for k in times.size():
