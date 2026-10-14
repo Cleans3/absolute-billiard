@@ -23,6 +23,7 @@ var table: Table
 var _fail := 0
 var _hopped := 0  # balls kicked out of the table through the air, over every break
 var _balls: Array[Ball] = []
+var _phys: Array[float] = []  # physics ms per tick (the Jolt step plus every _physics_process) while a break rolls
 
 
 func _init() -> void:
@@ -56,6 +57,8 @@ func _run() -> void:
 	print("double break: %d seeded racks of %d: mean %.0f %% moved, worst %.0f %%, rest median %.1f s max %.1f s" % [SEEDS, BALLS, mean * 100.0, worst * 100.0, rests[SEEDS / 2], rests[SEEDS - 1]])
 	_check(mean >= MEAN_MIN, "mean %.0f %% of the rack moved, need >= %.0f %%" % [mean * 100.0, MEAN_MIN * 100.0])
 	_check(worst >= SEED_MIN, "worst seed moved %.0f %%, need >= %.0f %%" % [worst * 100.0, SEED_MIN * 100.0])
+	_phys.sort()
+	print("double break: physics cost while the 24-ball break rolls: p50 %.2f ms/tick, p95 %.2f (headless, this machine; the 12-ball rack reads p95 ~1.0. Headless also shows ~1 %% lone ~56 ms ticks on the plain rack and on main before adhoc-1014a, which the windowed break never shows)" % [_phys[_phys.size() / 2], _phys[int(_phys.size() * 0.95)]])
 	print("double break: %d of %d balls were kicked out of the table through the air by a pocket rim (allowed: %d)" % [_hopped, SEEDS * (2 * BALLS + 1), HOP_OUT_MAX])
 	_check(_hopped <= HOP_OUT_MAX, "%d balls hopped out of the table over %d breaks, allowed %d" % [_hopped, SEEDS, HOP_OUT_MAX])
 	if _fail > 0:
@@ -100,6 +103,7 @@ func _break(entries: Array[Dictionary], what: String) -> Dictionary:
 	var hopped := 0  # left through the air
 	while table.sim.awake > 0 and Time.get_ticks_msec() < guard:
 		await physics_frame
+		_phys.append(Performance.get_monitor(Performance.TIME_PHYSICS_PROCESS) * 1000.0)
 		for b in _balls:
 			if b.is_pocketed or b.retired:
 				continue
