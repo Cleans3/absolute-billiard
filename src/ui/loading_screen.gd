@@ -10,12 +10,14 @@ signal finished
 enum Stage { LOADING, BUILDING, WAITING }
 
 const LOAD_SHARE := 0.8  ## of the bar the loader's own progress fills; BUILDING and WAITING sit past it
+const MIRROR_WAIT_S := 4.0  ## the longest it holds the overlay for the wall mirror's room capture
 
 var stage := Stage.LOADING
 var _progress := 0.0
 var _elapsed := 0.0
 var _done := PackedInt32Array()
 var _roster: Array[Dictionary] = []
+var _mirror_wait := 0.0
 
 @onready var _stage: Label = %Stage
 @onready var _bar: ProgressBar = %Bar
@@ -32,7 +34,7 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	_elapsed += delta
-	if stage == Stage.WAITING and _player_stands():
+	if stage == Stage.WAITING and _player_stands() and _mirror_done(delta):
 		finished.emit()
 		queue_free()
 		return
@@ -69,10 +71,25 @@ func _player_stands() -> bool:
 	return spawner != null and spawner.call(&"get_local_player") != null
 
 
+## The wall mirror's room capture (six GPU readbacks, a hitch each) ends under this overlay and not on the intro's first frames
+## (adhoc-1014b S5). A capture that never ends (no renderer, a lost device) holds the overlay MIRROR_WAIT_S at most.
+func _mirror_done(delta: float) -> bool:
+	var mirror := get_tree().get_first_node_in_group(&"mirror")
+	if mirror == null or bool(mirror.get(&"is_captured")):
+		return true
+	_mirror_wait += delta
+	return _mirror_wait >= MIRROR_WAIT_S
+
+
 func _refresh() -> void:
 	if not is_node_ready():
 		return
 	var secs := "%d s" % int(_elapsed)
+	if _mirror_wait > 0.0:
+		_stage.text = "Polishing the mirror…"
+		_bar.value = 0.95
+		_detail.text = secs
+		return
 	match stage:
 		Stage.LOADING:
 			_stage.text = "Loading the bar… %d%%" % int(_progress * 100.0)

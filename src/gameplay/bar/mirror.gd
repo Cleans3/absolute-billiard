@@ -9,6 +9,9 @@ extends Node3D
 ## scaled instead: the pass is sized to the glass's size on the viewer's screen, and not drawn at all off screen or behind the glass.
 ## Tier 2 (the lowest, 07 §2) draws no window pass at all: the glass is the static room cube (the avatars and the table are not in it);
 ## tier 1 caps the pass at 512 px. Orientation: local +Z is the mirror's normal, facing the room; local Y is up.
+## The room capture is six GPU readbacks, a hitch each: it runs at level load behind the LoadingScreen (which waits for `is_captured`) and never
+## while a cutscene has the screen (`QualityManager.cutscene_holds`, adhoc-1014b S5): a request then waits for the hold to end, unless the
+## LoadingScreen still covers it (the intro's cue fires under that overlay, and the overlay is waiting for this capture: no cycle).
 
 const LAYER := Humanoid.MIRROR_LAYER      ## the window pass: avatars (Humanoid puts every body on it) and the table
 const ROOM_LAYER := 1 << 10               ## render layer 11: what the cube capture draws (the room shell)
@@ -20,6 +23,7 @@ const VIEW_STEP := 64                     ## the pass is resized in steps of thi
 const FACE_PX: Array[int] = [1024, 512, 384]  ## cube face size per tier; mipmapped (the room is minified from a distance)
 const CAPTURE_AT := Vector3(0.0, 0.2, 2.5) ## local: in front of the glass at about eye height
 const FAR_M := 40.0
+const CALM_FRAMES := 3                    ## frames without a hold before a held capture starts (a cut between two parts is off then on)
 const NEAR_MIN_M := 0.05
 const FRAME_M := 0.14                     ## width of the wood frame
 const FRAME_BACK := -0.07                 ## the frame reaches back to the wall, 7 cm behind the glass
@@ -38,12 +42,17 @@ const FACES: Array[Array] = [
 
 var renders := 0                          ## window-pass frames so far (probes, perf notes)
 var captures := 0                         ## room captures so far
+var faces_drawn := 0                      ## cube faces drawn and read back so far (src/tools/mirror_capture_timing.gd: none while a cutscene holds)
 var blood := 0.0                          ## `set_blood`: 0 clean glass .. 1 smeared and dripping
+var is_captured := false                  ## the room cube has been captured once (headless has none to capture: true at once)
+
+signal captured                           ## a room capture finished
 
 var _mat: ShaderMaterial
 var _capturing := false
 var _recapture := false
 var _avatars_on := true                   ## the glass shows the window pass (false: tier 2, the static cube alone)
+var _calm := 0                            ## frames a pending capture has seen without a cutscene hold
 
 @onready var _view: SubViewport = $View
 @onready var _cam: Camera3D = $View/Cam
@@ -53,6 +62,7 @@ var _avatars_on := true                   ## the glass shows the window pass (fa
 
 
 func _ready() -> void:
+	add_to_group(&"mirror")
 	_view.size = view_size(VIEW_MIN_H)
 	_view.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_view.transparent_bg = true
@@ -93,6 +103,14 @@ func tag(root: Node, layer: int) -> void:
 
 
 func _process(_delta: float) -> void:
+	if _recapture and not _capturing and not _held():
+		_calm += 1
+		if _calm >= CALM_FRAMES:
+			_calm = 0
+			_recapture = false
+			capture()
+	elif _held():
+		_calm = 0
 	var vp := get_viewport()
 	var cam := vp.get_camera_3d()
 	if cam == null or not _notifier.is_on_screen():
@@ -179,13 +197,20 @@ func render_for(eye: Vector3) -> void:
 	renders += 1
 
 
+## A cutscene has the screen and nothing hides it (the LoadingScreen, up from the session's start until the bar is playable, does).
+func _held() -> bool:
+	return QualityManager.cutscene_holds > 0 and not get_tree().root.has_node(^"LoadingScreen")
+
+
 ## Renders the room's six cube faces from CAPTURE_AT into the glass's texture array. Needs a renderer (headless: no-op).
 ## A request while one runs is queued, not dropped (a skin can land mid-capture).
 func capture() -> void:
-	if _capturing:
+	if _capturing or _held():
 		_recapture = true
 		return
 	if DisplayServer.get_name() == "headless":
+		is_captured = true
+		captured.emit()
 		return
 	_capturing = true
 	var px := FACE_PX[clampi(QualityManager.current_tier, 0, FACE_PX.size() - 1)]
@@ -206,6 +231,8 @@ func capture() -> void:
 	var at := to_global(CAPTURE_AT)
 	var images: Array[Image] = []
 	for face: Array in FACES:
+		while _held():  # a cutscene took the screen mid-capture: the rest of the faces wait for it to end
+			await get_tree().process_frame
 		var f: Vector3 = face[0]
 		var u: Vector3 = face[1]
 		cam.global_transform = Transform3D(Basis(u.cross(-f), u, -f), at)
@@ -215,6 +242,7 @@ func capture() -> void:
 		img.convert(Image.FORMAT_RGBA8)
 		img.generate_mipmaps()
 		images.append(img)
+		faces_drawn += 1
 	vp.queue_free()
 	var faces := Texture2DArray.new()
 	faces.create_from_images(images)
@@ -223,6 +251,8 @@ func capture() -> void:
 	_mat.set_shader_parameter(&"has_room", true)
 	captures += 1
 	_capturing = false
+	is_captured = true
+	captured.emit()
 	if _recapture:
 		_recapture = false
 		capture()

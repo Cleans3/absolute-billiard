@@ -1,11 +1,12 @@
 extends SceneTree
 ## One-shot (adhoc-1013c F3a): plays every standalone cutscene in a window on a manual clock and saves PNGs, plus the render cost of each
 ## frame (draw calls, triangles, texture memory) for 07. Needs a display, run through `heavy`:
-##   heavy godot --path . --resolution 1280x720 -s src/tools/preview_cutscenes.gd
+##   heavy godot --path . --resolution 1280x720 -s src/tools/preview_cutscenes.gd [-- tier=0|1|2 out=<dir>]
+## `tier` sets QualityManager.current_tier before every scene is built (default 0); `out` replaces the PNG directory.
 ## Output: ~/work/.herdr/adhoc-1013c/shots/f3a/*.png, and a `shot <name> draws=.. tris=.. tex_mb=..` line per image on stdout.
 ## Ends with `PREVIEW DONE <n> shots`. The cutscenes are the real scenes (res://src/cutscene/*.tscn); only the clock is ours.
 
-const OUT := "/home/cleanse/work/.herdr/adhoc-1013c/shots/f3a/"
+const OUT_DEFAULT := "/home/cleanse/work/.herdr/adhoc-1013c/shots/f3a/"
 const VAN := "res://src/cutscene/IntroVan.tscn"
 const CABIN := "res://src/cutscene/IntroCabin.tscn"
 const TRUCK := "res://src/cutscene/TruckOutro.tscn"
@@ -16,6 +17,7 @@ const STATS := {
 }
 
 var shots := 0
+var out := OUT_DEFAULT
 
 
 func _init() -> void:
@@ -32,7 +34,7 @@ func _shot(shot_name: String) -> void:
 	await _frames(10)
 	await RenderingServer.frame_post_draw
 	var img := root.get_texture().get_image()
-	var err := img.save_png(OUT + shot_name + ".png")
+	var err := img.save_png(out + shot_name + ".png")
 	var draws := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_DRAW_CALLS_IN_FRAME)
 	var tris := RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TOTAL_PRIMITIVES_IN_FRAME)
 	var tex := float(RenderingServer.get_rendering_info(RenderingServer.RENDERING_INFO_TEXTURE_MEM_USED)) / 1048576.0
@@ -63,7 +65,12 @@ func _drop(cs: Cutscene) -> void:
 
 
 func _run() -> void:
-	DirAccess.make_dir_recursive_absolute(OUT)
+	for a in OS.get_cmdline_user_args():
+		if a.begins_with("tier="):
+			QualityManager.current_tier = clampi(int(a.get_slice("=", 1)), 0, 2)
+		elif a.begins_with("out="):
+			out = a.get_slice("=", 1).path_join("")
+	DirAccess.make_dir_recursive_absolute(out)
 	SaveManager.root = "user://preview_cutscenes"
 	root.msaa_3d = Viewport.MSAA_2X
 	await _frames(3)
