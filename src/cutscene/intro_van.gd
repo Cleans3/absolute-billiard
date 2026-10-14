@@ -27,7 +27,8 @@ func length_sec() -> float:
 
 
 func _environment() -> Environment:
-	return CutsceneKit.night_env(Color.BLACK, Color(0.06, 0.06, 0.09), 1.0, Color.BLACK, 0.0)
+	# tier 1+: ambient 1.1, the cab glow omni's share folded in (the same tier value _build reads; either may run first)
+	return CutsceneKit.night_env(Color.BLACK, Color(0.06, 0.06, 0.09), 1.1 if QualityManager.current_tier >= 1 else 1.0, Color.BLACK, 0.0)
 
 
 func _build() -> void:
@@ -47,10 +48,15 @@ func _build() -> void:
 		_crew[i].rotation.y = side * PI * 0.5  # left bench faces +X, right bench faces -X: across the aisle
 		CrewDress.dress(_crew[i], CrewDress.kind_for(cut_seed, i))
 		CrewDress.tie_hands(_crew[i])
+	# Realtime lights per tier (C6: 4 / 3 / 2). Cut in the order they show least (each hidden in turn moved the picture by 1.5, 1.0 of 255 on
+	# average, the beam 12 at its peak, the dome 18): the cab's glow goes on tier 1, folded into the ambient, the streetlamp on tier 2.
+	var tier := QualityManager.current_tier  # read once; a tier never changes mid-cutscene
 	_dome = CutsceneKit.omni(_van, Vector3(0.0, 1.62, 0.0), Color(1.0, 0.82, 0.55), 1.4, 3.6)
 	_beam = CutsceneKit.spot(self, Vector3(0.0, 1.4, 2.4), Vector3(0.0, 0.9, -1.0), Color(0.85, 0.92, 1.0), 3.0, 7.0, 58.0)
-	_lamp = CutsceneKit.omni(self, Vector3(-2.6, 1.6, 0.0), Color(1.0, 0.7, 0.35), 1.2, 4.0)
-	CutsceneKit.omni(_van, Vector3(0.0, 1.2, -1.5), Color(0.35, 0.55, 0.7), 0.5, 2.6)  # the cab's glow through the bulkhead
+	if tier < 2:
+		_lamp = CutsceneKit.omni(self, Vector3(-2.6, 1.6, 0.0), Color(1.0, 0.7, 0.35), 1.2, 4.0)
+	if tier < 1:
+		CutsceneKit.omni(_van, Vector3(0.0, 1.2, -1.5), Color(0.35, 0.55, 0.7), 0.5, 2.6)  # the cab's glow through the bulkhead
 
 
 func _build_interior() -> void:
@@ -101,4 +107,5 @@ func _update(time: float, _dt: float) -> void:
 	var dip := 0.2 if fposmod(time * 1.7 + _ph[8], 3.0) < 0.12 else 1.0
 	_dome.light_energy = 1.4 * dip * (0.88 + 0.12 * sin(time * 23.0 + _ph[7]))
 	_beam.light_energy = 3.0 * pow(maxf(0.0, sin(time * 2.6 + _ph[9])), 4.0)  # a car behind, its lights sweeping the faces
-	_lamp.position = Vector3(-2.6, 1.6, 4.0 - fposmod(time * 3.5 + _ph[11], 1.0) * 8.0)  # streetlamps going by outside the wall
+	if _lamp != null:
+		_lamp.position = Vector3(-2.6, 1.6, 4.0 - fposmod(time * 3.5 + _ph[11], 1.0) * 8.0)  # streetlamps going by outside the wall
