@@ -16,7 +16,8 @@ extends Node
 
 const END_GRACE_SEC := 20.0  ## [tune] the host waits this long after its own Continue for the others' before it leaves
 const LATE_MSEC := 10000  ## a phase that arrives this soon after the app came back from the background is not played
-const MOUTH_SCENE := "res://src/cutscene/MonsterMouth.tscn"
+const MOUTH_SCENE := preload("res://src/cutscene/MonsterMouth.tscn")
+const MOUTH_VIEW := Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0.0, 3.0, 0.6))  ## the warm camera over the lip, looking straight down the throat (its own space)
 const HIDE_PATHS: Array[NodePath] = [^"UILayer/HUD", ^"UILayer/TouchControls"]  ## tagged `cutscene_hides`
 const DROP_HEIGHT := Trapdoor.SHAFT_DEPTH + Player.EYE_M  ## FallCam starts at head height above the floor, this far above the lip
 
@@ -63,10 +64,22 @@ func _ready() -> void:
 			n.add_to_group(Cutscene.HIDE_GROUP)
 	if game_loop != null:
 		game_loop.phase_changed.connect(_on_phase)
+	if not skip_cutscenes:
+		_prebuild()
 	_net = get_node_or_null(^"/root/NetManager")
 	if _net != null:
 		_net.connect(&"app_resumed", func() -> void: _resumed_msec = Time.get_ticks_msec())
 	set_process(false)
+
+
+## Level load, behind the LoadingScreen (adhoc-1014b C3, C9): what the endings need is built now, not on their first frame. The sounds are rendered, and
+## the monster is built hidden in the Trapdoor's Pit; CutscenePlayer draws it once under the next black (the intro's, or the failure's own) so
+## its pipelines are compiled before the fall shows it.
+func _prebuild() -> void:
+	CutsceneSfx.prerender()
+	_make_mouth()
+	if _mouth != null:
+		cutscenes.add_warm(_mouth, MOUTH_VIEW)
 
 
 func is_busy() -> bool:
@@ -236,7 +249,7 @@ func _make_mouth() -> void:
 		trap = level.get_node_or_null(^"Trapdoor") as Trapdoor
 	if _mouth != null or trap == null or trap.pit() == null:
 		return
-	_mouth = (load(MOUTH_SCENE) as PackedScene).instantiate() as MonsterMouth
+	_mouth = MOUTH_SCENE.instantiate() as MonsterMouth
 	_mouth.visible = false
 	trap.pit().add_child(_mouth)
 

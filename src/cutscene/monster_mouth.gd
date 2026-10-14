@@ -43,6 +43,12 @@ var _built := false
 
 func _ready() -> void:
 	build()
+	set_process(is_visible_in_tree())  # READY switched it on: a mouth parked hidden in the Pit does not breathe
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED:
+		set_process(is_visible_in_tree())
 
 
 func build() -> void:

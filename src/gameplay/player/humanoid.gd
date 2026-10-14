@@ -80,6 +80,7 @@ static var _material: ShaderMaterial  ## every Humanoid shares it: colours live 
 
 var stance := Stance.STAND
 var pelvis_at_getup := Vector3.ZERO
+var ragdoll_enabled := true  ## false (set before add_child): no PhysicalBoneSimulator3D and no 11 PhysicalBone3D, `ragdoll()` does nothing: a body that only poses (the cutscene crew)
 
 var _skin: CharacterSkin
 var _skel: Skeleton3D
@@ -296,6 +297,8 @@ static func sit_hip_y(top_y: float) -> float:
 ## Limp: the bones are handed to physics. `impulse` is a velocity change (m/s) of the body, on top of the speed it
 ## was walking at; the head and trunk take more of it than the legs, so a shove topples rather than slides.
 func ragdoll(impulse: Vector3) -> void:
+	if _sim == null:
+		return
 	if not _ragdoll:
 		if _lean_left > 0.0:
 			_lean_left = 0.0
@@ -619,12 +622,13 @@ func _build_skeleton() -> void:
 		_skel.set_bone_rest(i, Transform3D(Basis.IDENTITY, ORIGIN[i] - (ORIGIN[PARENT[i]] if PARENT[i] >= 0 else Vector3.ZERO)))
 	_skel.reset_bone_poses()
 	_skel.animate_physical_bones = false  # idle bones are not driven by the animation
-	_sim = PhysicalBoneSimulator3D.new()
-	_skel.add_child(_sim)
-	for i in NAMES.size():
-		var pb := _make_pb(i)
-		_pbs.append(pb)
-		_sim.add_child(pb)
+	if ragdoll_enabled:
+		_sim = PhysicalBoneSimulator3D.new()
+		_skel.add_child(_sim)
+		for i in NAMES.size():
+			var pb := _make_pb(i)
+			_pbs.append(pb)
+			_sim.add_child(pb)
 	_body_mi = MeshInstance3D.new()
 	_head_mi = MeshInstance3D.new()
 	for mi in [_body_mi, _head_mi]:

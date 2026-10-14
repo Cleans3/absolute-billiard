@@ -45,10 +45,12 @@ static func spawn(parent: Node3D, count: int, skins: Array[CharacterSkin]) -> Ar
 	return out
 
 
-## One body for `seat`: its skin, else the seat's colour; physics process off (a moving parent must not read as walking).
+## One body for `seat`: its skin, else the seat's colour; physics process off (a moving parent must not read as walking). It never goes limp,
+## so it is built without the ragdoll's 11 physical bones and their simulator.
 static func spawn_one(parent: Node3D, seat: int, skin: CharacterSkin) -> Humanoid:
 	var h := Humanoid.new()
 	h.name = "Crew%d" % seat
+	h.ragdoll_enabled = false
 	h.apply_skin(skin if skin != null else SkinCatalog.default_character(seat))
 	parent.add_child(h)
 	h.set_physics_process(false)  # after add_child: READY re-enables the process a script overrides
