@@ -18,6 +18,13 @@ static func stream(kind: int) -> AudioStreamWAV:
 	return _cache[kind]
 
 
+## Renders every Kind now (adhoc-1014b C9): the synthesis is ~35 ms of GDScript on a desktop, so it runs once when the level loads, behind the
+## LoadingScreen, and no cutscene beat pays for it on a shown frame. A second call costs nothing.
+static func prerender() -> void:
+	for kind in SECONDS.size():
+		stream(kind)
+
+
 ## Starts `kind` on a new AudioStreamPlayer under `parent` (it goes with it). A one-shot frees its player when it ends; stop() a loop.
 static func play(parent: Node, kind: int, volume_db := -4.0) -> AudioStreamPlayer:
 	var p := AudioStreamPlayer.new()
