@@ -45,10 +45,22 @@ func _run() -> void:
 	var tv := level.get_node("Tv") as StreamTv
 	var tier := clampi(QualityManager.current_tier, 0, 2)
 	_check(mirror.renders == 0 and tv.renders == [0, 0], "nothing drew yet: headless has no camera, the glass and the TV are 'off screen' (%d, %s)" % [mirror.renders, tv.renders])
+	var door := level.get_node("EntranceDoor") as EntranceDoor
+	var crew := RoomCutscene.crew_of(level)
+	_check(not crew.is_empty() and door.openness == 0.0 and door.bolt == 1.0, "the door is shut and bolted, the crew stands in the level")
+	var hidden := (crew[0].player as Player).visible if not crew.is_empty() else true
+	(crew[0].player as Player).visible = false  # a body the sweep has to show for the door's wide shot, and give back hidden
+	var open_seen := [0.0]
+	var shown := [false]
 	frames = 0
 	while director.cutscenes.current == null and frames < 3000:
+		open_seen[0] = maxf(open_seen[0], door.openness)
+		shown[0] = shown[0] or (door.openness > 0.99 and (crew[0].player as Player).visible)
 		await process_frame
 		frames += 1
+	_check(open_seen[0] == 1.0 and shown[0], "the sweep flung the door open and showed the crew for the door's shots")
+	_check(door.openness == 0.0 and door.bolt == 1.0 and not (crew[0].player as Player).visible, "...and gave the door and the hidden body back as they were")
+	(crew[0].player as Player).visible = hidden
 	_check(director.cutscenes.current is IntroVan, "the van is the first part shown (%s)" % director.cutscenes.current)
 	_check(CutscenePlayer.bar_warmed, "the bar is marked warm")
 	_check(mirror.renders == (1 if Mirror.has_window_pass() else 0), "the mirror's window pass drew once under the black (%d, tier %d)" % [mirror.renders, tier])

@@ -286,16 +286,28 @@ func _player_intro() -> void:
 	var player := _new_player(events)
 	Cutscene.time_scale = FAST
 	CutscenePlayer.bar_warmed = false
+	var door_level := Node3D.new()  # a bare level with the entrance door: the sweep's two shots at it
+	var door := EntranceDoor.new()
+	door.name = "EntranceDoor"
+	door_level.add_child(door)
+	root.add_child(door_level)
 	var target := Target.new()
 	var idle_target := Target.new()
 	idle_target.drew = false
 	root.add_child(target)
 	root.add_child(idle_target)
-	_check(player.play(&"intro", {"seed": 31, "crew_size": 2, "skippable": true}), "intro: starts")
+	_check(player.play(&"intro", {"seed": 31, "crew_size": 2, "skippable": true, "level": door_level}), "intro: starts")
 	_check(player.is_playing() and player.current == null and UIRouter.blocking() and root.get_camera_3d() == base_cam, "intro: under a black cover that holds the input, the level's camera still current, nothing shown yet")
 	_check(events == ["start intro"], "intro: started is announced at once")
-	var frames := await _frames_until(func() -> bool: return player.current != null)
+	var open_seen := [0.0]
+	var fovs := []
+	var frames := await _frames_until(func() -> bool:
+		open_seen[0] = maxf(open_seen[0], door.openness)
+		if door.openness > 0.99 and player._warm_cam != null and not fovs.has(player._warm_cam.fov):
+			fovs.append(player._warm_cam.fov)
+		return player.current != null)
 	_check(player.current is IntroVan and player.current.playing and player.current.visible, "intro: the van plays when the prepare is done")
+	_check(open_seen[0] == 1.0 and fovs == [66.0, 68.0] and door.openness == 0.0 and door.bolt == 1.0, "intro: the sweep drew the room beat's two shots with the door flung open, and shut and bolted it again (%s, fovs %s)" % [open_seen[0], fovs])
 	_check(frames >= CutscenePlayer.BAR_VIEWS.size() + 4, "intro: the bar drew from every side first, then one more frame for the level's render target (%d frames before the van)" % frames)
 	_check(target.warms == 1 and idle_target.warms == 1, "intro: every render target of the level was asked to draw once under the black (%d, %d)" % [target.warms, idle_target.warms])
 	var cabin := player._ready_parts.get(&"intro_cabin") as Cutscene
@@ -314,6 +326,7 @@ func _player_intro() -> void:
 	_check(SaveManager.cutscene_seen(&"intro") and CutscenePlayer.bar_warmed, "intro: seen, and the bar is marked warm")
 	target.free()
 	idle_target.free()
+	door_level.free()
 	await process_frame
 	_check(_cutscenes_under(player) == 0 and player._ready_parts.is_empty(), "intro: nothing is left built")
 	_camera_back("the intro")

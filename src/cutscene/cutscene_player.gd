@@ -38,6 +38,13 @@ const BAR_VIEWS: Array[Transform3D] = [
 	Transform3D(Basis(Vector3.RIGHT, -PI * 0.5), Vector3(0.0, 1.6, 0.0)),
 ]
 const BAR_FOV := 100.0
+## The room beat's own shots at the door (IntroRoom._camera: the wide shot from the south end, the close-up from inside), as [eye, target, fov]: drawn with the
+## door flung open and the crew in view, so what the door reveals (the doorway's black quad, the leaf and the bolt mid-swing) and the first body through it
+## compile under the black and not at T_OPEN. The numbers are IntroRoom's; keep them in step.
+const DOOR_VIEWS: Array[Array] = [
+	[Vector3(0.0, 1.6, 5.4), Vector3(0.0, 1.4, -6.6), 66.0],
+	[Vector3(0.3, 1.5, -4.9), Vector3(0.35, 1.3, -6.85), 68.0],
+]
 const WARM_FRAMES := 2  ## frames each prepared part is drawn under black: the first uploads and compiles, the second proves it
 const MIRROR_WAIT_SEC := 1.5  ## how long the prepare waits for the Mirror's cube capture (seam S5)
 const FIRST_WATCH_IDS: Array[StringName] = [&"intro"]  ## skippable only after this player has seen them once (D13)
@@ -77,6 +84,7 @@ var _cover_layer: CanvasLayer
 var _held := false  # the prepare's own count in Cutscene.holding
 var _warm_holder: Node3D  # what a warm draw shows right now: a prepared part or an extra's node
 var _warm_cam: Camera3D  # its camera, current while it is drawn
+var _undo: Array[Callable] = []  # what the sweep changed in the level for its shots (the door open, the crew shown): put back by _leave_warm
 var _warm_own_cam := false  # the camera is a throwaway of ours (an extra's)
 var _warm_prev: Camera3D  # the camera to give back
 var _kick := 0  # ticks of the last finished prepare step
@@ -177,6 +185,7 @@ func abort() -> void:
 
 func _exit_tree() -> void:
 	_gen += 1
+	_undo_sweep()
 	_set_hold(false)
 
 
@@ -319,7 +328,36 @@ func _sweep_bar(gen: int) -> void:
 			await _drawn()
 			if gen != _gen:
 				return
+	await _sweep_door(gen)
 	_leave_warm()
+
+
+## The door's two shots with the door open and the crew shown (undone by `_leave_warm`, so a skip or an abort puts them back too). Nothing without a level.
+func _sweep_door(gen: int) -> void:
+	var level := _opts.get("level") as Node
+	var door := level.get_node_or_null(^"EntranceDoor") as EntranceDoor if level != null else null
+	if door == null:
+		return
+	_undo.append(door.set_bolt.bind(door.bolt))
+	_undo.append(door.set_openness.bind(door.openness))
+	door.set_openness(1.0)
+	for m: Dictionary in RoomCutscene.crew_of(level):
+		var p: Player = m.player
+		_undo.append(p.set_visible.bind(p.visible))
+		p.visible = true
+	for v in DOOR_VIEWS:
+		_warm_cam.global_transform = CutsceneKit.look_from(v[0], v[1])
+		_warm_cam.fov = v[2]
+		await _drawn()
+		if gen != _gen:
+			return
+
+
+func _undo_sweep() -> void:
+	for u in _undo:
+		if u.is_valid():
+			u.call()
+	_undo.clear()
 
 
 ## Draws `holder` with `cam` current, under the black: a prepared `part` at each of its warm times (the first for WARM_FRAMES frames, the
@@ -348,6 +386,7 @@ func _warm(holder: Node3D, cam: Camera3D, own_cam: bool, part: Cutscene, gen: in
 
 ## Hides what a warm draw showed and gives the camera back; also what a cancelled prepare does for the draw it stopped in.
 func _leave_warm() -> void:
+	_undo_sweep()
 	if _warm_holder != null and is_instance_valid(_warm_holder):
 		_warm_holder.visible = false
 	if _warm_cam != null and is_instance_valid(_warm_cam):
