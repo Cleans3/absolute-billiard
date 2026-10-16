@@ -101,7 +101,7 @@ func _handle(peer_id: int, kind: StringName, target_id: int, payload: Dictionary
 		_reject(peer_id, kind, reason)
 		return
 	if w == null:
-		_apply_bar(peer_id, kind, payload)
+		_apply_bar(peer_id, kind, payload, target_id)
 	else:
 		_apply(peer_id, w, target_id, payload)
 	world_interaction_applied.rpc(peer_id, kind, target_id, payload)
@@ -123,6 +123,24 @@ func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: i
 				return near
 			var story := get_tree().get_first_node_in_group(&"story_director")
 			return story.call(&"answer_block") if story != null else &"not_ringing"
+		if Footprints.KINDS.has(kind):  # 08 §2.9 step 4: the towel
+			var prints := get_tree().get_first_node_in_group(&"footprints") as Footprints
+			return prints.validate_kind(peer_id, kind, target_id, payload) if prints != null else &"no_prop"
+		if BallGrab.KINDS.has(kind):  # 08 §2.9 step 4: a grabbed ball
+			var grab := get_tree().get_first_node_in_group(&"ball_grab") as BallGrab
+			return grab.validate_kind(peer_id, kind, target_id, payload) if grab != null else &"no_prop"
+		if kind == DishStation.KIND:  # 08 §2.9 step 3: a debtor at the sink
+			var sink := get_tree().get_first_node_in_group(&"dish_station") as DishStation
+			return sink.validate(peer_id, payload) if sink != null else &"no_prop"
+		if CueRack.KINDS.has(kind):  # 08 §2.9: any phase; the rack's own reach (the rack, a floor cue, the counter) and state
+			var rack := _rack()
+			if rack == null:
+				return &"no_prop"
+			if kind == CueRack.KIND:
+				var close_to := _reach(peer_id, kind, target_id)
+				if close_to != &"":
+					return close_to
+			return rack.validate_kind(peer_id, kind, target_id, payload)
 		if kind == SlotHouse.PROP_KIND:  # reach, then the machine's own rules, then the stake: a refusal never costs
 			var close := _reach(peer_id, kind, target_id)
 			if close != &"":
@@ -156,6 +174,10 @@ func _validate(peer_id: int, kind: StringName, w: WorldInteraction, target_id: i
 	if w.hostile and _hostile_this_turn >= MAX_HOSTILE_PER_TURN:
 		return &"hostile_cap"
 	return _spend(peer_id, w, payload)
+
+
+func _rack() -> CueRack:
+	return get_tree().get_first_node_in_group(&"cue_rack") as CueRack
 
 
 func _live() -> bool:
@@ -247,7 +269,7 @@ func _soak_shooter(thrower: int) -> void:
 		spawner.call(&"knock_away", shooter, player_position_source.call(thrower))
 
 
-func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:
+func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary, target_id := 0) -> void:
 	if kind == &"go_live":
 		game_loop.toggle_ready(peer_id)
 		return
@@ -255,6 +277,18 @@ func _apply_bar(peer_id: int, kind: StringName, payload: Dictionary) -> void:
 		return  # nothing to apply on the host: every peer's StoryDirector reacts to the broadcast
 	if kind == SlotHouse.PROP_KIND:
 		slot_house.spin(peer_id, payload)  # fills `payload` with the result: the broadcast carries it to every peer
+		return
+	if Footprints.KINDS.has(kind):
+		(get_tree().get_first_node_in_group(&"footprints") as Footprints).fill_kind(peer_id, kind, target_id, payload)
+		return
+	if BallGrab.KINDS.has(kind):
+		(get_tree().get_first_node_in_group(&"ball_grab") as BallGrab).fill_kind(peer_id, kind, target_id, payload)
+		return
+	if kind == DishStation.KIND:
+		(get_tree().get_first_node_in_group(&"dish_station") as DishStation).fill(peer_id, payload)  # the plate's pay
+		return
+	if CueRack.KINDS.has(kind):
+		_rack().fill_kind(peer_id, kind, target_id, payload)  # the outcome: every peer's rack plays the broadcast
 		return
 	var target := int(payload.get(&"target_peer", peer_id)) if kind == &"bar_serve" else peer_id
 	bar_purchase_requested.emit(kind, peer_id, payload[&"drink_id"], target)

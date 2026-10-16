@@ -20,6 +20,7 @@ const DEFAULTS := {
 	&"invert_y": false,
 	&"touch_mirror": false,
 	&"show_fps": false,
+	&"instant_replay": true,   ## replay a trick shot / a clearing shot with slow motion (docs/plan/10 §3.7)
 	&"debug_mode": false,      ## debug builds only: the debug strip + panel (src/debug), phone included
 }
 const RANGES := {  ## [min, max, step] for the sliders; `set_value` clamps to it
@@ -48,6 +49,8 @@ const ACTIONS: Array[Dictionary] = [
 	{group = "Cue", action = &"elevate_up", label = "Raise cue"},
 	{group = "Cue", action = &"elevate_down", label = "Lower cue"},
 	{group = "Cue", action = &"spin_reset", label = "Reset spin"},
+	{group = "Cue", action = &"swing_cue", label = "Swing the cue"},
+	{group = "Cue", action = &"throw_cue", label = "Throw the cue"},
 	{group = "Call pocket", action = &"call_pocket_1", label = "Pocket 1"},
 	{group = "Call pocket", action = &"call_pocket_2", label = "Pocket 2"},
 	{group = "Call pocket", action = &"call_pocket_3", label = "Pocket 3"},
@@ -198,10 +201,29 @@ static func event_from(sig: String) -> InputEvent:
 
 # --- internals ----------------------------------------------------------------------------------------
 
+## The held cue's actions (08 §2.9) are in project.godot; an editor that rewrites that file from an older in-memory copy would drop them,
+## so a missing one is added here with its default (left mouse / G) before the defaults are read.
+static func _add_missing_actions() -> void:
+	if not InputMap.has_action(&"swing_cue"):
+		var click := InputEventMouseButton.new()
+		click.button_index = MOUSE_BUTTON_LEFT
+		click.button_mask = MOUSE_BUTTON_MASK_LEFT
+		click.pressed = true
+		InputMap.add_action(&"swing_cue", 0.2)
+		InputMap.action_add_event(&"swing_cue", click)
+	if not InputMap.has_action(&"throw_cue"):
+		var key := InputEventKey.new()
+		key.physical_keycode = KEY_G
+		key.pressed = true
+		InputMap.add_action(&"throw_cue", 0.2)
+		InputMap.action_add_event(&"throw_cue", key)
+
+
 static func _ensure() -> void:
 	if _loaded:
 		return
 	_loaded = true
+	_add_missing_actions()
 	if _default_events.is_empty():  # the InputMap is still project.godot's here, the first time only
 		for a in action_names():
 			_default_events[a] = InputMap.action_get_events(a)

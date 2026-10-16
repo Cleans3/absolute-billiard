@@ -29,6 +29,7 @@ const PROP_SOUND := {
 	&"chalk_the_cue": [&"chalk", -2.0, 1.0],
 	&"heckle": [&"lose", -9.0, 1.25],
 	&"lean_on_rail": [&"lean", -6.0, 1.0],
+	&"cue_rack": [&"rail_b", -10.0, 1.3],  # a cue knocks out of / into its slot (08 §2.9)
 	&"throw_drink": [&"glass", -2.0, 1.0],
 	&"bar_buy": [&"glass", -6.0, 1.0],
 	&"bar_serve": [&"glass", -6.0, 1.0],
@@ -184,22 +185,13 @@ func _on_tap(b: BaseButton) -> void:
 
 ## ImpactFx kinds (impact_fx.gd `_fire`): the table's sounds sit at the table centre (the event carries no position).
 func _on_fx(kind: StringName, strength: float, fx: Node) -> void:
-	var t := clampf(strength / HARD_MPS, 0.0, 1.0)
 	var spot := Vector3.ZERO
 	var table: Node3D = fx.get(&"table")
 	if table != null:
 		spot = table.to_global(Vector3(0.0, table.call(&"cloth_y"), 0.0))
+	if table_sound(kind, strength, spot):
+		return
 	match kind:
-		&"kick":
-			play_at(&"cue_tip", spot, lerpf(-12.0, 0.0, t), randf_range(0.96, 1.04))
-		&"ball":
-			var layer := "soft" if t < SOFT_BELOW else ("med" if t < MED_BELOW else "hard")
-			play_at(StringName("clack_%s_%s" % [layer, "a" if randf() < 0.5 else "b"]), spot, lerpf(FLOOR_DB, -1.0, pow(t, 0.6)), randf_range(0.95, 1.06))
-		&"rail":
-			play_at(&"rail_a" if randf() < 0.5 else &"rail_b", spot, lerpf(FLOOR_DB, -2.0, pow(t, 0.6)), randf_range(0.95, 1.06))
-		&"pot":
-			play_at(&"pocket_drop", spot, -3.0, randf_range(0.95, 1.05))
-			play(&"ding", -9.0, minf(1.0 + 0.09 * maxf(strength - 1.0, 0.0), 2.0))  # strength = the combo count: a rising ding
 		&"scratch":
 			play_at(&"pocket_drop", spot, -3.0)
 			play(&"ui_error", -6.0, 0.75)
@@ -228,6 +220,26 @@ func _on_fx(kind: StringName, strength: float, fx: Node) -> void:
 			play(&"lost", -8.0)
 
 
+## The sound of one table event (`kick` = cue strike, `ball`, `rail`, `pot`) at `at`, every pitch times `pitch_mult`; false for any
+## other kind. `_on_fx` plays the live ones; the instant replay (docs/plan/10 §3.7) plays a Shot's recorded ones again, slowed.
+func table_sound(kind: StringName, strength: float, at: Vector3, pitch_mult := 1.0) -> bool:
+	var t := clampf(strength / HARD_MPS, 0.0, 1.0)
+	match kind:
+		&"kick":
+			play_at(&"cue_tip", at, lerpf(-12.0, 0.0, t), randf_range(0.96, 1.04) * pitch_mult)
+		&"ball":
+			var layer := "soft" if t < SOFT_BELOW else ("med" if t < MED_BELOW else "hard")
+			play_at(StringName("clack_%s_%s" % [layer, "a" if randf() < 0.5 else "b"]), at, lerpf(FLOOR_DB, -1.0, pow(t, 0.6)), randf_range(0.95, 1.06) * pitch_mult)
+		&"rail":
+			play_at(&"rail_a" if randf() < 0.5 else &"rail_b", at, lerpf(FLOOR_DB, -2.0, pow(t, 0.6)), randf_range(0.95, 1.06) * pitch_mult)
+		&"pot":
+			play_at(&"pocket_drop", at, -3.0, randf_range(0.95, 1.05) * pitch_mult)
+			play(&"ding", -9.0, minf(1.0 + 0.09 * maxf(strength - 1.0, 0.0), 2.0) * pitch_mult)  # strength = the combo count: a rising ding
+		_:
+			return false
+	return true
+
+
 func _on_interaction(_peer: int, kind: StringName, _target: int, _payload: Dictionary) -> void:
 	if not PROP_SOUND.has(kind):
 		return
@@ -247,7 +259,7 @@ func _prop_at(kind: StringName) -> Vector3:
 
 
 func _on_cash(_balance: int, delta: int, reason: StringName) -> void:
-	if delta < 0 and (reason == &"shop" or reason == &"throw_drink"):
+	if delta < 0 and (reason == &"shop" or reason == &"throw_drink" or reason == &"cue"):
 		play(&"register", -5.0)
 	elif delta > 0 and (reason == &"shot" or reason == &"tip" or reason == &"world"):
 		play(&"coin", -6.0, clampf(0.85 + log(float(delta)) / log(10.0) * 0.1, 0.85, 1.4))

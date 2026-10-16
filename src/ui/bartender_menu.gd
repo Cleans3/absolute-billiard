@@ -27,6 +27,7 @@ const REASON_TEXT := {
 	&"intermission_only": "Break only", &"closed": "Break only", &"locked": "Locked", &"owned": "Owned",
 	&"once_per_night": "Once a Night", &"night_limit": "Night limit", &"drink_cap": "3 drinks max",
 	&"needs_live": "Live only", &"unknown_item": "Unknown",
+	&"has_cue": "You hold one", &"cues_full": "All 5 still around",
 }
 ## The timing reasons say when the item opens: the card's gate line, an Upgrade row's button, the status line.
 const WHEN_TEXT := {
@@ -45,6 +46,8 @@ var _glitch := GlitchEffect.new()
 var _targets: Dictionary = {}  # peer id -> Button
 var _drink_buttons: Dictionary = {}  # drink id -> Buy / Throw button of its card
 var _upgrade_buttons: Dictionary = {}  # item id -> Buy button of its row
+var cue_button: Button  ## the New cue row's Buy (08 §2.9), probes press it
+var _rack: CueRack
 
 @onready var _cash: Label = %Cash
 @onready var _tabs: TabContainer = %Tabs
@@ -83,6 +86,9 @@ func _ready() -> void:
 		economy.purchase_rejected.connect(_on_rejected)
 	if game_loop != null:
 		game_loop.phase_changed.connect(func(_p: GameLoop.Phase) -> void: _refresh())
+	_rack = get_tree().get_first_node_in_group(&"cue_rack") as CueRack
+	if _rack != null:
+		_rack.changed.connect(_refresh)
 	if round_director != null:
 		round_director.shooter_changed.connect(func(_p: int) -> void:
 			if visible:
@@ -373,6 +379,9 @@ func _rebuild_upgrades() -> void:
 		_upgrades.remove_child(c)
 		c.queue_free()
 	_upgrade_buttons.clear()
+	if _rack != null:
+		_upgrades.add_child(_label("Cue rack", &"Heading"))
+		_upgrades.add_child(_cue_row())
 	for category in ShopCatalog.CATEGORIES:
 		if category == &"drink":
 			continue
@@ -401,6 +410,39 @@ func _upgrade_row(it: ShopItem) -> Control:
 	buy.pressed.connect(_buy_upgrade.bind(it.id))
 	row.add_child(buy)
 	_upgrade_buttons[it.id] = buy
+	return row
+
+
+## A new cue for the campaign's rack (08 §2.9): any phase, straight into the buyer's hand; the host checks it all again (`cue_buy`).
+func _cue_row() -> Control:
+	var me := multiplayer.get_unique_id()
+	var cost := _rack.price()
+	var why := &""
+	if _rack.holds(me):
+		why = &"has_cue"
+	elif _rack.intact_count() >= CueRack.SLOTS:
+		why = &"cues_full"
+	var row := HBoxContainer.new()
+	row.custom_minimum_size.y = ROW_HEIGHT
+	row.add_child(_icon(IconCatalog._load(&"upgrade", &"heavy_shaft"), ROW_RIM, ROW_ICON))
+	var text := VBoxContainer.new()
+	text.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	text.add_child(_label("New cue"))
+	text.add_child(_label("%d of the %d cues left in the campaign. Straight into your hand." % [_rack.intact_count(), CueRack.SLOTS], &"Caption", HORIZONTAL_ALIGNMENT_LEFT, true))
+	row.add_child(text)
+	var price := _label("$%d" % cost, &"", HORIZONTAL_ALIGNMENT_RIGHT)
+	price.custom_minimum_size.x = 84
+	row.add_child(price)
+	var credit := why == &"" and economy.cash < cost  # 08 §2.9 step 3: on credit, washed off at the sink
+	cue_button = _button(("Buy on credit" if credit else "Buy") if why == &"" else _refusal(why))
+	if credit:
+		cue_button.theme_type_variation = &"Danger"
+		text.add_child(_label("No Cash for it: ZAP, then the sink.", &"Caption"))
+	cue_button.custom_minimum_size.x = UPGRADE_BUTTON_WIDTH
+	cue_button.clip_text = true
+	cue_button.disabled = why != &""
+	cue_button.pressed.connect(_rack.request_buy)
+	row.add_child(cue_button)
 	return row
 
 

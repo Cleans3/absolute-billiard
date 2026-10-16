@@ -155,8 +155,9 @@ func _on_purchase_rejected(item_id: StringName, reason: StringName) -> void:
 	_toast("Can't buy %s (%s)" % [item_id, reason], &"bad")
 
 
-func _on_fined(_reason: StringName, amount: int) -> void:
-	_toast("Scratch! -$%d" % amount, &"bad")
+func _on_fined(reason: StringName, amount: int) -> void:
+	var text := {&"cue_broken": "Cue broken! -$%d", &"ball_grab": "Ball grab! -$%d"}.get(reason, "Scratch! -$%d") as String
+	_toast(text % amount, &"bad")
 
 
 func _on_night_started(_night_number: int, quota: int) -> void:

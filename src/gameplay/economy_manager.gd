@@ -85,7 +85,7 @@ func update_cash(absolute_balance: int, delta: int, reason: StringName) -> void:
 		return  # add_cash already applied it here
 	cash = absolute_balance
 	cash_changed.emit(cash, delta, reason)
-	if reason == &"scratch":
+	if reason == &"scratch" or reason == &"cue_broken" or reason == &"ball_grab":  # the host emitted `fined` itself (a broken cue: CueRack, 08 §2.9)
 		fined.emit(reason, -delta)
 
 
@@ -108,10 +108,11 @@ func demand_for(config: NightConfig, is_final := false) -> int:
 	return roundi(config.quota * BUYOUT_MULT) if is_final else config.quota
 
 
-## Pays the demand out of Cash when covered (overpay stays in Cash, so it banks); a miss ends the run.
-func evaluate_quota(config: NightConfig, is_final := false) -> bool:
+## Pays the demand out of Cash when covered (overpay stays in Cash, so it banks); a miss ends the run. `owed` > 0 (a debt left at the
+## sink, 08 §2.9) fails it whatever the Cash says.
+func evaluate_quota(config: NightConfig, is_final := false, owed := 0) -> bool:
 	var demand := demand_for(config, is_final)
-	var passed := cash >= demand
+	var passed := cash >= demand and owed <= 0
 	if passed:
 		add_cash(-demand, &"quota")
 	quota_evaluated.emit(demand if passed else 0, demand, not passed)

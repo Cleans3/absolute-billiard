@@ -11,6 +11,8 @@ signal back_pressed
 signal place_pressed
 signal drop_pressed
 signal pocket_tapped(index: int)
+signal swing_pressed  ## the held cue (08 §2.9)
+signal throw_pressed
 
 const BTN := Vector2(96, 96)
 const MARGIN := 24.0
@@ -50,6 +52,9 @@ var _btn_back: TouchButton
 var _btn_place: TouchButton
 var _btn_drop: TouchButton
 var _btn_pause: TouchButton
+var _btn_swing: TouchButton
+var _btn_throw: TouchButton
+var _has_cue := false
 var _prompt_label: Label
 var _status: Label  ## the shot clock; notices go through UIRouter.toast (one channel)
 var _away: Label
@@ -77,6 +82,8 @@ func _ready() -> void:
 	_btn_back.icon = load("res://assets/ui/icon_back.svg")
 	_btn_place = _button(root, "Place", place_pressed)
 	_btn_drop = _button(root, "Drop", drop_pressed)
+	_btn_swing = _button(root, "Swing", swing_pressed)
+	_btn_throw = _button(root, "Throw", throw_pressed)
 	for i in 6:
 		var b := _button(root, str(i + 1), pocket_tapped, i)
 		pockets.append(b)
@@ -128,6 +135,13 @@ func set_mode(mode: int) -> void:
 		_mode = mode
 		look.release()
 		stick.release()
+		_apply()
+
+
+## The local player holds a cue (CueRack.changed): Swing and Throw show while walking.
+func set_has_cue(v: bool) -> void:
+	if v != _has_cue:
+		_has_cue = v
 		_apply()
 
 
@@ -201,6 +215,8 @@ func _apply() -> void:
 	_btn_back.visible = touch and cue
 	_btn_place.visible = touch and carry
 	_btn_drop.visible = touch and carry
+	_btn_swing.visible = touch and walk and _has_cue
+	_btn_throw.visible = touch and walk and _has_cue
 	spin_pad.visible = cue
 	power.visible = cue
 	elevation.visible = cue
@@ -227,6 +243,8 @@ func _layout() -> void:
 	_corner(_btn_shoot, not mirror, MARGIN * 2 + BTN.x, MARGIN)
 	_corner(_btn_place, not mirror, MARGIN, MARGIN)
 	_corner(_btn_drop, not mirror, MARGIN, MARGIN * 2 + BTN.y)
+	_corner(_btn_swing, not mirror, MARGIN * 2 + BTN.x, MARGIN * 2 + BTN.y)  # the held cue: above Shoot, and left of it
+	_corner(_btn_throw, not mirror, MARGIN * 3 + BTN.x * 2, MARGIN)
 	_side_v(power, not mirror, MARGIN, 72.0, 0.15, 0.85)
 	# left-thumb group (CUE)
 	spin_pad.custom_minimum_size = Vector2(120, 120)

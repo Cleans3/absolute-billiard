@@ -17,6 +17,7 @@ signal finished(skipped: bool)  ## once, when it ends: the timeline ran out, Ski
 
 const STAGE_ORIGIN := Vector3(500.0, 0.0, 500.0)  ## outside every room volume, so the room's lights and probes never reach a cutscene
 const HIDE_GROUP := &"cutscene_hides"  ## HUD roots in this group are hidden while a cutscene plays, restored after (F3b tags them)
+const PLAYING_GROUP := &"cutscene_playing"  ## a cutscene is in this group while it plays: whoever poses the crew's bodies leaves them alone
 const MAX_CREW := 4
 const MAX_STEP_SEC := 0.1  ## a hitch longer than this does not skip the choreography
 const STAGE_LAYER := 1 << 15  ## render layer 16 (the bar and its mirror use 10-14 and 20): a stage part and its camera live on this one alone
@@ -188,6 +189,7 @@ func play() -> void:
 	camera.make_current()
 	_hide_hud()
 	playing = true
+	add_to_group(PLAYING_GROUP)
 	_update(0.0, 0.0)
 	shell.set_fade(_fade_at(0.0))
 	set_process(not manual_clock)
@@ -241,6 +243,7 @@ func _end(skipped: bool) -> void:
 	if not playing:
 		return
 	playing = false
+	remove_from_group(PLAYING_GROUP)
 	set_process(false)
 	_on_end(skipped)
 	_hold(false)
